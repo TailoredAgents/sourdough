@@ -1,17 +1,28 @@
 create extension if not exists "pgcrypto";
 
-create type product_category as enum ('bread', 'add-on');
-create type order_status as enum (
-  'draft',
-  'pending_payment',
-  'paid',
-  'baking',
-  'out_for_delivery',
-  'delivered',
-  'canceled'
-);
+do $$
+begin
+  create type product_category as enum ('bread', 'add-on');
+exception
+  when duplicate_object then null;
+end $$;
 
-create table products (
+do $$
+begin
+  create type order_status as enum (
+    'draft',
+    'pending_payment',
+    'paid',
+    'baking',
+    'out_for_delivery',
+    'delivered',
+    'canceled'
+  );
+exception
+  when duplicate_object then null;
+end $$;
+
+create table if not exists products (
   id uuid primary key default gen_random_uuid(),
   slug text not null unique,
   name text not null,
@@ -26,7 +37,7 @@ create table products (
   updated_at timestamptz not null default now()
 );
 
-create table weekly_menus (
+create table if not exists weekly_menus (
   id uuid primary key default gen_random_uuid(),
   name text not null,
   order_cutoff_at timestamptz not null,
@@ -36,7 +47,7 @@ create table weekly_menus (
   created_at timestamptz not null default now()
 );
 
-create table weekly_menu_items (
+create table if not exists weekly_menu_items (
   id uuid primary key default gen_random_uuid(),
   weekly_menu_id uuid not null references weekly_menus(id) on delete cascade,
   product_id uuid not null references products(id),
@@ -46,7 +57,7 @@ create table weekly_menu_items (
   unique (weekly_menu_id, product_id)
 );
 
-create table delivery_settings (
+create table if not exists delivery_settings (
   id boolean primary key default true,
   center_lat numeric(9,6) not null default 34.236800,
   center_lng numeric(9,6) not null default -84.490800,
@@ -55,7 +66,7 @@ create table delivery_settings (
   check (id)
 );
 
-create table delivery_windows (
+create table if not exists delivery_windows (
   id uuid primary key default gen_random_uuid(),
   weekly_menu_id uuid not null references weekly_menus(id) on delete cascade,
   label text not null,
@@ -65,7 +76,7 @@ create table delivery_windows (
   reserved integer not null default 0 check (reserved >= 0)
 );
 
-create table customers (
+create table if not exists customers (
   id uuid primary key default gen_random_uuid(),
   name text not null,
   email text not null,
@@ -73,7 +84,7 @@ create table customers (
   created_at timestamptz not null default now()
 );
 
-create table orders (
+create table if not exists orders (
   id uuid primary key default gen_random_uuid(),
   customer_id uuid references customers(id),
   delivery_window_id uuid references delivery_windows(id),
@@ -90,7 +101,7 @@ create table orders (
   updated_at timestamptz not null default now()
 );
 
-create table order_items (
+create table if not exists order_items (
   id uuid primary key default gen_random_uuid(),
   order_id uuid not null references orders(id) on delete cascade,
   product_id uuid not null references products(id),
@@ -98,7 +109,7 @@ create table order_items (
   unit_price_cents integer not null check (unit_price_cents >= 0)
 );
 
-create table customer_messages (
+create table if not exists customer_messages (
   id uuid primary key default gen_random_uuid(),
   order_id uuid references orders(id) on delete set null,
   customer_email text,
@@ -108,7 +119,7 @@ create table customer_messages (
   created_at timestamptz not null default now()
 );
 
-create table ai_knowledge_entries (
+create table if not exists ai_knowledge_entries (
   id uuid primary key default gen_random_uuid(),
   title text not null,
   body text not null,
@@ -128,12 +139,15 @@ alter table order_items enable row level security;
 alter table customer_messages enable row level security;
 alter table ai_knowledge_entries enable row level security;
 
+drop policy if exists "Public can read active products" on products;
 create policy "Public can read active products" on products
   for select using (active = true);
 
+drop policy if exists "Public can read published menus" on weekly_menus;
 create policy "Public can read published menus" on weekly_menus
   for select using (published = true);
 
+drop policy if exists "Public can read published menu items" on weekly_menu_items;
 create policy "Public can read published menu items" on weekly_menu_items
   for select using (
     exists (
@@ -143,9 +157,11 @@ create policy "Public can read published menu items" on weekly_menu_items
     )
   );
 
+drop policy if exists "Public can read delivery settings" on delivery_settings;
 create policy "Public can read delivery settings" on delivery_settings
   for select using (true);
 
+drop policy if exists "Public can read delivery windows for published menus" on delivery_windows;
 create policy "Public can read delivery windows for published menus" on delivery_windows
   for select using (
     exists (
@@ -155,5 +171,6 @@ create policy "Public can read delivery windows for published menus" on delivery
     )
   );
 
+drop policy if exists "Public can read approved AI knowledge" on ai_knowledge_entries;
 create policy "Public can read approved AI knowledge" on ai_knowledge_entries
   for select using (approved = true);
