@@ -19,6 +19,11 @@ export type WeeklyMenuItem = {
   featured?: boolean;
 };
 
+export type MenuProduct = Product &
+  WeeklyMenuItem & {
+    remainingQuantity: number;
+  };
+
 export type DeliveryWindow = {
   id: string;
   label: string;

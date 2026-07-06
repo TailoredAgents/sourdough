@@ -1,9 +1,13 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { deliveryWindows, getMenuProduct, getProduct } from "@/lib/bakery-data";
 import { isAfterWeeklyCutoff } from "@/lib/cutoff";
 import { checkDeliveryAddress } from "@/lib/delivery";
 import { sendOrderConfirmation } from "@/lib/email";
+import {
+  getDeliverySettingsData,
+  getDeliveryWindowData,
+  getMenuProductData,
+} from "@/lib/storefront-data";
 import { getStripe } from "@/lib/stripe";
 import { getSiteUrl } from "@/lib/utils";
 
@@ -43,9 +47,7 @@ export async function POST(request: Request) {
   }
 
   const checkout = parsed.data;
-  const deliveryWindow = deliveryWindows.find(
-    (window) => window.id === checkout.deliveryWindowId,
-  );
+  const deliveryWindow = await getDeliveryWindowData(checkout.deliveryWindowId);
 
   if (!deliveryWindow) {
     return NextResponse.json(
@@ -54,7 +56,8 @@ export async function POST(request: Request) {
     );
   }
 
-  const deliveryCheck = checkDeliveryAddress(checkout.address);
+  const deliverySettings = await getDeliverySettingsData();
+  const deliveryCheck = checkDeliveryAddress(checkout.address, deliverySettings);
   const state = checkout.address.state.trim().toUpperCase();
   if (state !== "GA" && state !== "GEORGIA") {
     return NextResponse.json(
@@ -72,7 +75,7 @@ export async function POST(request: Request) {
 
   const items = [];
   for (const cartItem of checkout.cart) {
-    const menuProduct = getMenuProduct(cartItem.productId);
+    const menuProduct = await getMenuProductData(cartItem.productId);
     if (!menuProduct) {
       return NextResponse.json(
         { error: "One of the selected products is no longer available." },
@@ -132,7 +135,6 @@ export async function POST(request: Request) {
     cancel_url: `${getSiteUrl()}/order/canceled`,
     line_items: [
       ...items.map((item) => {
-        const product = getProduct(item.id);
         return {
           quantity: item.quantity,
           price_data: {
@@ -140,7 +142,7 @@ export async function POST(request: Request) {
             unit_amount: item.priceCents,
             product_data: {
               name: item.name,
-              description: product?.description,
+              description: item.description,
             },
           },
         };

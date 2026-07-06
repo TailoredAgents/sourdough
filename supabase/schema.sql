@@ -32,10 +32,14 @@ create table if not exists products (
   allergens text[] not null default '{}',
   price_cents integer not null check (price_cents >= 0),
   image_url text,
+  image_style text not null default 'from-stone-100 via-amber-100 to-orange-200',
   active boolean not null default true,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table products
+  add column if not exists image_style text not null default 'from-stone-100 via-amber-100 to-orange-200';
 
 create table if not exists weekly_menus (
   id uuid primary key default gen_random_uuid(),
@@ -128,6 +132,14 @@ create table if not exists ai_knowledge_entries (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists admin_users (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  email text not null unique,
+  active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 alter table products enable row level security;
 alter table weekly_menus enable row level security;
 alter table weekly_menu_items enable row level security;
@@ -138,6 +150,7 @@ alter table orders enable row level security;
 alter table order_items enable row level security;
 alter table customer_messages enable row level security;
 alter table ai_knowledge_entries enable row level security;
+alter table admin_users enable row level security;
 
 drop policy if exists "Public can read active products" on products;
 create policy "Public can read active products" on products

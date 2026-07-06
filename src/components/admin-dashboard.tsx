@@ -10,18 +10,25 @@ import {
   Truck,
   type LucideIcon,
 } from "lucide-react";
-import { deliveryWindows, getActiveMenu, products } from "@/lib/bakery-data";
+import type { DeliveryWindow, MenuProduct, Product } from "@/lib/types";
 import { formatCurrency } from "@/lib/utils";
 import { Button } from "./button";
 
-export function AdminDashboard() {
+export function AdminDashboard({
+  deliveryWindows,
+  menu,
+  products,
+}: {
+  deliveryWindows: DeliveryWindow[];
+  menu: MenuProduct[];
+  products: Product[];
+}) {
   const [draftType, setDraftType] = useState("weekly_announcement");
   const [context, setContext] = useState(
     "Announce this week's classic country loaf, rosemary garlic loaf, and honey butter. Mention Thursday cutoff.",
   );
   const [draft, setDraft] = useState("");
   const [isPending, startTransition] = useTransition();
-  const menu = getActiveMenu();
   const stats: { label: string; value: string; Icon: LucideIcon }[] = [
     { label: "Open orders", value: "12", Icon: ClipboardList },
     { label: "Bake capacity", value: "28 loaves", Icon: Package },

@@ -10,12 +10,13 @@ import {
 import { CustomerChat } from "@/components/customer-chat";
 import { OrderBuilder } from "@/components/order-builder";
 import { SiteHeader } from "@/components/site-header";
-import { bakery, deliveryWindows, getActiveMenu } from "@/lib/bakery-data";
+import { bakery } from "@/lib/bakery-data";
 import { getCutoffMessage, isAfterWeeklyCutoff } from "@/lib/cutoff";
+import { getStorefrontData } from "@/lib/storefront-data";
 import { formatCurrency } from "@/lib/utils";
 
-export default function Home() {
-  const menu = getActiveMenu();
+export default async function Home() {
+  const { menu, deliveryWindows } = await getStorefrontData();
   const afterCutoff = isAfterWeeklyCutoff();
 
   return (
@@ -168,7 +169,11 @@ export default function Home() {
           </div>
         </section>
 
-        <OrderBuilder deliveryWindows={deliveryWindows} afterCutoff={afterCutoff} />
+        <OrderBuilder
+          deliveryWindows={deliveryWindows}
+          afterCutoff={afterCutoff}
+          menu={menu}
+        />
 
         <section className="bg-[#f7efe3] py-16 sm:py-20">
           <div className="mx-auto grid max-w-7xl gap-6 px-4 sm:px-6 lg:grid-cols-3 lg:px-8">

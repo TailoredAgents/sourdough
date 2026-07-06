@@ -33,6 +33,7 @@ Required before live launch:
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY`
+- `ADMIN_EMAILS`
 - `STRIPE_SECRET_KEY`
 - `STRIPE_WEBHOOK_SECRET`
 - `RESEND_API_KEY`
@@ -45,7 +46,19 @@ Required before live launch:
 
 ## Supabase
 
-Run `supabase/schema.sql` in a Supabase project SQL editor. The current app ships with local sample data so it can be reviewed immediately; the next implementation step is replacing `src/lib/bakery-data.ts` reads with Supabase queries and adding Supabase Auth around `/admin`.
+Run `supabase/schema.sql` in a Supabase project SQL editor or with `psql`, then run `supabase/seed.sql` to load the starter products, weekly menu, delivery windows, delivery settings, and approved AI knowledge.
+
+The public storefront reads from Supabase when the Supabase environment variables are configured. Local fallback data remains in `src/lib/bakery-data.ts` so the app can still be reviewed without credentials. The next major implementation step is adding Supabase Auth around `/admin` and replacing the display-only admin surface with protected admin mutations.
+
+## Admin Access
+
+`/admin` is protected by Supabase Auth. Add approved owner emails to `ADMIN_EMAILS` as a comma-separated list:
+
+```env
+ADMIN_EMAILS=owner@example.com
+```
+
+The login page sends a Supabase magic link. Supabase Auth email settings must be enabled in the Supabase dashboard before live use. Approved admins can also be added later through the `admin_users` table.
 
 ## Stripe
 

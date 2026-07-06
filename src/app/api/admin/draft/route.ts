@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { aiKnowledge, getActiveMenu } from "@/lib/bakery-data";
+import { getCurrentAdmin } from "@/lib/admin-auth";
 import { aiModel, getOpenAI } from "@/lib/openai";
+import {
+  getActiveMenuData,
+  getApprovedAiKnowledgeData,
+} from "@/lib/storefront-data";
 
 const draftSchema = z.object({
   type: z.enum([
@@ -22,6 +26,14 @@ function fallbackDraft(type: string, context: string) {
 }
 
 export async function POST(request: Request) {
+  const admin = await getCurrentAdmin();
+  if (!admin) {
+    return NextResponse.json(
+      { error: "Admin authorization is required." },
+      { status: 401 },
+    );
+  }
+
   const parsed = draftSchema.safeParse(await request.json());
   if (!parsed.success) {
     return NextResponse.json({ draft: "Please provide a draft type and context." });
@@ -34,7 +46,12 @@ export async function POST(request: Request) {
     });
   }
 
-  const menuContext = getActiveMenu()
+  const [menu, aiKnowledge] = await Promise.all([
+    getActiveMenuData(),
+    getApprovedAiKnowledgeData(),
+  ]);
+
+  const menuContext = menu
     .map((item) => `${item.name}: ${item.description}`)
     .join("\n");
 

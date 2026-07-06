@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { checkDeliveryAddress } from "@/lib/delivery";
+import { getDeliverySettingsData } from "@/lib/storefront-data";
 
 const addressSchema = z.object({
   line1: z.string().optional().default(""),
@@ -27,5 +28,6 @@ export async function POST(request: Request) {
     );
   }
 
-  return NextResponse.json(checkDeliveryAddress(parsed.data));
+  const deliverySettings = await getDeliverySettingsData();
+  return NextResponse.json(checkDeliveryAddress(parsed.data, deliverySettings));
 }

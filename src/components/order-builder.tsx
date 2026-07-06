@@ -2,8 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { AlertCircle, CheckCircle2, Loader2, Minus, Plus, Send } from "lucide-react";
-import type { DeliveryAddress, DeliveryWindow } from "@/lib/types";
-import { getActiveMenu } from "@/lib/bakery-data";
+import type { DeliveryAddress, DeliveryWindow, MenuProduct } from "@/lib/types";
 import { formatCurrency } from "@/lib/utils";
 import { Button } from "./button";
 
@@ -15,14 +14,14 @@ type DeliveryCheck = {
   feeCents: number;
 };
 
-const menu = getActiveMenu();
-
 export function OrderBuilder({
   deliveryWindows,
   afterCutoff,
+  menu,
 }: {
   deliveryWindows: DeliveryWindow[];
   afterCutoff: boolean;
+  menu: MenuProduct[];
 }) {
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [customer, setCustomer] = useState({

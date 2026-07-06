@@ -1,6 +1,15 @@
 import { envNumber } from "./utils";
 import type { DeliveryAddress } from "./types";
 
+export type DeliverySettings = {
+  radiusMiles: number;
+  deliveryFeeCents: number;
+  center: {
+    lat: number;
+    lng: number;
+  };
+};
+
 type CityEstimate = {
   key: string;
   label: string;
@@ -19,7 +28,7 @@ const knownCities: CityEstimate[] = [
   { key: "marietta", label: "Marietta", milesFromCanton: 27 },
 ];
 
-export function getDeliverySettings() {
+export function getDeliverySettings(): DeliverySettings {
   return {
     radiusMiles: envNumber("DELIVERY_RADIUS_MILES", 12),
     deliveryFeeCents: envNumber("DELIVERY_FEE_CENTS", 600),
@@ -30,8 +39,10 @@ export function getDeliverySettings() {
   };
 }
 
-export function checkDeliveryAddress(address: DeliveryAddress) {
-  const settings = getDeliverySettings();
+export function checkDeliveryAddress(
+  address: DeliveryAddress,
+  settings = getDeliverySettings(),
+) {
   const state = address.state.trim().toUpperCase();
 
   if (state !== "GA" && state !== "GEORGIA") {

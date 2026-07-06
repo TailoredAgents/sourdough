@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { aiKnowledge, getActiveMenu } from "@/lib/bakery-data";
 import { aiModel, getOpenAI } from "@/lib/openai";
+import {
+  getActiveMenuData,
+  getApprovedAiKnowledgeData,
+} from "@/lib/storefront-data";
 
 const chatSchema = z.object({
   message: z.string().min(1).max(1000),
@@ -36,7 +39,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ answer: fallbackAnswer(parsed.data.message) });
   }
 
-  const menuContext = getActiveMenu()
+  const [menu, aiKnowledge] = await Promise.all([
+    getActiveMenuData(),
+    getApprovedAiKnowledgeData(),
+  ]);
+
+  const menuContext = menu
     .map(
       (item) =>
         `${item.name}: ${item.description} Price ${item.priceCents / 100}. Ingredients: ${item.ingredients.join(", ")}. Allergens: ${item.allergens.join(", ")}. Remaining: ${item.remainingQuantity}.`,
