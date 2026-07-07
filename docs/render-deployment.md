@@ -11,7 +11,7 @@ Use the `render.yaml` Blueprint in the repo root.
 - Service type: `web`
 - Runtime: `node`
 - Instance type: `standard`
-- Build command: `npm ci && npm run build`
+- Build command: `npm ci --include=dev && npm run build`
 - Start command: `npm run start`
 - Health check path: `/api/health`
 - Node version: `.node-version` pins Node 22
