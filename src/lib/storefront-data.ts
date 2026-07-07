@@ -7,7 +7,7 @@ import {
 } from "./bakery-data";
 import { getSupabaseAdminClient } from "./supabase";
 import { getDeliverySettings, type DeliverySettings } from "./delivery";
-import type { DeliveryWindow, MenuProduct, Product } from "./types";
+import type { DeliveryWindow, MenuProduct, Product, WeeklyMenu } from "./types";
 
 type ProductRow = {
   id: string;
@@ -27,6 +27,15 @@ type WeeklyMenuItemRow = {
   sold_quantity: number;
   featured: boolean;
   products: ProductRow | ProductRow[] | null;
+};
+
+type WeeklyMenuRow = {
+  id: string;
+  name: string;
+  order_cutoff_at: string;
+  starts_at: string;
+  ends_at: string;
+  published: boolean;
 };
 
 type DeliveryWindowRow = {
@@ -105,6 +114,26 @@ async function getPublishedMenuId() {
   return data?.id ?? null;
 }
 
+async function getPublishedMenuRow() {
+  const supabase = getSupabaseAdminClient();
+  if (!supabase) return null;
+
+  const { data, error } = await supabase
+    .from("weekly_menus")
+    .select("id, name, order_cutoff_at, starts_at, ends_at, published")
+    .eq("published", true)
+    .order("starts_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    console.error("[supabase] weekly menu lookup failed", error.message);
+    return null;
+  }
+
+  return (data as WeeklyMenuRow | null) ?? null;
+}
+
 export async function getActiveMenuData(): Promise<MenuProduct[]> {
   const supabase = getSupabaseAdminClient();
   const weeklyMenuId = await getPublishedMenuId();
@@ -133,6 +162,22 @@ export async function getActiveMenuData(): Promise<MenuProduct[]> {
     });
 
   return menu.length ? menu : getFallbackActiveMenu();
+}
+
+export async function getActiveWeeklyMenuData(): Promise<WeeklyMenu | null> {
+  const row = await getPublishedMenuRow();
+  const items = await getActiveMenuData();
+  if (!row) return null;
+
+  return {
+    id: row.id,
+    name: row.name,
+    orderCutoffAt: row.order_cutoff_at,
+    startsAt: row.starts_at,
+    endsAt: row.ends_at,
+    published: row.published,
+    items,
+  };
 }
 
 export async function getMenuProductData(productId: string) {
@@ -232,8 +277,9 @@ export async function getApprovedAiKnowledgeData(): Promise<string[]> {
 }
 
 export async function getStorefrontData() {
-  const [menu, deliveryWindows, aiKnowledge, products, deliverySettings] = await Promise.all([
+  const [menu, weeklyMenu, deliveryWindows, aiKnowledge, products, deliverySettings] = await Promise.all([
     getActiveMenuData(),
+    getActiveWeeklyMenuData(),
     getDeliveryWindowsData(),
     getApprovedAiKnowledgeData(),
     getProductsData(),
@@ -242,6 +288,7 @@ export async function getStorefrontData() {
 
   return {
     menu,
+    weeklyMenu,
     deliveryWindows,
     aiKnowledge,
     products,

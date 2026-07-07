@@ -10,19 +10,22 @@ import {
   Truck,
   type LucideIcon,
 } from "lucide-react";
-import type { DeliveryWindow, MenuProduct, Product } from "@/lib/types";
+import type { DeliveryWindow, MenuProduct, Product, WeeklyMenu } from "@/lib/types";
 import { formatCurrency } from "@/lib/utils";
 import { Button } from "./button";
 import { ProductEditor } from "./product-editor";
+import { WeeklyMenuEditor } from "./weekly-menu-editor";
 
 export function AdminDashboard({
   deliveryWindows,
   menu,
   products,
+  weeklyMenu,
 }: {
   deliveryWindows: DeliveryWindow[];
   menu: MenuProduct[];
   products: Product[];
+  weeklyMenu: WeeklyMenu | null;
 }) {
   const [draftType, setDraftType] = useState("weekly_announcement");
   const [context, setContext] = useState(
@@ -187,6 +190,8 @@ export function AdminDashboard({
             </div>
           </div>
         </section>
+
+        <WeeklyMenuEditor initialWeeklyMenu={weeklyMenu} products={products} />
 
         <ProductEditor initialProducts={products} />
       </main>
