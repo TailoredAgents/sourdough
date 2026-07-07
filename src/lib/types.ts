@@ -97,3 +97,34 @@ export type OrderStatus =
   | "out_for_delivery"
   | "delivered"
   | "canceled";
+
+export type AdminOrderItem = {
+  id: string;
+  productId: string;
+  productName: string;
+  quantity: number;
+  unitPriceCents: number;
+};
+
+export type AdminOrder = {
+  id: string;
+  customerName: string;
+  customerEmail: string;
+  customerPhone: string | null;
+  deliveryWindowLabel: string | null;
+  status: OrderStatus;
+  subtotalCents: number;
+  deliveryFeeCents: number;
+  totalCents: number;
+  deliveryAddress: DeliveryAddress & {
+    email?: string;
+    phone?: string;
+  };
+  deliveryMiles: number | null;
+  notes: string | null;
+  paidAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  stripeCheckoutSessionId: string | null;
+  items: AdminOrderItem[];
+};

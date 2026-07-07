@@ -19,12 +19,14 @@ import type {
   MenuProduct,
   Product,
   WeeklyMenu,
+  AdminOrder,
 } from "@/lib/types";
 import { formatCurrency } from "@/lib/utils";
 import { AiKnowledgeEditor } from "./ai-knowledge-editor";
 import { Button } from "./button";
 import { CustomerMessageInbox } from "./customer-message-inbox";
 import { DeliveryEditor } from "./delivery-editor";
+import { OrderDashboard } from "./order-dashboard";
 import { ProductEditor } from "./product-editor";
 import { WeeklyMenuEditor } from "./weekly-menu-editor";
 
@@ -34,6 +36,7 @@ export function AdminDashboard({
   deliverySettings,
   deliveryWindows,
   menu,
+  orders,
   products,
   weeklyMenu,
 }: {
@@ -42,6 +45,7 @@ export function AdminDashboard({
   deliverySettings: DeliverySettings;
   deliveryWindows: DeliveryWindow[];
   menu: MenuProduct[];
+  orders: AdminOrder[];
   products: Product[];
   weeklyMenu: WeeklyMenu | null;
 }) {
@@ -54,8 +58,11 @@ export function AdminDashboard({
   const openRequestCount = customerMessages.filter(
     (message) => message.status === "new" || message.status === "in_progress",
   ).length;
+  const openOrderCount = orders.filter((order) =>
+    ["paid", "baking", "out_for_delivery"].includes(order.status),
+  ).length;
   const stats: { label: string; value: string; Icon: LucideIcon }[] = [
-    { label: "Open orders", value: "Pending Stripe", Icon: ClipboardList },
+    { label: "Open orders", value: String(openOrderCount), Icon: ClipboardList },
     { label: "Customer requests", value: String(openRequestCount), Icon: Inbox },
     { label: "Bake capacity", value: "28 loaves", Icon: Package },
     { label: "Delivery windows", value: String(deliveryWindows.length), Icon: Truck },
@@ -213,6 +220,8 @@ export function AdminDashboard({
         </section>
 
         <WeeklyMenuEditor initialWeeklyMenu={weeklyMenu} products={products} />
+
+        <OrderDashboard initialOrders={orders} />
 
         <CustomerMessageInbox initialMessages={customerMessages} />
 
