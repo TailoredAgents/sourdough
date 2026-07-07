@@ -1,6 +1,6 @@
 # L&L Sourdough Launch Checklist
 
-Current status: repo is pushed, Supabase schema exists in the live database, seed data has been applied, the public storefront reads from Supabase with local fallback data, `/admin` is protected by Supabase Auth, and admin tools can edit products, weekly menus, inventory, delivery settings, and delivery windows.
+Current status: repo is pushed, Supabase schema exists in the live database, seed data has been applied, the public storefront reads from Supabase with local fallback data, `/admin` is protected by Supabase Auth, admin tools can edit products, weekly menus, inventory, delivery settings, and delivery windows, and checkout can create pending Supabase orders before Stripe redirect once Stripe keys are configured.
 
 ## Phase 1: Supabase Foundation
 
@@ -38,16 +38,16 @@ Current status: repo is pushed, Supabase schema exists in the live database, see
 
 ## Phase 4: Real Checkout
 
-- [ ] Create customer record during checkout
-- [ ] Create pending order before Stripe redirect
-- [ ] Create order items from selected cart
-- [ ] Reserve inventory before redirecting to Stripe
-- [ ] Prevent overselling with a database transaction/RPC
-- [ ] Store Stripe checkout session ID on order
-- [ ] Send real customer confirmation after payment
+- [x] Create customer record during checkout
+- [x] Create pending order before Stripe redirect
+- [x] Create order items from selected cart
+- [x] Reserve inventory before redirecting to Stripe
+- [x] Prevent overselling with a database transaction/RPC
+- [x] Store Stripe checkout session ID on order
+- [x] Send real customer confirmation after payment
 - [ ] Send bakery owner notification after payment
 - [ ] Handle checkout cancellation
-- [ ] Release inventory when checkout expires
+- [x] Release inventory when checkout expires
 - [ ] Make success page show real order confirmation details
 
 ## Phase 5: Stripe Webhooks
@@ -55,9 +55,9 @@ Current status: repo is pushed, Supabase schema exists in the live database, see
 - [ ] Configure Stripe test keys
 - [ ] Configure local webhook testing with Stripe CLI
 - [ ] Configure deployed webhook URL
-- [ ] On `checkout.session.completed`: mark order paid, finalize inventory, send emails
-- [ ] On `checkout.session.expired`: release inventory and mark order canceled/expired
-- [ ] Make webhook handling idempotent so duplicate Stripe events are safe
+- [x] On `checkout.session.completed`: mark order paid, finalize inventory, send customer email
+- [x] On `checkout.session.expired`: release inventory and mark order canceled/expired
+- [x] Make webhook handling idempotent so duplicate Stripe events are safe
 - [ ] Add logging for failed webhook handling
 
 ## Phase 6: Delivery

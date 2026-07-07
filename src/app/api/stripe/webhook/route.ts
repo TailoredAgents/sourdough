@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
 import { sendOrderConfirmation } from "@/lib/email";
+import {
+  cancelExpiredCheckoutSession,
+  markCheckoutSessionPaid,
+} from "@/lib/order-records";
 import { getStripe } from "@/lib/stripe";
 
 export async function POST(request: Request) {
@@ -30,24 +34,31 @@ export async function POST(request: Request) {
 
   if (event.type === "checkout.session.completed") {
     const session = event.data.object;
-    if (session.customer_email) {
+    const paidOrder = await markCheckoutSessionPaid(session.id);
+
+    if (paidOrder?.customerEmail) {
       await sendOrderConfirmation({
-        to: session.customer_email,
-        customerName: String(session.metadata?.customer_name || "there"),
-        orderSummary: String(session.metadata?.cart || "Order paid in Stripe Checkout"),
-        deliveryWindow: String(session.metadata?.delivery_window || "Selected window"),
+        to: paidOrder.customerEmail,
+        customerName: paidOrder.customerName,
+        orderSummary: paidOrder.orderSummary,
+        deliveryWindow: paidOrder.deliveryWindow,
       });
     }
 
     console.log("[stripe:webhook] paid order", {
       sessionId: session.id,
-      customerEmail: session.customer_email,
-      deliveryWindow: session.metadata?.delivery_window,
+      orderId: paidOrder?.orderId || session.metadata?.order_id,
+      customerEmail: paidOrder?.customerEmail || session.customer_email,
+      deliveryWindow: paidOrder?.deliveryWindow || session.metadata?.delivery_window,
     });
   }
 
   if (event.type === "checkout.session.expired") {
-    console.log("[stripe:webhook] checkout expired", event.data.object.id);
+    const orderId = await cancelExpiredCheckoutSession(event.data.object.id);
+    console.log("[stripe:webhook] checkout expired", {
+      sessionId: event.data.object.id,
+      orderId,
+    });
   }
 
   return NextResponse.json({ received: true });

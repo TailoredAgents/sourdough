@@ -140,6 +140,108 @@ create table if not exists admin_users (
   updated_at timestamptz not null default now()
 );
 
+create or replace function reserve_order_inventory(
+  p_delivery_window_id uuid,
+  p_items jsonb
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  item jsonb;
+  item_product_id uuid;
+  item_quantity integer;
+  window_weekly_menu_id uuid;
+begin
+  select weekly_menu_id
+  into window_weekly_menu_id
+  from delivery_windows
+  where id = p_delivery_window_id
+  for update;
+
+  if window_weekly_menu_id is null then
+    raise exception 'Delivery window is no longer available.';
+  end if;
+
+  update delivery_windows
+  set reserved = reserved + 1
+  where id = p_delivery_window_id
+    and reserved < capacity;
+
+  if not found then
+    raise exception 'Delivery window is full.';
+  end if;
+
+  for item in select * from jsonb_array_elements(p_items)
+  loop
+    item_product_id := (item ->> 'product_id')::uuid;
+    item_quantity := (item ->> 'quantity')::integer;
+
+    if item_quantity is null or item_quantity <= 0 then
+      raise exception 'Invalid item quantity.';
+    end if;
+
+    update weekly_menu_items
+    set sold_quantity = sold_quantity + item_quantity
+    where weekly_menu_id = window_weekly_menu_id
+      and product_id = item_product_id
+      and sold_quantity + item_quantity <= available_quantity;
+
+    if not found then
+      raise exception 'One item does not have enough inventory left.';
+    end if;
+  end loop;
+end;
+$$;
+
+create or replace function release_order_inventory(p_order_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  order_row orders%rowtype;
+  item_row record;
+  window_weekly_menu_id uuid;
+begin
+  select *
+  into order_row
+  from orders
+  where id = p_order_id;
+
+  if order_row.id is null or order_row.delivery_window_id is null then
+    return;
+  end if;
+
+  select weekly_menu_id
+  into window_weekly_menu_id
+  from delivery_windows
+  where id = order_row.delivery_window_id;
+
+  if window_weekly_menu_id is null then
+    return;
+  end if;
+
+  update delivery_windows
+  set reserved = greatest(reserved - 1, 0)
+  where id = order_row.delivery_window_id;
+
+  for item_row in
+    select product_id, quantity
+    from order_items
+    where order_id = p_order_id
+  loop
+    update weekly_menu_items
+    set sold_quantity = greatest(sold_quantity - item_row.quantity, 0)
+    where weekly_menu_id = window_weekly_menu_id
+      and product_id = item_row.product_id;
+  end loop;
+end;
+$$;
+
 alter table products enable row level security;
 alter table weekly_menus enable row level security;
 alter table weekly_menu_items enable row level security;

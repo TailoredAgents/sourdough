@@ -4,6 +4,12 @@ import { isAfterWeeklyCutoff } from "@/lib/cutoff";
 import { checkDeliveryAddress } from "@/lib/delivery";
 import { sendOrderConfirmation } from "@/lib/email";
 import {
+  attachStripeSessionToOrder,
+  buildOrderSummary,
+  createPendingCheckoutOrder,
+  releasePendingOrder,
+} from "@/lib/order-records";
+import {
   getDeliverySettingsData,
   getDeliveryWindowData,
   getMenuProductData,
@@ -91,9 +97,7 @@ export async function POST(request: Request) {
     items.push({ ...menuProduct, quantity: cartItem.quantity });
   }
 
-  const orderSummary = items
-    .map((item) => `${item.quantity} x ${item.name}`)
-    .join("\n");
+  const orderSummary = buildOrderSummary(items);
 
   if (isAfterWeeklyCutoff()) {
     if (process.env.BAKERY_EMAIL) {
@@ -127,48 +131,72 @@ export async function POST(request: Request) {
     });
   }
 
-  const session = await stripe.checkout.sessions.create({
-    mode: "payment",
-    customer_email: checkout.customer.email,
-    phone_number_collection: { enabled: true },
-    success_url: `${getSiteUrl()}/order/success?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${getSiteUrl()}/order/canceled`,
-    line_items: [
-      ...items.map((item) => {
-        return {
-          quantity: item.quantity,
+  let pendingOrder;
+  try {
+    pendingOrder = await createPendingCheckoutOrder({
+      checkout,
+      deliveryCheck,
+      deliveryWindowId: deliveryWindow.id,
+      items,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Order could not be reserved.";
+    return NextResponse.json({ error: message }, { status: 400 });
+  }
+
+  let session;
+  try {
+    session = await stripe.checkout.sessions.create({
+      mode: "payment",
+      customer_email: checkout.customer.email,
+      phone_number_collection: { enabled: true },
+      success_url: `${getSiteUrl()}/order/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${getSiteUrl()}/order/canceled`,
+      line_items: [
+        ...items.map((item) => {
+          return {
+            quantity: item.quantity,
+            price_data: {
+              currency: "usd",
+              unit_amount: item.priceCents,
+              product_data: {
+                name: item.name,
+                description: item.description,
+              },
+            },
+          };
+        }),
+        {
+          quantity: 1,
           price_data: {
             currency: "usd",
-            unit_amount: item.priceCents,
+            unit_amount: deliveryCheck.feeCents,
             product_data: {
-              name: item.name,
-              description: item.description,
+              name: "Local delivery",
+              description: "Radius-based delivery from Canton, GA",
             },
           },
-        };
-      }),
-      {
-        quantity: 1,
-        price_data: {
-          currency: "usd",
-          unit_amount: deliveryCheck.feeCents,
-          product_data: {
-            name: "Local delivery",
-            description: "Radius-based delivery from Canton, GA",
-          },
         },
+      ],
+      metadata: {
+        order_id: pendingOrder.id,
+        customer_name: checkout.customer.name,
+        customer_phone: checkout.customer.phone,
+        delivery_window_id: deliveryWindow.id,
+        delivery_window: deliveryWindow.label,
+        address: `${checkout.address.line1}, ${checkout.address.city}, ${checkout.address.state} ${checkout.address.postalCode}`,
+        notes: checkout.notes || "",
+        order_summary: pendingOrder.orderSummary,
       },
-    ],
-    metadata: {
-      customer_name: checkout.customer.name,
-      customer_phone: checkout.customer.phone,
-      delivery_window_id: deliveryWindow.id,
-      delivery_window: deliveryWindow.label,
-      address: `${checkout.address.line1}, ${checkout.address.city}, ${checkout.address.state} ${checkout.address.postalCode}`,
-      notes: checkout.notes || "",
-      cart: JSON.stringify(checkout.cart),
-    },
-  });
+    });
+
+    await attachStripeSessionToOrder(pendingOrder.id, session.id);
+  } catch (error) {
+    await releasePendingOrder(pendingOrder.id);
+    const message =
+      error instanceof Error ? error.message : "Stripe checkout could not be started.";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 
   return NextResponse.json({ url: session.url });
 }
