@@ -14,12 +14,12 @@ export async function sendOrderConfirmation({
   deliveryWindow,
 }: ConfirmationEmail) {
   const apiKey = process.env.RESEND_API_KEY;
-  const from = process.env.RESEND_FROM || "L&L Sourdough <orders@landlsourdough.com>";
+  const from = process.env.RESEND_FROM || "Luna & Lorelai's Sourdough <orders@landlsourdough.com>";
 
   if (!apiKey) {
     console.log("[email:demo]", {
       to,
-      subject: "We received your L&L Sourdough order",
+      subject: "We received your Luna & Lorelai's Sourdough order",
       customerName,
       orderSummary,
       deliveryWindow,
@@ -31,7 +31,7 @@ export async function sendOrderConfirmation({
   return resend.emails.send({
     from,
     to,
-    subject: "We received your L&L Sourdough order",
-    text: `Hi ${customerName},\n\nThank you for ordering from L&L Sourdough.\n\nOrder:\n${orderSummary}\n\nDelivery window: ${deliveryWindow}\n\nWe will reach out if anything needs confirmation.\n\nL&L Sourdough`,
+    subject: "We received your Luna & Lorelai's Sourdough order",
+    text: `Hi ${customerName},\n\nThank you for ordering from Luna & Lorelai's Sourdough.\n\nOrder:\n${orderSummary}\n\nDelivery window: ${deliveryWindow}\n\nWe will reach out if anything needs confirmation.\n\nLuna & Lorelai's Sourdough`,
   });
 }

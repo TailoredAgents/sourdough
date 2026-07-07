@@ -1,7 +1,7 @@
 import type { DeliveryWindow, Product, WeeklyMenuItem } from "./types";
 
 export const bakery = {
-  name: "L&L Sourdough",
+  name: "Luna & Lorelai's Sourdough",
   domain: "landlsourdough.com",
   location: "Canton, GA",
   cutoffDay: "Thursday",

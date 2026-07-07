@@ -1,6 +1,6 @@
 # Render Deployment
 
-L&L Sourdough deploys to Render as a Node web service because the app uses
+Luna & Lorelai's Sourdough deploys to Render as a Node web service because the app uses
 Next.js server rendering, API routes, Supabase Auth cookies, Stripe webhooks,
 and admin mutations.
 
@@ -31,7 +31,7 @@ Do not commit real secret values.
 | `SUPABASE_DB_URL` | Supabase direct database connection string |
 | `ADMIN_EMAILS` | Comma-separated owner emails |
 | `RESEND_API_KEY` | Resend API key, blank until email is configured |
-| `RESEND_FROM` | `L&L Sourdough <orders@landlsourdough.com>` |
+| `RESEND_FROM` | `Luna & Lorelai's Sourdough <orders@landlsourdough.com>` |
 | `BAKERY_EMAIL` | Owner/order notification email |
 | `OPENAI_API_KEY` | OpenAI API key, blank to use fallback replies |
 | `OPENAI_MODEL` | `gpt-5.4-mini` |

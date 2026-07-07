@@ -188,7 +188,7 @@ export function AiKnowledgeEditor({
               onChange={(event) =>
                 setForm((current) => ({ ...current, body: event.target.value }))
               }
-              placeholder="L&L Sourdough delivers locally from Canton, GA..."
+              placeholder="Luna & Lorelai's Sourdough delivers locally from Canton, GA..."
             />
           </label>
 

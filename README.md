@@ -1,4 +1,4 @@
-# L&L Sourdough
+# Luna & Lorelai's Sourdough
 
 Agentic retail bakery platform for `landlsourdough.com`, built for local sourdough delivery from Canton, GA.
 

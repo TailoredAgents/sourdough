@@ -27,7 +27,7 @@ services:
       - key: RESEND_API_KEY
         sync: false
       - key: RESEND_FROM
-        value: "L&L Sourdough <orders@landlsourdough.com>"
+        value: "Luna & Lorelai's Sourdough <orders@landlsourdough.com>"
       - key: BAKERY_EMAIL
         sync: false
       - key: OPENAI_API_KEY

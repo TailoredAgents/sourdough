@@ -12,7 +12,7 @@ import {
 export const metadata: Metadata = {
   title: "Policies",
   description:
-    "L&L Sourdough customer policies, cottage food notice, privacy terms, and refund information.",
+    "Luna & Lorelai's Sourdough customer policies, cottage food notice, privacy terms, and refund information.",
 };
 
 export default function PoliciesPage() {

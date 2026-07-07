@@ -7,7 +7,7 @@ export function isAfterWeeklyCutoff(now = new Date()) {
 
 export function getCutoffMessage(now = new Date()) {
   if (isAfterWeeklyCutoff(now)) {
-    return "The Thursday cutoff has passed. Send a last-minute request and L&L will confirm what is possible.";
+    return "The Thursday cutoff has passed. Send a last-minute request and the bakery will confirm what is possible.";
   }
 
   return "Order by Thursday at 8:00 PM for next week's local delivery.";

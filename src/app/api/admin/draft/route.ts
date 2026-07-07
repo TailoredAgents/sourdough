@@ -19,7 +19,7 @@ const draftSchema = z.object({
 
 function fallbackDraft(type: string, context: string) {
   if (type === "weekly_announcement") {
-    return `This week's L&L Sourdough bake is open for orders. Order by Thursday at 8:00 PM for next week's local delivery from Canton, GA.\n\n${context}\n\nQuantities are limited, and last-minute requests after Thursday are reviewed manually.`;
+    return `This week's Luna & Lorelai's Sourdough bake is open for orders. Order by Thursday at 8:00 PM for next week's local delivery from Canton, GA.\n\n${context}\n\nQuantities are limited, and last-minute requests after Thursday are reviewed manually.`;
   }
 
   return `Draft for review:\n\n${context}\n\nPlease confirm product details, delivery timing, and any allergen wording before sending.`;
@@ -58,7 +58,7 @@ export async function POST(request: Request) {
   const response = await openai.responses.create({
     model: aiModel,
     instructions:
-      "You draft concise bakery copy for the owner of L&L Sourdough. Draft only; never claim the message has been sent. Preserve legal and allergen caution. Mention that customer-facing text should be reviewed before publishing.",
+      "You draft concise bakery copy for the owner of Luna & Lorelai's Sourdough. Draft only; never claim the message has been sent. Preserve legal and allergen caution. Mention that customer-facing text should be reviewed before publishing.",
     input: `Draft type: ${parsed.data.type}\n\nOwner context:\n${parsed.data.context}\n\nApproved facts:\n${aiKnowledge.join("\n")}\n\nMenu:\n${menuContext}`,
   });
 

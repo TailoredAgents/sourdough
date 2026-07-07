@@ -14,18 +14,18 @@ function fallbackAnswer(message: string) {
   const lower = message.toLowerCase();
 
   if (lower.includes("allergen") || lower.includes("ingredient")) {
-    return "Please check each product card for listed ingredients and allergens. L&L should not claim allergen-free preparation; contact the bakery for ingredient questions before ordering.";
+    return "Please check each product card for listed ingredients and allergens. The bakery should not claim allergen-free preparation; contact the bakery for ingredient questions before ordering.";
   }
 
   if (lower.includes("deliver") || lower.includes("shipping") || lower.includes("ship")) {
-    return "L&L Sourdough is planned for local Georgia delivery from Canton, GA only. The launch site does not support shipping or out-of-state orders.";
+    return "Luna & Lorelai's Sourdough is planned for local Georgia delivery from Canton, GA only. The launch site does not support shipping or out-of-state orders.";
   }
 
   if (lower.includes("cutoff") || lower.includes("deadline") || lower.includes("late")) {
-    return "Weekly orders close Thursday at 8:00 PM for the next week's bake. After that, send a last-minute request and L&L will confirm what is possible.";
+    return "Weekly orders close Thursday at 8:00 PM for the next week's bake. After that, send a last-minute request and the bakery will confirm what is possible.";
   }
 
-  return "I can help with the weekly menu, listed allergens, local delivery, and Thursday cutoff. For custom or urgent questions, send a note with your order request so L&L can reply directly.";
+  return "I can help with the weekly menu, listed allergens, local delivery, and Thursday cutoff. For custom or urgent questions, send a note with your order request so the bakery can reply directly.";
 }
 
 export async function POST(request: Request) {
@@ -54,7 +54,7 @@ export async function POST(request: Request) {
   const response = await openai.responses.create({
     model: aiModel,
     instructions:
-      "You are the L&L Sourdough customer assistant. Answer only from the provided bakery facts and menu. Do not invent ingredients, inventory, legal claims, medical advice, or allergen-free guarantees. If the answer is not supported, say the bakery should confirm directly. Keep answers short and friendly.",
+      "You are the Luna & Lorelai's Sourdough customer assistant. Answer only from the provided bakery facts and menu. Do not invent ingredients, inventory, legal claims, medical advice, or allergen-free guarantees. If the answer is not supported, say the bakery should confirm directly. Keep answers short and friendly.",
     input: `Approved bakery facts:\n${aiKnowledge.join("\n")}\n\nCurrent menu:\n${menuContext}\n\nCustomer question:\n${parsed.data.message}`,
   });
 

@@ -64,7 +64,7 @@ export function checkDeliveryAddress(
       needsReview: true,
       miles: null,
       message:
-        "This city needs manual review. Send a last-minute or delivery request and L&L will confirm.",
+        "This city needs manual review. Send a last-minute or delivery request and the bakery will confirm.",
       feeCents: settings.deliveryFeeCents,
     };
   }

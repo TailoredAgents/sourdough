@@ -190,7 +190,7 @@ insert into ai_knowledge_entries (
   (
     '00000000-0000-4000-8000-000000000301',
     'Bakery location',
-    'L&L Sourdough is a local cottage bakery in Canton, GA.',
+    'Luna & Lorelai''s Sourdough is a local cottage bakery in Canton, GA.',
     true
   ),
   (

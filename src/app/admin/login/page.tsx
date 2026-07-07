@@ -38,7 +38,7 @@ export default async function AdminLoginPage({
           Owner login
         </p>
         <h1 className="mt-3 text-3xl font-bold text-stone-950">
-          L&L Sourdough admin
+          Luna &amp; Lorelai&apos;s Sourdough admin
         </h1>
         <p className="mt-3 text-sm leading-6 text-stone-700">
           Enter an approved owner email. Supabase will send a magic link to open

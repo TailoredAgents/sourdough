@@ -89,7 +89,7 @@ export function AdminDashboard({
               Owner workspace
             </p>
             <h1 className="mt-3 text-3xl font-bold text-stone-950 sm:text-4xl">
-              L&L Sourdough admin
+              Luna &amp; Lorelai&apos;s Sourdough admin
             </h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-stone-700">
               This is the v1 operating console. It is demo-backed locally and

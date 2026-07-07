@@ -10,7 +10,7 @@ export default function OrderSuccessPage() {
           Order received
         </h1>
         <p className="mt-3 text-sm leading-6 text-stone-700">
-          Thank you for supporting L&L Sourdough. If this was a demo checkout,
+          Thank you for supporting Luna &amp; Lorelai&apos;s Sourdough. If this was a demo checkout,
           no payment was collected. With Stripe configured, this page appears
           after secure payment.
         </p>

@@ -41,7 +41,7 @@ export default async function Home() {
                 Weekly bake drops in Canton, GA
               </p>
               <h1 className="mt-5 text-5xl font-black leading-[1.02] sm:text-6xl lg:text-7xl">
-                L&L Sourdough
+                {bakery.name}
               </h1>
               <p className="mt-6 max-w-xl text-lg leading-8 text-stone-100">
                 Naturally leavened bread and small-batch add-ons delivered locally
@@ -148,7 +148,7 @@ export default async function Home() {
             <div className="mt-8 rounded-md border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
               Products are prepared in a home kitchen as part of a planned
               Georgia cottage food business. Review listed ingredients and
-              allergens before ordering; L&L Sourdough does not claim
+              allergens before ordering; {bakery.name} does not claim
               allergen-free preparation. See the{" "}
               <Link
                 href="/policies/allergen-cottage-food"

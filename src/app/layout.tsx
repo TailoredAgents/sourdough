@@ -15,17 +15,17 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   metadataBase: new URL("https://landlsourdough.com"),
   title: {
-    default: "L&L Sourdough | Local Sourdough Delivery in Canton, GA",
-    template: "%s | L&L Sourdough",
+    default: "Luna & Lorelai's Sourdough | Local Sourdough Delivery in Canton, GA",
+    template: "%s | Luna & Lorelai's Sourdough",
   },
   description:
     "Warm, naturally leavened sourdough bread and add-ons delivered locally from Canton, Georgia.",
   openGraph: {
-    title: "L&L Sourdough",
+    title: "Luna & Lorelai's Sourdough",
     description:
       "Weekly sourdough drops, local delivery, and small-batch add-ons from Canton, Georgia.",
     url: "https://landlsourdough.com",
-    siteName: "L&L Sourdough",
+    siteName: "Luna & Lorelai's Sourdough",
     images: ["/images/sourdough-hero.png"],
     locale: "en_US",
     type: "website",

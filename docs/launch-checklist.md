@@ -1,4 +1,4 @@
-# L&L Sourdough Launch Checklist
+# Luna & Lorelai's Sourdough Launch Checklist
 
 Current status: repo is pushed, Supabase schema exists in the live database, seed data has been applied, the public storefront reads from Supabase with local fallback data, `/admin` is protected by Supabase Auth, admin tools can edit products, product photos, weekly menus, inventory, delivery settings, delivery windows, customer requests, approved AI knowledge, and order statuses, and checkout can create pending Supabase orders before Stripe redirect once Stripe keys are configured.
 

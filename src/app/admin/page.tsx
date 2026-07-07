@@ -29,7 +29,7 @@ export default async function AdminPage() {
       <div className="border-b border-stone-200 bg-white">
         <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
           <Link href="/" className="font-bold text-[#23443b]">
-            L&L Sourdough
+            Luna &amp; Lorelai&apos;s Sourdough
           </Link>
           <div className="flex items-center gap-4">
             <span className="hidden text-xs text-stone-500 sm:inline">
