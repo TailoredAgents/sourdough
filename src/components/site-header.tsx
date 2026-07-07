@@ -21,6 +21,7 @@ export function SiteHeader() {
           <Link href="/#menu">Weekly menu</Link>
           <Link href="/#delivery">Delivery</Link>
           <Link href="/#questions">Questions</Link>
+          <Link href="/policies">Policies</Link>
           <Link href="/admin">Admin</Link>
         </nav>
         <Link

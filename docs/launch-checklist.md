@@ -96,10 +96,10 @@ Current status: repo is pushed, Supabase schema exists in the live database, see
 - [ ] Confirm Canton/Cherokee home business or occupational tax requirements
 - [ ] Confirm sales tax requirements with accountant
 - [ ] Finalize required cottage food label text
-- [ ] Add required allergen and cottage-food disclaimers to product/order pages
-- [ ] Add refund/cancellation policy
-- [ ] Add privacy policy
-- [ ] Add terms/order policy
+- [x] Add required allergen and cottage-food disclaimers to product/order pages
+- [x] Add refund/cancellation policy
+- [x] Add privacy policy
+- [x] Add terms/order policy
 - [ ] Decide whether customer pickup will ever be offered or delivery-only
 
 ## Phase 10: Launch And Deployment

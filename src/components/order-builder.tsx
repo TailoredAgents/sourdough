@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { AlertCircle, CheckCircle2, Loader2, Minus, Plus, Send } from "lucide-react";
 import type { DeliveryAddress, DeliveryWindow, MenuProduct } from "@/lib/types";
 import { formatCurrency } from "@/lib/utils";
@@ -339,6 +340,18 @@ export function OrderBuilder({
               <span>{formatCurrency(total)}</span>
             </div>
           </div>
+
+          <p className="mt-4 text-xs leading-5 text-stone-600">
+            By continuing, you confirm the delivery details are correct and you
+            have reviewed the listed ingredients, allergens, and{" "}
+            <Link
+              href="/policies/terms"
+              className="font-bold text-[#23443b] underline"
+            >
+              order terms
+            </Link>
+            .
+          </p>
 
           <Button
             type="button"

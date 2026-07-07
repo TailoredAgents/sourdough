@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 import {
   CalendarClock,
   CheckCircle2,
@@ -9,6 +10,7 @@ import {
 } from "lucide-react";
 import { CustomerChat } from "@/components/customer-chat";
 import { OrderBuilder } from "@/components/order-builder";
+import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { bakery } from "@/lib/bakery-data";
 import { getCutoffMessage, isAfterWeeklyCutoff } from "@/lib/cutoff";
@@ -142,6 +144,20 @@ export default async function Home() {
                 </article>
               ))}
             </div>
+
+            <div className="mt-8 rounded-md border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
+              Products are prepared in a home kitchen as part of a planned
+              Georgia cottage food business. Review listed ingredients and
+              allergens before ordering; L&L Sourdough does not claim
+              allergen-free preparation. See the{" "}
+              <Link
+                href="/policies/allergen-cottage-food"
+                className="font-bold underline"
+              >
+                allergen and cottage food notice
+              </Link>
+              .
+            </div>
           </div>
         </section>
 
@@ -237,6 +253,7 @@ export default async function Home() {
           </div>
         </section>
       </main>
+      <SiteFooter />
     </>
   );
 }
