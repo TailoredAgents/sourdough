@@ -17,6 +17,7 @@ type ProductRow = {
   ingredients: string[];
   allergens: string[];
   price_cents: number;
+  image_url: string | null;
   image_style: string;
   active: boolean;
 };
@@ -63,6 +64,7 @@ function mapProduct(row: ProductRow): Product {
     ingredients: row.ingredients,
     allergens: row.allergens,
     priceCents: row.price_cents,
+    imageUrl: row.image_url,
     imageStyle: row.image_style,
     active: row.active,
   };
@@ -142,7 +144,7 @@ export async function getActiveMenuData(): Promise<MenuProduct[]> {
   const { data, error } = await supabase
     .from("weekly_menu_items")
     .select(
-      "product_id, available_quantity, sold_quantity, featured, products(id, name, category, description, ingredients, allergens, price_cents, image_style, active)",
+      "product_id, available_quantity, sold_quantity, featured, products(id, name, category, description, ingredients, allergens, price_cents, image_url, image_style, active)",
     )
     .eq("weekly_menu_id", weeklyMenuId);
 
@@ -191,7 +193,7 @@ export async function getProductsData(): Promise<Product[]> {
 
   const { data, error } = await supabase
     .from("products")
-    .select("id, name, category, description, ingredients, allergens, price_cents, image_style, active")
+    .select("id, name, category, description, ingredients, allergens, price_cents, image_url, image_style, active")
     .order("name", { ascending: true });
 
   if (error) {

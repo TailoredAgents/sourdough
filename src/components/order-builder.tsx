@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
+import Image from "next/image";
 import { AlertCircle, CheckCircle2, Loader2, Minus, Plus, Send } from "lucide-react";
 import type { DeliveryAddress, DeliveryWindow, MenuProduct } from "@/lib/types";
 import { formatCurrency } from "@/lib/utils";
@@ -145,9 +146,21 @@ export function OrderBuilder({
                   key={item.id}
                   className="grid gap-4 rounded-md border border-stone-200 bg-[#fffaf2] p-4 sm:grid-cols-[140px_1fr_auto]"
                 >
-                  <div
-                    className={`min-h-32 rounded-md bg-gradient-to-br ${item.imageStyle}`}
-                  />
+                  {item.imageUrl ? (
+                    <div className="relative min-h-32 overflow-hidden rounded-md bg-stone-100">
+                      <Image
+                        src={item.imageUrl}
+                        alt={item.name}
+                        fill
+                        sizes="140px"
+                        className="object-cover"
+                      />
+                    </div>
+                  ) : (
+                    <div
+                      className={`min-h-32 rounded-md bg-gradient-to-br ${item.imageStyle}`}
+                    />
+                  )}
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
                       <h3 className="text-lg font-bold text-stone-950">{item.name}</h3>

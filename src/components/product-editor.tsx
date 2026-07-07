@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { CheckCircle2, Loader2, Pencil, Plus } from "lucide-react";
+import { CheckCircle2, ImagePlus, Loader2, Pencil, Plus } from "lucide-react";
 import type { Product, ProductCategory } from "@/lib/types";
 import { joinList, splitList } from "@/lib/product-admin";
 import { formatCurrency } from "@/lib/utils";
@@ -15,6 +15,7 @@ type ProductForm = {
   ingredients: string;
   allergens: string;
   price: string;
+  imageUrl: string;
   imageStyle: string;
   active: boolean;
 };
@@ -28,6 +29,7 @@ function productToForm(product?: Product): ProductForm {
     ingredients: product ? joinList(product.ingredients) : "",
     allergens: product ? joinList(product.allergens) : "",
     price: product ? (product.priceCents / 100).toFixed(2) : "",
+    imageUrl: product?.imageUrl || "",
     imageStyle:
       product?.imageStyle || "from-stone-100 via-amber-100 to-orange-200",
     active: product?.active ?? true,
@@ -43,6 +45,7 @@ function formToPayload(form: ProductForm) {
     ingredients: splitList(form.ingredients),
     allergens: splitList(form.allergens),
     priceCents: Math.round(Number(form.price || 0) * 100),
+    imageUrl: form.imageUrl.trim() || null,
     imageStyle: form.imageStyle.trim(),
     active: form.active,
   };
@@ -105,6 +108,33 @@ export function ProductEditor({ initialProducts }: { initialProducts: Product[] 
     });
   }
 
+  function uploadProductImage(file: File | null) {
+    if (!file) return;
+    setMessage(null);
+    startTransition(async () => {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("productId", form.id || form.name || "new-product");
+
+      const response = await fetch("/api/admin/product-image", {
+        method: "POST",
+        body: formData,
+      });
+      const payload = (await response.json()) as {
+        imageUrl?: string;
+        error?: string;
+      };
+
+      if (!response.ok || !payload.imageUrl) {
+        setMessage(payload.error || "Image could not be uploaded.");
+        return;
+      }
+
+      updateForm("imageUrl", payload.imageUrl);
+      setMessage("Image uploaded. Save product to publish it.");
+    });
+  }
+
   return (
     <section className="mt-8 rounded-md border border-stone-200 bg-white p-5">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
@@ -161,6 +191,45 @@ export function ProductEditor({ initialProducts }: { initialProducts: Product[] 
         </div>
 
         <div className="grid gap-3 rounded-md border border-stone-100 bg-[#fffaf2] p-4">
+          <div className="grid gap-3 sm:grid-cols-[180px_1fr]">
+            <div
+              className={`min-h-36 rounded-md border border-stone-200 bg-cover bg-center bg-no-repeat ${
+                form.imageUrl ? "bg-white" : `bg-gradient-to-br ${form.imageStyle}`
+              }`}
+              style={
+                form.imageUrl
+                  ? { backgroundImage: `url(${form.imageUrl})` }
+                  : undefined
+              }
+            />
+            <div className="grid content-start gap-3">
+              <label className="grid gap-1 text-sm font-semibold text-stone-700">
+                Product photo
+                <input
+                  className="h-11 rounded-md border border-stone-300 bg-white px-3 py-2 font-normal"
+                  accept="image/jpeg,image/png,image/webp"
+                  type="file"
+                  onChange={(event) =>
+                    uploadProductImage(event.target.files?.[0] || null)
+                  }
+                />
+              </label>
+              <label className="grid gap-1 text-sm font-semibold text-stone-700">
+                Image URL
+                <input
+                  className="h-11 rounded-md border border-stone-300 px-3 font-normal"
+                  value={form.imageUrl}
+                  onChange={(event) => updateForm("imageUrl", event.target.value)}
+                  placeholder="Uploaded image URL"
+                />
+              </label>
+              <p className="inline-flex items-center gap-2 text-xs leading-5 text-stone-600">
+                <ImagePlus size={14} />
+                JPEG, PNG, or WebP. Upload first, then save the product.
+              </p>
+            </div>
+          </div>
+
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="grid gap-1 text-sm font-semibold text-stone-700">
               Name
@@ -253,10 +322,14 @@ export function ProductEditor({ initialProducts }: { initialProducts: Product[] 
             {message ? (
               <span
                 className={`inline-flex items-center gap-2 text-sm font-semibold ${
-                  message === "Product saved." ? "text-emerald-800" : "text-[#a94334]"
+                  message === "Product saved." || message.startsWith("Image uploaded")
+                    ? "text-emerald-800"
+                    : "text-[#a94334]"
                 }`}
               >
-                {message === "Product saved." ? <CheckCircle2 size={16} /> : null}
+                {message === "Product saved." || message.startsWith("Image uploaded") ? (
+                  <CheckCircle2 size={16} />
+                ) : null}
                 {message}
               </span>
             ) : null}

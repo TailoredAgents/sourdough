@@ -8,6 +8,7 @@ export type Product = {
   ingredients: string[];
   allergens: string[];
   priceCents: number;
+  imageUrl: string | null;
   imageStyle: string;
   active: boolean;
 };

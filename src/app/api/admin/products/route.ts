@@ -50,6 +50,7 @@ export async function POST(request: Request) {
     ingredients: product.ingredients,
     allergens: product.allergens,
     price_cents: product.priceCents,
+    image_url: product.imageUrl || null,
     image_style: product.imageStyle,
     active: product.active,
     updated_at: new Date().toISOString(),

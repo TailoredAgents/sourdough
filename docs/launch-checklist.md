@@ -1,6 +1,6 @@
 # L&L Sourdough Launch Checklist
 
-Current status: repo is pushed, Supabase schema exists in the live database, seed data has been applied, the public storefront reads from Supabase with local fallback data, `/admin` is protected by Supabase Auth, admin tools can edit products, weekly menus, inventory, delivery settings, delivery windows, customer requests, approved AI knowledge, and order statuses, and checkout can create pending Supabase orders before Stripe redirect once Stripe keys are configured.
+Current status: repo is pushed, Supabase schema exists in the live database, seed data has been applied, the public storefront reads from Supabase with local fallback data, `/admin` is protected by Supabase Auth, admin tools can edit products, product photos, weekly menus, inventory, delivery settings, delivery windows, customer requests, approved AI knowledge, and order statuses, and checkout can create pending Supabase orders before Stripe redirect once Stripe keys are configured.
 
 ## Phase 1: Supabase Foundation
 
@@ -26,7 +26,7 @@ Current status: repo is pushed, Supabase schema exists in the live database, see
 ## Phase 3: Admin Functionality
 
 - [x] Product editor: name, category, description, ingredients, allergens, price, active status
-- [ ] Product image upload/storage
+- [x] Product image upload/storage
 - [x] Weekly menu builder
 - [x] Inventory limits per product per week
 - [x] Delivery window editor

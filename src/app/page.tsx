@@ -105,7 +105,19 @@ export default async function Home() {
                   key={item.id}
                   className="overflow-hidden rounded-md border border-stone-200 bg-white shadow-sm"
                 >
-                  <div className={`h-44 bg-gradient-to-br ${item.imageStyle}`} />
+                  {item.imageUrl ? (
+                    <div className="relative h-44 bg-stone-100">
+                      <Image
+                        src={item.imageUrl}
+                        alt={item.name}
+                        fill
+                        sizes="(min-width: 1024px) 33vw, (min-width: 768px) 50vw, 100vw"
+                        className="object-cover"
+                      />
+                    </div>
+                  ) : (
+                    <div className={`h-44 bg-gradient-to-br ${item.imageStyle}`} />
+                  )}
                   <div className="p-5">
                     <div className="flex items-start justify-between gap-4">
                       <h3 className="text-xl font-bold text-stone-950">

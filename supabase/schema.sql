@@ -39,7 +39,30 @@ create table if not exists products (
 );
 
 alter table products
+  add column if not exists image_url text;
+
+alter table products
   add column if not exists image_style text not null default 'from-stone-100 via-amber-100 to-orange-200';
+
+insert into storage.buckets (
+  id,
+  name,
+  public,
+  file_size_limit,
+  allowed_mime_types
+)
+values (
+  'product-images',
+  'product-images',
+  true,
+  5242880,
+  array['image/jpeg', 'image/png', 'image/webp']
+)
+on conflict (id) do update
+set
+  public = excluded.public,
+  file_size_limit = excluded.file_size_limit,
+  allowed_mime_types = excluded.allowed_mime_types;
 
 create table if not exists weekly_menus (
   id uuid primary key default gen_random_uuid(),
@@ -289,3 +312,7 @@ create policy "Public can read delivery windows for published menus" on delivery
 drop policy if exists "Public can read approved AI knowledge" on ai_knowledge_entries;
 create policy "Public can read approved AI knowledge" on ai_knowledge_entries
   for select using (approved = true);
+
+drop policy if exists "Public can read product images" on storage.objects;
+create policy "Public can read product images" on storage.objects
+  for select using (bucket_id = 'product-images');
