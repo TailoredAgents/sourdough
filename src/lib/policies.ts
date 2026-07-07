@@ -101,7 +101,7 @@ export const policyPages: PolicyPage[] = [
       {
         heading: "Service providers",
         body: [
-          "The site is built with services such as Supabase for database and storage, Stripe for payment checkout once enabled, Resend for email, OpenAI for controlled drafting/chat features, and Vercel for hosting.",
+          "The site is built with services such as Supabase for database and storage, Stripe for payment checkout once enabled, Resend for email, OpenAI for controlled drafting/chat features, and Render for hosting.",
           "These services process information only as needed to run the site and bakery workflow.",
         ],
       },

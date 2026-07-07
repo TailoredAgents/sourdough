@@ -1,0 +1,47 @@
+services:
+  - type: web
+    name: landl-sourdough
+    runtime: node
+    repo: https://github.com/TailoredAgents/sourdough
+    branch: main
+    buildCommand: npm ci && npm run build
+    startCommand: npm run start
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NEXT_PUBLIC_SITE_URL
+        value: https://landlsourdough.com
+      - key: NEXT_PUBLIC_SUPABASE_URL
+        sync: false
+      - key: NEXT_PUBLIC_SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: ADMIN_EMAILS
+        sync: false
+      - key: SUPABASE_DB_URL
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM
+        value: "L&L Sourdough <orders@landlsourdough.com>"
+      - key: BAKERY_EMAIL
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        value: gpt-5.4-mini
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: DELIVERY_CENTER_LAT
+        value: "34.2368"
+      - key: DELIVERY_CENTER_LNG
+        value: "-84.4908"
+      - key: DELIVERY_RADIUS_MILES
+        value: "12"
+      - key: DELIVERY_FEE_CENTS
+        value: "600"

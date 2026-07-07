@@ -44,6 +44,25 @@ Required before live launch:
 - `DELIVERY_RADIUS_MILES`
 - `DELIVERY_FEE_CENTS`
 
+Use `.env.example` as the complete template. Real values belong in
+`.env.local` locally and in Render's Environment tab for production. Do not
+commit `.env.local`.
+
+## Render Deployment
+
+This repo is prepared for Render deployment with `render.yaml`.
+
+Render service settings:
+
+- Type: Node web service
+- Build command: `npm ci && npm run build`
+- Start command: `npm run start`
+- Health check path: `/api/health`
+- Node version: `.node-version`
+
+Detailed deployment steps and the production env var checklist are in
+`docs/render-deployment.md`.
+
 ## Supabase
 
 Run `supabase/schema.sql` in a Supabase project SQL editor or with `psql`, then run `supabase/seed.sql` to load the starter products, weekly menu, delivery windows, delivery settings, and approved AI knowledge.

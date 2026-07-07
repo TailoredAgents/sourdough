@@ -104,12 +104,14 @@ Current status: repo is pushed, Supabase schema exists in the live database, see
 
 ## Phase 10: Launch And Deployment
 
-- [ ] Create Vercel project
-- [ ] Add all environment variables to Vercel
+- [x] Add Render Blueprint `render.yaml`
+- [x] Add Render production environment variable checklist
+- [ ] Create Render Blueprint service
+- [ ] Add all `sync: false` environment variables to Render
 - [ ] Connect `landlsourdough.com`
 - [ ] Configure Supabase production URL keys
 - [ ] Configure Stripe live keys only after test checkout passes
-- [ ] Configure Stripe webhook secret in Vercel
+- [ ] Configure Stripe webhook secret in Render
 - [ ] Configure Resend DNS records
 - [ ] Run mobile/desktop visual check
 - [ ] Run complete test order
