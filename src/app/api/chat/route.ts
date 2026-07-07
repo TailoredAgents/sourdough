@@ -29,34 +29,48 @@ function fallbackAnswer(message: string) {
 }
 
 export async function POST(request: Request) {
-  const parsed = chatSchema.safeParse(await request.json());
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ answer: "Please ask a short bakery question." });
+  }
+
+  const parsed = chatSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json({ answer: "Please ask a short bakery question." });
   }
 
-  const openai = getOpenAI();
-  if (!openai) {
+  try {
+    const openai = getOpenAI();
+    if (!openai) {
+      return NextResponse.json({ answer: fallbackAnswer(parsed.data.message) });
+    }
+
+    const [menu, aiKnowledge] = await Promise.all([
+      getActiveMenuData(),
+      getApprovedAiKnowledgeData(),
+    ]);
+
+    const menuContext = menu
+      .map(
+        (item) =>
+          `${item.name}: ${item.description} Price ${item.priceCents / 100}. Ingredients: ${item.ingredients.join(", ")}. Allergens: ${item.allergens.join(", ")}. Remaining: ${item.remainingQuantity}.`,
+      )
+      .join("\n");
+
+    const response = await openai.responses.create({
+      model: aiModel,
+      instructions:
+        "You are the Luna & Lorelai's Sourdough customer assistant. Answer only from the provided bakery facts and menu. Do not invent ingredients, inventory, legal claims, medical advice, or allergen-free guarantees. If the answer is not supported, say the bakery should confirm directly. Keep answers short and friendly.",
+      input: `Approved bakery facts:\n${aiKnowledge.join("\n")}\n\nCurrent menu:\n${menuContext}\n\nCustomer question:\n${parsed.data.message}`,
+    });
+
+    return NextResponse.json({
+      answer: response.output_text || fallbackAnswer(parsed.data.message),
+    });
+  } catch (error) {
+    console.error("[chat] failed to answer question", error);
     return NextResponse.json({ answer: fallbackAnswer(parsed.data.message) });
   }
-
-  const [menu, aiKnowledge] = await Promise.all([
-    getActiveMenuData(),
-    getApprovedAiKnowledgeData(),
-  ]);
-
-  const menuContext = menu
-    .map(
-      (item) =>
-        `${item.name}: ${item.description} Price ${item.priceCents / 100}. Ingredients: ${item.ingredients.join(", ")}. Allergens: ${item.allergens.join(", ")}. Remaining: ${item.remainingQuantity}.`,
-    )
-    .join("\n");
-
-  const response = await openai.responses.create({
-    model: aiModel,
-    instructions:
-      "You are the Luna & Lorelai's Sourdough customer assistant. Answer only from the provided bakery facts and menu. Do not invent ingredients, inventory, legal claims, medical advice, or allergen-free guarantees. If the answer is not supported, say the bakery should confirm directly. Keep answers short and friendly.",
-    input: `Approved bakery facts:\n${aiKnowledge.join("\n")}\n\nCurrent menu:\n${menuContext}\n\nCustomer question:\n${parsed.data.message}`,
-  });
-
-  return NextResponse.json({ answer: response.output_text || fallbackAnswer(parsed.data.message) });
 }

@@ -56,7 +56,7 @@ Render service settings:
 
 - Type: Node web service
 - Instance type: `standard`
-- Build command: `npm ci && npm run build`
+- Build command: `npm ci --include=dev && npm run build`
 - Start command: `npm run start`
 - Health check path: `/api/health`
 - Node version: `.node-version`
@@ -78,7 +78,9 @@ The public storefront reads from Supabase when the Supabase environment variable
 ADMIN_EMAILS=owner@example.com
 ```
 
-The login page sends a Supabase magic link. Supabase Auth email settings must be enabled in the Supabase dashboard before live use. Approved admins can also be added later through the `admin_users` table.
+Create the admin user in Supabase Auth with an email and password, then add
+that same email to `ADMIN_EMAILS`. The login page uses Supabase password auth;
+approved admins can also be added later through the `admin_users` table.
 
 ## Stripe
 

@@ -27,17 +27,26 @@ export function CustomerChat() {
     setInput("");
     setMessages((current) => [...current, { role: "user", content: question }]);
     startTransition(async () => {
-      const response = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: question }),
-      });
-      const payload = (await response.json()) as { answer: string };
+      let answer =
+        "I could not answer that right now. Please send a note with your order request so the bakery can reply directly.";
+
+      try {
+        const response = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: question }),
+        });
+        const payload = (await response.json()) as { answer?: string };
+        answer = payload.answer || answer;
+      } catch {
+        // Keep the chat usable even if the assistant service is temporarily down.
+      }
+
       setMessages((current) => [
         ...current,
         {
           role: "assistant",
-          content: payload.answer,
+          content: answer,
         },
       ]);
     });

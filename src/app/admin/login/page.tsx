@@ -13,11 +13,11 @@ function getErrorMessage(error?: string, message?: string) {
   }
 
   if (error === "missing_code") {
-    return "The login link was missing its session code. Request a new magic link.";
+    return "The login session was missing its code. Log in again.";
   }
 
   if (error === "session_exchange_failed") {
-    return "The login session could not be completed. Request a new magic link.";
+    return "The login session could not be completed. Log in again.";
   }
 
   return null;
@@ -41,8 +41,8 @@ export default async function AdminLoginPage({
           Luna &amp; Lorelai&apos;s Sourdough admin
         </h1>
         <p className="mt-3 text-sm leading-6 text-stone-700">
-          Enter an approved owner email. Supabase will send a magic link to open
-          the protected admin workspace.
+          Enter an approved owner email and password to open the protected admin
+          workspace.
         </p>
         {errorMessage ? (
           <div className="mt-4 rounded-md border border-[#a94334]/30 bg-[#fffaf2] p-3 text-sm leading-6 text-[#a94334]">

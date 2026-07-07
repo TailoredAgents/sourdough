@@ -2,8 +2,6 @@ import Image from "next/image";
 import Link from "next/link";
 import {
   CalendarClock,
-  CheckCircle2,
-  MapPin,
   ShieldCheck,
   Sparkles,
   Truck,
@@ -202,34 +200,6 @@ export default async function Home() {
           afterCutoff={afterCutoff}
           menu={menu}
         />
-
-        <section className="bg-[#f7efe3] py-16 sm:py-20">
-          <div className="mx-auto grid max-w-7xl gap-6 px-4 sm:px-6 lg:grid-cols-3 lg:px-8">
-            <div className="lg:col-span-1">
-              <p className="text-sm font-bold uppercase tracking-[0.18em] text-[#a94334]">
-                Launch checklist
-              </p>
-              <h2 className="mt-3 text-3xl font-bold text-stone-950">
-                Before going live
-              </h2>
-            </div>
-            <div className="grid gap-3 lg:col-span-2">
-              {bakery.complianceNotes.map((note) => (
-                <div key={note} className="flex gap-3 rounded-md bg-white p-4">
-                  <CheckCircle2 className="mt-0.5 text-[#23443b]" size={20} />
-                  <p className="text-sm leading-6 text-stone-700">{note}</p>
-                </div>
-              ))}
-              <div className="flex gap-3 rounded-md bg-white p-4">
-                <MapPin className="mt-0.5 text-[#23443b]" size={20} />
-                <p className="text-sm leading-6 text-stone-700">
-                  Configure the exact delivery radius, delivery fee, and
-                  delivery windows before accepting live payments.
-                </p>
-              </div>
-            </div>
-          </div>
-        </section>
 
         <CustomerChat />
 

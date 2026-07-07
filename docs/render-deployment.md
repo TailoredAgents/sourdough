@@ -62,7 +62,7 @@ default `starter` instance type for new web services.
 - Visit `/` and confirm the storefront loads.
 - Visit `/policies` and confirm policy pages load.
 - Visit `/api/health` and confirm it returns JSON with `"ok": true`.
-- Visit `/admin/login` and request a magic link for an approved admin email.
+- Visit `/admin/login` and sign in with an approved Supabase Auth email/password.
 - Confirm product photos load from Supabase Storage.
 - Confirm the delivery radius check works.
 - Leave Stripe keys blank until LLC/EIN/Stripe setup is ready.
