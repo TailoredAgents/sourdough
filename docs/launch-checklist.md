@@ -1,6 +1,6 @@
 # L&L Sourdough Launch Checklist
 
-Current status: repo is pushed, Supabase schema exists in the live database, seed data has been applied, the public storefront reads from Supabase with local fallback data, `/admin` is protected by Supabase Auth, admin tools can edit products, weekly menus, inventory, delivery settings, delivery windows, and customer requests, and checkout can create pending Supabase orders before Stripe redirect once Stripe keys are configured.
+Current status: repo is pushed, Supabase schema exists in the live database, seed data has been applied, the public storefront reads from Supabase with local fallback data, `/admin` is protected by Supabase Auth, admin tools can edit products, weekly menus, inventory, delivery settings, delivery windows, customer requests, and approved AI knowledge, and checkout can create pending Supabase orders before Stripe redirect once Stripe keys are configured.
 
 ## Phase 1: Supabase Foundation
 
@@ -11,7 +11,7 @@ Current status: repo is pushed, Supabase schema exists in the live database, see
 - [x] Seed Supabase with starter data: products, weekly menu, delivery windows, delivery settings, AI knowledge
 - [x] Add a real database access layer for public storefront reads
 - [x] Replace public storefront/static route reads with Supabase reads
-- [ ] Add admin-only Supabase queries/mutations for orders and AI knowledge
+- [ ] Add admin-only Supabase queries/mutations for orders
 
 ## Phase 2: Admin Security
 
@@ -33,7 +33,7 @@ Current status: repo is pushed, Supabase schema exists in the live database, see
 - [x] Delivery settings editor: radius, fee, center point
 - [ ] Order dashboard with statuses
 - [x] Customer message/last-minute request inbox
-- [ ] AI knowledge editor with approve/unapprove toggle
+- [x] AI knowledge editor with approve/unapprove toggle
 - [ ] AI draft history or copy/send workflow
 
 ## Phase 4: Real Checkout
@@ -72,8 +72,8 @@ Current status: repo is pushed, Supabase schema exists in the live database, see
 
 ## Phase 7: AI Guardrails
 
-- [ ] Move AI knowledge from static file to Supabase
-- [ ] Customer chat reads only approved `ai_knowledge_entries`
+- [x] Move AI knowledge from static file to Supabase
+- [x] Customer chat reads only approved `ai_knowledge_entries`
 - [ ] Customer chat includes current Supabase menu and inventory
 - [ ] Add refusal tests for unsupported allergen, legal, medical, and custom-order claims
 - [ ] Add rate limiting or abuse protection

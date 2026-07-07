@@ -53,6 +53,15 @@ export type CustomerMessage = {
   createdAt: string;
 };
 
+export type AiKnowledgeEntry = {
+  id: string;
+  title: string;
+  body: string;
+  approved: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type CartItem = {
   productId: string;
   quantity: number;

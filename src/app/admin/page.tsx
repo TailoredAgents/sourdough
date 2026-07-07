@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { AdminDashboard } from "@/components/admin-dashboard";
 import { requireAdmin } from "@/lib/admin-auth";
+import { getAiKnowledgeEntriesData } from "@/lib/ai-knowledge-admin";
 import { getCustomerMessagesData } from "@/lib/customer-messages";
 import { getStorefrontData } from "@/lib/storefront-data";
 
@@ -13,7 +14,12 @@ export default async function AdminPage() {
   const [
     { deliverySettings, deliveryWindows, menu, products, weeklyMenu },
     customerMessages,
-  ] = await Promise.all([getStorefrontData(), getCustomerMessagesData()]);
+    aiKnowledgeEntries,
+  ] = await Promise.all([
+    getStorefrontData(),
+    getCustomerMessagesData(),
+    getAiKnowledgeEntriesData(),
+  ]);
 
   return (
     <>
@@ -38,6 +44,7 @@ export default async function AdminPage() {
         </div>
       </div>
       <AdminDashboard
+        aiKnowledgeEntries={aiKnowledgeEntries}
         customerMessages={customerMessages}
         deliverySettings={deliverySettings}
         deliveryWindows={deliveryWindows}

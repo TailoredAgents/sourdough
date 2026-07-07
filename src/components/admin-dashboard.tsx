@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import type { DeliverySettings } from "@/lib/delivery";
 import type {
+  AiKnowledgeEntry,
   CustomerMessage,
   DeliveryWindow,
   MenuProduct,
@@ -20,6 +21,7 @@ import type {
   WeeklyMenu,
 } from "@/lib/types";
 import { formatCurrency } from "@/lib/utils";
+import { AiKnowledgeEditor } from "./ai-knowledge-editor";
 import { Button } from "./button";
 import { CustomerMessageInbox } from "./customer-message-inbox";
 import { DeliveryEditor } from "./delivery-editor";
@@ -27,6 +29,7 @@ import { ProductEditor } from "./product-editor";
 import { WeeklyMenuEditor } from "./weekly-menu-editor";
 
 export function AdminDashboard({
+  aiKnowledgeEntries,
   customerMessages,
   deliverySettings,
   deliveryWindows,
@@ -34,6 +37,7 @@ export function AdminDashboard({
   products,
   weeklyMenu,
 }: {
+  aiKnowledgeEntries: AiKnowledgeEntry[];
   customerMessages: CustomerMessage[];
   deliverySettings: DeliverySettings;
   deliveryWindows: DeliveryWindow[];
@@ -211,6 +215,8 @@ export function AdminDashboard({
         <WeeklyMenuEditor initialWeeklyMenu={weeklyMenu} products={products} />
 
         <CustomerMessageInbox initialMessages={customerMessages} />
+
+        <AiKnowledgeEditor initialEntries={aiKnowledgeEntries} />
 
         <DeliveryEditor
           initialDeliverySettings={deliverySettings}
