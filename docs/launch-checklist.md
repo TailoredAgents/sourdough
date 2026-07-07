@@ -11,7 +11,7 @@ Current status: repo is pushed, Supabase schema exists in the live database, see
 - [x] Seed Supabase with starter data: products, weekly menu, delivery windows, delivery settings, AI knowledge
 - [x] Add a real database access layer for public storefront reads
 - [x] Replace public storefront/static route reads with Supabase reads
-- [ ] Add admin-only Supabase queries/mutations for products, menus, inventory, delivery windows, orders, and AI knowledge
+- [ ] Add admin-only Supabase queries/mutations for menus, inventory, delivery windows, orders, and AI knowledge
 
 ## Phase 2: Admin Security
 
@@ -25,7 +25,7 @@ Current status: repo is pushed, Supabase schema exists in the live database, see
 
 ## Phase 3: Admin Functionality
 
-- [ ] Product editor: name, category, description, ingredients, allergens, price, active status
+- [x] Product editor: name, category, description, ingredients, allergens, price, active status
 - [ ] Product image upload/storage
 - [ ] Weekly menu builder
 - [ ] Inventory limits per product per week

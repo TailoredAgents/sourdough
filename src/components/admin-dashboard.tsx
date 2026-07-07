@@ -13,6 +13,7 @@ import {
 import type { DeliveryWindow, MenuProduct, Product } from "@/lib/types";
 import { formatCurrency } from "@/lib/utils";
 import { Button } from "./button";
+import { ProductEditor } from "./product-editor";
 
 export function AdminDashboard({
   deliveryWindows,
@@ -186,6 +187,8 @@ export function AdminDashboard({
             </div>
           </div>
         </section>
+
+        <ProductEditor initialProducts={products} />
       </main>
     </div>
   );
