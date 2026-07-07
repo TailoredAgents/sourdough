@@ -20,13 +20,17 @@ export const metadata: Metadata = {
   },
   description:
     "Warm, naturally leavened sourdough bread and add-ons delivered locally from Canton, Georgia.",
+  icons: {
+    icon: "/images/luna-lorelais-logo-square.png",
+    apple: "/images/luna-lorelais-logo-square.png",
+  },
   openGraph: {
     title: "Luna & Lorelai's Sourdough",
     description:
       "Weekly sourdough drops, local delivery, and small-batch add-ons from Canton, Georgia.",
     url: "https://landlsourdough.com",
     siteName: "Luna & Lorelai's Sourdough",
-    images: ["/images/sourdough-hero.png"],
+    images: ["/images/luna-lorelais-logo.png"],
     locale: "en_US",
     type: "website",
   },
