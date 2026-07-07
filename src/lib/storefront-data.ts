@@ -94,7 +94,7 @@ function mapDeliveryWindow(row: DeliveryWindowRow): DeliveryWindow {
   };
 }
 
-async function getPublishedMenuId() {
+export async function getPublishedMenuId() {
   const supabase = getSupabaseAdminClient();
   if (!supabase) return null;
 
@@ -219,8 +219,7 @@ export async function getDeliveryWindowsData(): Promise<DeliveryWindow[]> {
     return fallbackDeliveryWindows;
   }
 
-  const windows = (data as DeliveryWindowRow[]).map(mapDeliveryWindow);
-  return windows.length ? windows : fallbackDeliveryWindows;
+  return (data as DeliveryWindowRow[]).map(mapDeliveryWindow);
 }
 
 export async function getDeliveryWindowData(deliveryWindowId: string) {

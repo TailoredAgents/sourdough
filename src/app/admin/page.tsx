@@ -9,7 +9,8 @@ export const metadata = {
 
 export default async function AdminPage() {
   const admin = await requireAdmin();
-  const { deliveryWindows, menu, products, weeklyMenu } = await getStorefrontData();
+  const { deliverySettings, deliveryWindows, menu, products, weeklyMenu } =
+    await getStorefrontData();
 
   return (
     <>
@@ -34,6 +35,7 @@ export default async function AdminPage() {
         </div>
       </div>
       <AdminDashboard
+        deliverySettings={deliverySettings}
         deliveryWindows={deliveryWindows}
         menu={menu}
         products={products}

@@ -10,18 +10,22 @@ import {
   Truck,
   type LucideIcon,
 } from "lucide-react";
+import type { DeliverySettings } from "@/lib/delivery";
 import type { DeliveryWindow, MenuProduct, Product, WeeklyMenu } from "@/lib/types";
 import { formatCurrency } from "@/lib/utils";
 import { Button } from "./button";
+import { DeliveryEditor } from "./delivery-editor";
 import { ProductEditor } from "./product-editor";
 import { WeeklyMenuEditor } from "./weekly-menu-editor";
 
 export function AdminDashboard({
+  deliverySettings,
   deliveryWindows,
   menu,
   products,
   weeklyMenu,
 }: {
+  deliverySettings: DeliverySettings;
   deliveryWindows: DeliveryWindow[];
   menu: MenuProduct[];
   products: Product[];
@@ -192,6 +196,11 @@ export function AdminDashboard({
         </section>
 
         <WeeklyMenuEditor initialWeeklyMenu={weeklyMenu} products={products} />
+
+        <DeliveryEditor
+          initialDeliverySettings={deliverySettings}
+          initialDeliveryWindows={deliveryWindows}
+        />
 
         <ProductEditor initialProducts={products} />
       </main>
