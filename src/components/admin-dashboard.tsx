@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import {
   Bot,
   ClipboardList,
+  Inbox,
   Loader2,
   Megaphone,
   Package,
@@ -11,20 +12,29 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { DeliverySettings } from "@/lib/delivery";
-import type { DeliveryWindow, MenuProduct, Product, WeeklyMenu } from "@/lib/types";
+import type {
+  CustomerMessage,
+  DeliveryWindow,
+  MenuProduct,
+  Product,
+  WeeklyMenu,
+} from "@/lib/types";
 import { formatCurrency } from "@/lib/utils";
 import { Button } from "./button";
+import { CustomerMessageInbox } from "./customer-message-inbox";
 import { DeliveryEditor } from "./delivery-editor";
 import { ProductEditor } from "./product-editor";
 import { WeeklyMenuEditor } from "./weekly-menu-editor";
 
 export function AdminDashboard({
+  customerMessages,
   deliverySettings,
   deliveryWindows,
   menu,
   products,
   weeklyMenu,
 }: {
+  customerMessages: CustomerMessage[];
   deliverySettings: DeliverySettings;
   deliveryWindows: DeliveryWindow[];
   menu: MenuProduct[];
@@ -37,11 +47,14 @@ export function AdminDashboard({
   );
   const [draft, setDraft] = useState("");
   const [isPending, startTransition] = useTransition();
+  const openRequestCount = customerMessages.filter(
+    (message) => message.status === "new" || message.status === "in_progress",
+  ).length;
   const stats: { label: string; value: string; Icon: LucideIcon }[] = [
-    { label: "Open orders", value: "12", Icon: ClipboardList },
+    { label: "Open orders", value: "Pending Stripe", Icon: ClipboardList },
+    { label: "Customer requests", value: String(openRequestCount), Icon: Inbox },
     { label: "Bake capacity", value: "28 loaves", Icon: Package },
     { label: "Delivery windows", value: String(deliveryWindows.length), Icon: Truck },
-    { label: "AI drafts", value: "Review first", Icon: Bot },
   ];
 
   function generateDraft() {
@@ -196,6 +209,8 @@ export function AdminDashboard({
         </section>
 
         <WeeklyMenuEditor initialWeeklyMenu={weeklyMenu} products={products} />
+
+        <CustomerMessageInbox initialMessages={customerMessages} />
 
         <DeliveryEditor
           initialDeliverySettings={deliverySettings}

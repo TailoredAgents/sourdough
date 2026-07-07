@@ -43,6 +43,16 @@ export type DeliveryWindow = {
   reserved: number;
 };
 
+export type CustomerMessage = {
+  id: string;
+  orderId: string | null;
+  customerEmail: string | null;
+  subject: string;
+  body: string;
+  status: string;
+  createdAt: string;
+};
+
 export type CartItem = {
   productId: string;
   quantity: number;

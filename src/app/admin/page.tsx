@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { AdminDashboard } from "@/components/admin-dashboard";
 import { requireAdmin } from "@/lib/admin-auth";
+import { getCustomerMessagesData } from "@/lib/customer-messages";
 import { getStorefrontData } from "@/lib/storefront-data";
 
 export const metadata = {
@@ -9,8 +10,10 @@ export const metadata = {
 
 export default async function AdminPage() {
   const admin = await requireAdmin();
-  const { deliverySettings, deliveryWindows, menu, products, weeklyMenu } =
-    await getStorefrontData();
+  const [
+    { deliverySettings, deliveryWindows, menu, products, weeklyMenu },
+    customerMessages,
+  ] = await Promise.all([getStorefrontData(), getCustomerMessagesData()]);
 
   return (
     <>
@@ -35,6 +38,7 @@ export default async function AdminPage() {
         </div>
       </div>
       <AdminDashboard
+        customerMessages={customerMessages}
         deliverySettings={deliverySettings}
         deliveryWindows={deliveryWindows}
         menu={menu}

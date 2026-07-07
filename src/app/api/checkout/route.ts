@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { isAfterWeeklyCutoff } from "@/lib/cutoff";
+import { createLastMinuteCustomerMessage } from "@/lib/customer-messages";
 import { checkDeliveryAddress } from "@/lib/delivery";
 import { sendOrderConfirmation } from "@/lib/email";
 import {
@@ -100,6 +101,12 @@ export async function POST(request: Request) {
   const orderSummary = buildOrderSummary(items);
 
   if (isAfterWeeklyCutoff()) {
+    const lastMinuteMessage = await createLastMinuteCustomerMessage({
+      checkout,
+      deliveryWindowLabel: deliveryWindow.label,
+      items,
+    });
+
     if (process.env.BAKERY_EMAIL) {
       await sendOrderConfirmation({
         to: process.env.BAKERY_EMAIL,
@@ -110,7 +117,7 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json({
-      url: `${getSiteUrl()}/order/success?demo=last-minute-request`,
+      url: `${getSiteUrl()}/order/success?request_id=${lastMinuteMessage?.id || "saved"}`,
       message: "Last-minute request sent.",
     });
   }
