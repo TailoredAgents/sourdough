@@ -55,6 +55,7 @@ This repo is prepared for Render deployment with `render.yaml`.
 Render service settings:
 
 - Type: Node web service
+- Instance type: `standard`
 - Build command: `npm ci && npm run build`
 - Start command: `npm run start`
 - Health check path: `/api/health`

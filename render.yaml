@@ -2,6 +2,7 @@ services:
   - type: web
     name: landl-sourdough
     runtime: node
+    plan: standard
     repo: https://github.com/TailoredAgents/sourdough
     branch: main
     buildCommand: npm ci && npm run build

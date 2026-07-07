@@ -10,6 +10,7 @@ Use the `render.yaml` Blueprint in the repo root.
 
 - Service type: `web`
 - Runtime: `node`
+- Instance type: `standard`
 - Build command: `npm ci && npm run build`
 - Start command: `npm run start`
 - Health check path: `/api/health`
@@ -40,6 +41,9 @@ Do not commit real secret values.
 | `DELIVERY_CENTER_LNG` | `-84.4908` |
 | `DELIVERY_RADIUS_MILES` | `12` |
 | `DELIVERY_FEE_CENTS` | `600` |
+
+The Blueprint explicitly sets `plan: standard`, one tier above Render's
+default `starter` instance type for new web services.
 
 ## Deployment Steps
 
