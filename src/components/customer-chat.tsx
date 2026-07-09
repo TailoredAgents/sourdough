@@ -60,12 +60,12 @@ export function CustomerChat() {
             Bakery assistant
           </p>
           <h2 className="mt-3 text-3xl font-bold text-stone-950 sm:text-4xl">
-            Questions answered from approved bakery info
+            Quick answers about ordering
           </h2>
           <p className="mt-4 text-base leading-7 text-stone-700">
-            The chat is intentionally limited. It can help with menu, delivery,
-            cutoff, and listed allergens, but it should escalate anything custom,
-            urgent, legal, or medical.
+            Ask about this week&apos;s menu, delivery area, order cutoff, and
+            listed allergens. For anything custom or urgent, send a note with
+            your order.
           </p>
         </div>
         <div className="rounded-md border border-stone-200 bg-white p-4 shadow-sm">
@@ -101,6 +101,12 @@ export function CustomerChat() {
               <span className="sr-only sm:not-sr-only">Send</span>
             </Button>
           </div>
+          <a
+            href="#order"
+            className="mt-3 inline-flex text-sm font-semibold text-[#23443b] underline"
+          >
+            Contact the bakery with an order note
+          </a>
         </div>
       </div>
     </section>

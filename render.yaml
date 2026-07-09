@@ -46,3 +46,7 @@ services:
         value: "12"
       - key: DELIVERY_FEE_CENTS
         value: "600"
+      - key: DELIVERY_ALLOWED_POSTAL_CODES
+        value: "30114,30115,30107,30183"
+      - key: DELIVERY_SERVICE_AREA_COPY
+        value: "Delivery is available in selected Canton-area ZIP codes: 30114, 30115, 30107, and 30183."

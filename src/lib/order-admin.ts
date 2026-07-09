@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { AdminOrder, AdminOrderItem, DeliveryAddress, OrderStatus } from "./types";
+import { sendOrderStatusUpdate } from "./email";
 import { getSupabaseAdminClient } from "./supabase";
 
 type OrderCustomerRow = {
@@ -26,10 +27,13 @@ type OrderRow = {
     phone?: string;
   };
   delivery_miles: number | string | null;
+  delivery_instructions: string | null;
+  delivery_check: Record<string, unknown> | null;
   notes: string | null;
   paid_at: string | null;
   created_at: string;
   updated_at: string;
+  checkout_cancel_token: string | null;
 };
 
 type ProductNameRow = {
@@ -95,11 +99,14 @@ function mapOrder(row: OrderRow, items: AdminOrderItem[]): AdminOrder {
       row.delivery_miles === null || row.delivery_miles === undefined
         ? null
         : Number(row.delivery_miles),
+    deliveryInstructions: row.delivery_instructions,
+    deliveryCheck: row.delivery_check,
     notes: row.notes,
     paidAt: row.paid_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     stripeCheckoutSessionId: row.stripe_checkout_session_id,
+    checkoutCancelToken: row.checkout_cancel_token,
     items,
   };
 }
@@ -111,7 +118,7 @@ export async function getAdminOrdersData(): Promise<AdminOrder[]> {
   const { data: orders, error: ordersError } = await supabase
     .from("orders")
     .select(
-      "id, customers(name, email, phone), delivery_windows(label), status, stripe_checkout_session_id, subtotal_cents, delivery_fee_cents, total_cents, delivery_address, delivery_miles, notes, paid_at, created_at, updated_at",
+      "id, customers(name, email, phone), delivery_windows(label), status, stripe_checkout_session_id, subtotal_cents, delivery_fee_cents, total_cents, delivery_address, delivery_miles, delivery_instructions, delivery_check, notes, paid_at, created_at, updated_at, checkout_cancel_token",
     )
     .order("created_at", { ascending: false })
     .limit(100);
@@ -150,6 +157,12 @@ export async function updateAdminOrderStatus(id: string, status: OrderStatus) {
   const supabase = getSupabaseAdminClient();
   if (!supabase) throw new Error("Supabase admin client is not configured.");
 
+  const { data: existingOrder } = await supabase
+    .from("orders")
+    .select("status")
+    .eq("id", id)
+    .maybeSingle();
+
   const { error } = await supabase
     .from("orders")
     .update({
@@ -159,5 +172,24 @@ export async function updateAdminOrderStatus(id: string, status: OrderStatus) {
     .eq("id", id);
 
   if (error) throw new Error(error.message);
-  return getAdminOrdersData();
+  const orders = await getAdminOrdersData();
+  const updatedOrder = orders.find((order) => order.id === id);
+  if (updatedOrder && existingOrder?.status !== status && updatedOrder.customerEmail) {
+    try {
+      await sendOrderStatusUpdate({
+        to: updatedOrder.customerEmail,
+        customerName: updatedOrder.customerName,
+        orderSummary: updatedOrder.items
+          .map((item) => `${item.quantity} x ${item.productName}`)
+          .join("\n"),
+        deliveryWindow: updatedOrder.deliveryWindowLabel || "Selected window",
+        orderId: updatedOrder.id,
+        statusLabel: orderStatuses.includes(status) ? status.replace(/_/g, " ") : status,
+      });
+    } catch (emailError) {
+      console.error("[orders] status email failed", emailError);
+    }
+  }
+
+  return orders;
 }

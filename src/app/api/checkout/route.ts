@@ -3,7 +3,10 @@ import { z } from "zod";
 import { isAfterWeeklyCutoff } from "@/lib/cutoff";
 import { createLastMinuteCustomerMessage } from "@/lib/customer-messages";
 import { checkDeliveryAddress } from "@/lib/delivery";
-import { sendOrderConfirmation } from "@/lib/email";
+import {
+  sendCustomerOrderConfirmation,
+  sendLastMinuteRequestNotification,
+} from "@/lib/email";
 import {
   attachStripeSessionToOrder,
   buildOrderSummary,
@@ -13,9 +16,11 @@ import {
 import {
   getDeliverySettingsData,
   getDeliveryWindowData,
+  getActiveWeeklyMenuData,
   getMenuProductData,
 } from "@/lib/storefront-data";
 import { getStripe } from "@/lib/stripe";
+import { buildCatalogLineItem, buildDeliveryLineItem } from "@/lib/stripe-line-items";
 import { getSiteUrl } from "@/lib/utils";
 
 const checkoutSchema = z.object({
@@ -40,6 +45,7 @@ const checkoutSchema = z.object({
     postalCode: z.string().min(3),
   }),
   deliveryWindowId: z.string().min(1),
+  deliveryInstructions: z.string().max(1000).optional().default(""),
   notes: z.string().max(1000).optional().default(""),
 });
 
@@ -54,6 +60,16 @@ export async function POST(request: Request) {
   }
 
   const checkout = parsed.data;
+  const weeklyMenu = await getActiveWeeklyMenuData();
+  const afterCutoff = isAfterWeeklyCutoff(weeklyMenu?.orderCutoffAt);
+
+  if (!weeklyMenu) {
+    return NextResponse.json(
+      { error: "Ordering is not open yet. Please check back for the next bake drop." },
+      { status: 400 },
+    );
+  }
+
   const deliveryWindow = await getDeliveryWindowData(checkout.deliveryWindowId);
 
   if (!deliveryWindow) {
@@ -73,7 +89,7 @@ export async function POST(request: Request) {
     );
   }
 
-  if (!deliveryCheck.eligible && !isAfterWeeklyCutoff()) {
+  if (!deliveryCheck.eligible && !afterCutoff) {
     return NextResponse.json(
       { error: deliveryCheck.message || "This address is outside delivery range." },
       { status: 400 },
@@ -100,7 +116,7 @@ export async function POST(request: Request) {
 
   const orderSummary = buildOrderSummary(items);
 
-  if (isAfterWeeklyCutoff()) {
+  if (afterCutoff) {
     const lastMinuteMessage = await createLastMinuteCustomerMessage({
       checkout,
       deliveryWindowLabel: deliveryWindow.label,
@@ -108,11 +124,16 @@ export async function POST(request: Request) {
     });
 
     if (process.env.BAKERY_EMAIL) {
-      await sendOrderConfirmation({
+      await sendLastMinuteRequestNotification({
         to: process.env.BAKERY_EMAIL,
         customerName: checkout.customer.name,
-        orderSummary: `${orderSummary}\n\nCustomer: ${checkout.customer.email} / ${checkout.customer.phone}\nAddress: ${checkout.address.line1}, ${checkout.address.city}, ${checkout.address.state} ${checkout.address.postalCode}\nNotes: ${checkout.notes}`,
+        customerEmail: checkout.customer.email,
+        customerPhone: checkout.customer.phone,
+        orderSummary,
         deliveryWindow: "Last-minute request after Thursday cutoff",
+        address: `${checkout.address.line1}, ${checkout.address.city}, ${checkout.address.state} ${checkout.address.postalCode}`,
+        notes: checkout.notes,
+        customerMessageId: lastMinuteMessage?.id,
       });
     }
 
@@ -124,7 +145,7 @@ export async function POST(request: Request) {
 
   const stripe = getStripe();
   if (!stripe) {
-    await sendOrderConfirmation({
+    await sendCustomerOrderConfirmation({
       to: checkout.customer.email,
       customerName: checkout.customer.name,
       orderSummary,
@@ -158,32 +179,10 @@ export async function POST(request: Request) {
       customer_email: checkout.customer.email,
       phone_number_collection: { enabled: true },
       success_url: `${getSiteUrl()}/order/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${getSiteUrl()}/order/canceled`,
+      cancel_url: `${getSiteUrl()}/order/canceled?order_id=${pendingOrder.id}&token=${pendingOrder.checkoutCancelToken}`,
       line_items: [
-        ...items.map((item) => {
-          return {
-            quantity: item.quantity,
-            price_data: {
-              currency: "usd",
-              unit_amount: item.priceCents,
-              product_data: {
-                name: item.name,
-                description: item.description,
-              },
-            },
-          };
-        }),
-        {
-          quantity: 1,
-          price_data: {
-            currency: "usd",
-            unit_amount: deliveryCheck.feeCents,
-            product_data: {
-              name: "Local delivery",
-              description: "Radius-based delivery from Canton, GA",
-            },
-          },
-        },
+        ...items.map(buildCatalogLineItem),
+        buildDeliveryLineItem(deliveryCheck.feeCents),
       ],
       metadata: {
         order_id: pendingOrder.id,
@@ -192,6 +191,7 @@ export async function POST(request: Request) {
         delivery_window_id: deliveryWindow.id,
         delivery_window: deliveryWindow.label,
         address: `${checkout.address.line1}, ${checkout.address.city}, ${checkout.address.state} ${checkout.address.postalCode}`,
+        delivery_instructions: checkout.deliveryInstructions || "",
         notes: checkout.notes || "",
         order_summary: pendingOrder.orderSummary,
       },

@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 export const weeklyMenuAdminSchema = z.object({
-  id: z.string().uuid(),
+  id: z.string().uuid().optional(),
   name: z.string().min(2).max(120),
   orderCutoffAt: z.string().min(1),
   startsAt: z.string().min(1),

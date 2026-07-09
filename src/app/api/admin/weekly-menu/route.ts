@@ -42,19 +42,41 @@ export async function POST(request: Request) {
   }
 
   const weeklyMenu = parsed.data;
-  const { error: menuError } = await supabase
-    .from("weekly_menus")
-    .update({
-      name: weeklyMenu.name,
-      order_cutoff_at: weeklyMenu.orderCutoffAt,
-      starts_at: weeklyMenu.startsAt,
-      ends_at: weeklyMenu.endsAt,
-      published: weeklyMenu.published,
-    })
-    .eq("id", weeklyMenu.id);
+  let weeklyMenuId = weeklyMenu.id;
 
-  if (menuError) {
-    return NextResponse.json({ error: menuError.message }, { status: 400 });
+  if (weeklyMenuId) {
+    const { error: menuError } = await supabase
+      .from("weekly_menus")
+      .update({
+        name: weeklyMenu.name,
+        order_cutoff_at: weeklyMenu.orderCutoffAt,
+        starts_at: weeklyMenu.startsAt,
+        ends_at: weeklyMenu.endsAt,
+        published: weeklyMenu.published,
+      })
+      .eq("id", weeklyMenuId);
+
+    if (menuError) {
+      return NextResponse.json({ error: menuError.message }, { status: 400 });
+    }
+  } else {
+    const { data, error: menuError } = await supabase
+      .from("weekly_menus")
+      .insert({
+        name: weeklyMenu.name,
+        order_cutoff_at: weeklyMenu.orderCutoffAt,
+        starts_at: weeklyMenu.startsAt,
+        ends_at: weeklyMenu.endsAt,
+        published: weeklyMenu.published,
+      })
+      .select("id")
+      .single();
+
+    if (menuError) {
+      return NextResponse.json({ error: menuError.message }, { status: 400 });
+    }
+
+    weeklyMenuId = data.id as string;
   }
 
   const includedItems = weeklyMenu.items.filter((item) => item.included);
@@ -65,7 +87,7 @@ export async function POST(request: Request) {
   if (includedItems.length) {
     const { error } = await supabase.from("weekly_menu_items").upsert(
       includedItems.map((item) => ({
-        weekly_menu_id: weeklyMenu.id,
+        weekly_menu_id: weeklyMenuId,
         product_id: item.productId,
         available_quantity: item.availableQuantity,
         sold_quantity: item.soldQuantity,
@@ -83,7 +105,7 @@ export async function POST(request: Request) {
     const { error } = await supabase
       .from("weekly_menu_items")
       .delete()
-      .eq("weekly_menu_id", weeklyMenu.id)
+      .eq("weekly_menu_id", weeklyMenuId)
       .in("product_id", excludedProductIds);
 
     if (error) {
@@ -91,5 +113,23 @@ export async function POST(request: Request) {
     }
   }
 
-  return NextResponse.json({ weeklyMenu: await getActiveWeeklyMenuData() });
+  return NextResponse.json({
+    weeklyMenu: {
+      id: weeklyMenuId,
+      name: weeklyMenu.name,
+      orderCutoffAt: weeklyMenu.orderCutoffAt,
+      startsAt: weeklyMenu.startsAt,
+      endsAt: weeklyMenu.endsAt,
+      published: weeklyMenu.published,
+      items: weeklyMenu.items
+        .filter((item) => item.included)
+        .map((item) => ({
+          productId: item.productId,
+          availableQuantity: item.availableQuantity,
+          soldQuantity: item.soldQuantity,
+          featured: item.featured,
+        })),
+    },
+    activeWeeklyMenu: await getActiveWeeklyMenuData(),
+  });
 }

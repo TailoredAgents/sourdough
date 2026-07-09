@@ -29,14 +29,14 @@ export const policyPages: PolicyPage[] = [
       {
         heading: "Cottage food status",
         body: [
-          "Luna & Lorelai's Sourdough is being prepared as a Georgia cottage food business for direct local sales. Georgia Department of Agriculture materials state that cottage food operators may sell certain non-potentially hazardous foods, including loaf breads, and that online sales to end consumers within Georgia are allowed.",
-          "Before live sales, Luna & Lorelai's Sourdough still needs owner confirmation of training, label text, local business rules, and any other launch requirements.",
+          "Luna & Lorelai's Sourdough operates as a Georgia cottage food business for direct local sales. Cottage food products are sold directly to customers and are not shipped out of state.",
+          "Products are prepared in a home kitchen. Customers should review the product label and website listing before ordering.",
         ],
       },
       {
         heading: "Labeling",
         body: [
-          "Final packaged products should include the required cottage food label, product name, business information, ingredients, allergens, net weight or quantity when applicable, and any required home-kitchen disclosure.",
+          "Packaged products include cottage food label information such as product name, business information, ingredients, allergens, net weight or quantity when applicable, and required home-kitchen disclosure.",
           "Website text is informational and does not replace the label on the delivered product.",
         ],
       },
@@ -51,7 +51,7 @@ export const policyPages: PolicyPage[] = [
       {
         heading: "Weekly bake timing",
         body: [
-          "Orders are planned around a weekly bake schedule. The normal cutoff is Thursday at 8:00 PM for the next bake window.",
+          "Orders are planned around a weekly bake schedule. The current order cutoff is posted on the weekly menu before checkout.",
           "After the cutoff, customers may send a last-minute request, but Luna & Lorelai's Sourdough may decline it if the bake schedule or delivery route is already full.",
         ],
       },
@@ -88,28 +88,28 @@ export const policyPages: PolicyPage[] = [
         heading: "Information collected",
         body: [
           "Luna & Lorelai's Sourdough collects information needed to handle orders and requests, including name, email, phone number, delivery address, order details, notes, and messages sent through the site.",
-          "When online payment is active, payment details are handled by Stripe Checkout. Luna & Lorelai's Sourdough should not receive or store full card numbers.",
+          "When online payment is active, payment details are handled by a secure payment provider. Luna & Lorelai's Sourdough does not receive or store full card numbers.",
         ],
       },
       {
         heading: "How information is used",
         body: [
           "Customer information is used to confirm orders, check delivery eligibility, prepare bakery items, deliver orders, respond to questions, and maintain business records.",
-          "Approved bakery facts and current menu data may be used by the site chat assistant, but the chat should not make unsupported promises or handle payments.",
+          "Current menu and bakery information may be used by the site chat assistant, but the chat cannot make unsupported promises or handle payments.",
         ],
       },
       {
         heading: "Service providers",
         body: [
-          "The site is built with services such as Supabase for database and storage, Stripe for payment checkout once enabled, Resend for email, OpenAI for controlled drafting/chat features, and Render for hosting.",
-          "These services process information only as needed to run the site and bakery workflow.",
+          "The site uses trusted service providers for hosting, database storage, payment checkout, email, and customer support tools.",
+          "These services process information only as needed to run the site and fulfill bakery orders.",
         ],
       },
       {
         heading: "Contact and changes",
         body: [
           "Customers can contact Luna & Lorelai's Sourdough to ask about their information or request corrections.",
-          "This policy may be updated as the bakery moves from testing to live sales.",
+          "This policy may be updated as bakery services, delivery areas, or ordering options change.",
         ],
       },
     ],
@@ -123,8 +123,8 @@ export const policyPages: PolicyPage[] = [
       {
         heading: "Local delivery only",
         body: [
-          "Luna & Lorelai's Sourdough is planned for local Georgia delivery from Canton, GA. The v1 site does not offer shipping or out-of-state delivery.",
-          "Delivery radius, delivery fee, and available delivery windows are set by the bakery owner and may change by week.",
+          "Luna & Lorelai's Sourdough offers local Georgia delivery from Canton, GA. The site does not offer shipping or out-of-state delivery.",
+          "Allowed delivery ZIP codes, delivery fee, and available delivery windows may change by week.",
         ],
       },
       {

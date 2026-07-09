@@ -16,8 +16,8 @@ import { getStorefrontData } from "@/lib/storefront-data";
 import { formatCurrency } from "@/lib/utils";
 
 export default async function Home() {
-  const { menu, deliveryWindows } = await getStorefrontData();
-  const afterCutoff = isAfterWeeklyCutoff();
+  const { menu, deliveryWindows, weeklyMenu, deliverySettings } = await getStorefrontData();
+  const afterCutoff = isAfterWeeklyCutoff(weeklyMenu?.orderCutoffAt);
 
   return (
     <>
@@ -43,7 +43,7 @@ export default async function Home() {
               </h1>
               <p className="mt-6 max-w-xl text-lg leading-8 text-stone-100">
                 Naturally leavened bread and small-batch add-ons delivered locally
-                from a beginning cottage bakery with a careful weekly rhythm.
+                from a cottage bakery with a careful weekly rhythm.
               </p>
               <div className="mt-8 flex flex-col gap-3 sm:flex-row">
                 <a
@@ -61,13 +61,13 @@ export default async function Home() {
               </div>
               <div className="mt-8 grid gap-3 text-sm text-stone-100 sm:grid-cols-3">
                 <span className="inline-flex items-center gap-2">
-                  <CalendarClock size={18} /> Thursday cutoff
+                  <CalendarClock size={18} /> Weekly cutoff
                 </span>
                 <span className="inline-flex items-center gap-2">
                   <Truck size={18} /> Local delivery
                 </span>
                 <span className="inline-flex items-center gap-2">
-                  <ShieldCheck size={18} /> Stripe checkout
+                  <ShieldCheck size={18} /> Secure checkout
                 </span>
               </div>
             </div>
@@ -76,7 +76,7 @@ export default async function Home() {
 
         <section className="bg-[#23443b] py-4 text-white">
           <div className="mx-auto flex max-w-7xl flex-col gap-2 px-4 text-sm font-semibold sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
-            <span>{getCutoffMessage()}</span>
+            <span>{getCutoffMessage(weeklyMenu?.orderCutoffAt)}</span>
             <span>{bakery.deliveryPromise}</span>
           </div>
         </section>
@@ -93,12 +93,11 @@ export default async function Home() {
                 </h2>
               </div>
               <p className="max-w-xl text-sm leading-6 text-stone-700">
-                Every listing includes ingredients and allergens. The kitchen
-                should not claim allergen-free preparation unless the legal
-                process supports it.
+                Every listing includes ingredients and allergens. {deliverySettings.serviceAreaCopy}
               </p>
             </div>
 
+            {menu.length ? (
             <div className="mt-8 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
               {menu.map((item) => (
                 <article
@@ -142,10 +141,15 @@ export default async function Home() {
                 </article>
               ))}
             </div>
+            ) : (
+              <div className="mt-8 rounded-md border border-stone-200 bg-white p-5 text-sm leading-6 text-stone-700">
+                Ordering is not open yet. Please check back for the next published bake drop.
+              </div>
+            )}
 
             <div className="mt-8 rounded-md border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
-              Products are prepared in a home kitchen as part of a planned
-              Georgia cottage food business. Review listed ingredients and
+              Products are prepared in a home kitchen under Georgia cottage
+              food rules. Review listed ingredients and
               allergens before ordering; {bakery.name} does not claim
               allergen-free preparation. See the{" "}
               <Link
@@ -169,16 +173,16 @@ export default async function Home() {
                 Built around a manageable bake week
               </h2>
               <p className="mt-4 text-base leading-7 text-stone-700">
-                Orders close Thursday at 8:00 PM for next week. After the cutoff,
+                Orders close at the posted weekly cutoff. After the cutoff,
                 customers can still send a request, but checkout pauses so the
-                baker can protect capacity.
+                bakery can plan each bake and delivery route.
               </p>
             </div>
             <div className="grid gap-4 sm:grid-cols-3">
               {[
-                ["1", "Order by Thursday", "Choose loaves, add-ons, and a delivery window."],
+                ["1", "Order by cutoff", "Choose loaves, add-ons, and a delivery window."],
                 ["2", "Bake drop fills", "Inventory counts down as customers reserve."],
-                ["3", "Local delivery", "Delivery is checked against the Canton radius."],
+                ["3", "Local delivery", "Delivery is checked against the launch ZIP list."],
               ].map(([step, title, body]) => (
                 <div
                   key={step}
@@ -211,7 +215,7 @@ export default async function Home() {
                 Ready for next week&apos;s bake?
               </h2>
               <p className="mt-1 text-sm text-stone-100">
-                {bakery.name} is starting locally and intentionally.
+                Fresh bread, baked weekly and delivered locally.
               </p>
             </div>
             <a

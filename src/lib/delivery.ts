@@ -4,34 +4,52 @@ import type { DeliveryAddress } from "./types";
 export type DeliverySettings = {
   radiusMiles: number;
   deliveryFeeCents: number;
+  allowedPostalCodes: string[];
+  serviceAreaCopy: string;
   center: {
     lat: number;
     lng: number;
   };
 };
 
-type CityEstimate = {
-  key: string;
-  label: string;
-  milesFromCanton: number;
+const defaultAllowedPostalCodes = ["30114", "30115", "30107", "30183"];
+
+export type DeliveryCheckResult = {
+  eligible: boolean;
+  needsReview: boolean;
+  miles: number | null;
+  message: string;
+  feeCents: number;
+  postalCode: string | null;
+  allowedPostalCodes: string[];
 };
 
-const knownCities: CityEstimate[] = [
-  { key: "canton", label: "Canton", milesFromCanton: 0 },
-  { key: "holly springs", label: "Holly Springs", milesFromCanton: 7 },
-  { key: "woodstock", label: "Woodstock", milesFromCanton: 13 },
-  { key: "waleska", label: "Waleska", milesFromCanton: 10 },
-  { key: "ball ground", label: "Ball Ground", milesFromCanton: 11 },
-  { key: "jasper", label: "Jasper", milesFromCanton: 22 },
-  { key: "alpharetta", label: "Alpharetta", milesFromCanton: 24 },
-  { key: "roswell", label: "Roswell", milesFromCanton: 25 },
-  { key: "marietta", label: "Marietta", milesFromCanton: 27 },
-];
+function envList(name: string, fallback: string[]) {
+  const value = process.env[name];
+  if (!value) return fallback;
+  const items = value
+    .split(",")
+    .map((item) => normalizePostalCode(item))
+    .filter((item): item is string => Boolean(item));
+  return items.length ? items : fallback;
+}
+
+export function normalizePostalCode(value: string) {
+  const match = value.trim().match(/\d{5}/);
+  return match?.[0] ?? null;
+}
 
 export function getDeliverySettings(): DeliverySettings {
   return {
     radiusMiles: envNumber("DELIVERY_RADIUS_MILES", 12),
     deliveryFeeCents: envNumber("DELIVERY_FEE_CENTS", 600),
+    allowedPostalCodes: envList(
+      "DELIVERY_ALLOWED_POSTAL_CODES",
+      defaultAllowedPostalCodes,
+    ),
+    serviceAreaCopy:
+      process.env.DELIVERY_SERVICE_AREA_COPY ||
+      "Delivery is available in selected Canton-area ZIP codes: 30114, 30115, 30107, and 30183.",
     center: {
       lat: envNumber("DELIVERY_CENTER_LAT", 34.2368),
       lng: envNumber("DELIVERY_CENTER_LNG", -84.4908),
@@ -42,8 +60,10 @@ export function getDeliverySettings(): DeliverySettings {
 export function checkDeliveryAddress(
   address: DeliveryAddress,
   settings = getDeliverySettings(),
-) {
+): DeliveryCheckResult {
   const state = address.state.trim().toUpperCase();
+  const allowedPostalCodes = settings.allowedPostalCodes.map((item) => item.trim());
+  const postalCode = normalizePostalCode(address.postalCode);
 
   if (state !== "GA" && state !== "GEORGIA") {
     return {
@@ -52,32 +72,34 @@ export function checkDeliveryAddress(
       miles: null,
       message: "Delivery is only available within Georgia for launch.",
       feeCents: settings.deliveryFeeCents,
+      postalCode,
+      allowedPostalCodes,
     };
   }
 
-  const city = address.city.trim().toLowerCase();
-  const estimate = knownCities.find((item) => item.key === city);
-
-  if (!estimate) {
+  if (!postalCode) {
     return {
       eligible: false,
-      needsReview: true,
+      needsReview: false,
       miles: null,
-      message:
-        "This city needs manual review. Send a last-minute or delivery request and the bakery will confirm.",
+      message: "Enter a valid 5-digit Georgia ZIP code for delivery.",
       feeCents: settings.deliveryFeeCents,
+      postalCode: null,
+      allowedPostalCodes,
     };
   }
 
-  const eligible = estimate.milesFromCanton <= settings.radiusMiles;
+  const eligible = allowedPostalCodes.includes(postalCode);
 
   return {
     eligible,
     needsReview: false,
-    miles: estimate.milesFromCanton,
+    miles: null,
     message: eligible
-      ? `${estimate.label} is inside the ${settings.radiusMiles}-mile delivery radius.`
-      : `${estimate.label} appears outside the ${settings.radiusMiles}-mile delivery radius.`,
+      ? `${postalCode} is inside the launch delivery area.`
+      : `${postalCode} is outside the launch delivery area. ${settings.serviceAreaCopy}`,
     feeCents: settings.deliveryFeeCents,
+    postalCode,
+    allowedPostalCodes,
   };
 }

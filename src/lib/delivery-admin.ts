@@ -21,6 +21,10 @@ export const deliveryAdminSchema = z.object({
     centerLng: z.number().min(-180).max(180),
     radiusMiles: z.number().min(0).max(100),
     deliveryFeeCents: z.number().int().min(0).max(50000),
+    allowedPostalCodes: z
+      .array(z.string().regex(/^\d{5}$/, "Use 5-digit ZIP codes."))
+      .min(1, "Add at least one delivery ZIP code."),
+    serviceAreaCopy: z.string().min(10).max(500),
   }),
   windows: z.array(deliveryWindowAdminSchema),
 });

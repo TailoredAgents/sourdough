@@ -12,6 +12,8 @@ type DeliverySettingsForm = {
   centerLng: number;
   radiusMiles: number;
   deliveryFeeDollars: string;
+  allowedPostalCodes: string;
+  serviceAreaCopy: string;
 };
 
 type DeliveryWindowForm = {
@@ -55,6 +57,8 @@ function buildSettingsForm(settings: DeliverySettings): DeliverySettingsForm {
     centerLng: settings.center.lng,
     radiusMiles: settings.radiusMiles,
     deliveryFeeDollars: (settings.deliveryFeeCents / 100).toFixed(2),
+    allowedPostalCodes: settings.allowedPostalCodes.join(", "),
+    serviceAreaCopy: settings.serviceAreaCopy,
   };
 }
 
@@ -140,6 +144,11 @@ export function DeliveryEditor({
             centerLng: Number(settings.centerLng),
             radiusMiles: Number(settings.radiusMiles),
             deliveryFeeCents,
+            allowedPostalCodes: settings.allowedPostalCodes
+              .split(",")
+              .map((item) => item.trim())
+              .filter(Boolean),
+            serviceAreaCopy: settings.serviceAreaCopy,
           },
           windows: windows.map((window) => ({
             id: window.id,
@@ -171,13 +180,42 @@ export function DeliveryEditor({
         <div>
           <h2 className="text-xl font-bold text-stone-950">Delivery editor</h2>
           <p className="mt-1 text-sm leading-6 text-stone-700">
-            Set the local service radius, delivery fee, and customer delivery slots.
+            Set allowed delivery ZIPs, delivery fee, and customer delivery slots.
           </p>
         </div>
         <Button type="button" onClick={saveDelivery} disabled={isPending}>
           {isPending ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
           Save delivery
         </Button>
+      </div>
+
+      <div className="mt-5 grid gap-3 lg:grid-cols-[1fr_1.2fr]">
+        <label className="grid gap-1 text-sm font-semibold text-stone-700">
+          Allowed ZIP codes
+          <input
+            className="h-11 rounded-md border border-stone-300 px-3 font-normal"
+            value={settings.allowedPostalCodes}
+            onChange={(event) =>
+              setSettings((current) => ({
+                ...current,
+                allowedPostalCodes: event.target.value,
+              }))
+            }
+          />
+        </label>
+        <label className="grid gap-1 text-sm font-semibold text-stone-700">
+          Service area copy
+          <input
+            className="h-11 rounded-md border border-stone-300 px-3 font-normal"
+            value={settings.serviceAreaCopy}
+            onChange={(event) =>
+              setSettings((current) => ({
+                ...current,
+                serviceAreaCopy: event.target.value,
+              }))
+            }
+          />
+        </label>
       </div>
 
       <div className="mt-5 grid gap-3 md:grid-cols-2 lg:grid-cols-4">

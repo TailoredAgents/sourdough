@@ -30,9 +30,9 @@ Do not commit real secret values.
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key |
 | `SUPABASE_DB_URL` | Supabase direct database connection string |
 | `ADMIN_EMAILS` | Comma-separated owner emails |
-| `RESEND_API_KEY` | Resend API key, blank until email is configured |
+| `RESEND_API_KEY` | Resend API key for app-sent customer and owner emails |
 | `RESEND_FROM` | `Luna & Lorelai's Sourdough <orders@landlsourdough.com>` |
-| `BAKERY_EMAIL` | Owner/order notification email |
+| `BAKERY_EMAIL` | `orders@landlsourdough.com` or another monitored owner/order inbox |
 | `OPENAI_API_KEY` | OpenAI API key, blank to use fallback replies |
 | `OPENAI_MODEL` | `gpt-5.4-mini` |
 | `STRIPE_SECRET_KEY` | Blank until Stripe setup is ready |
@@ -41,6 +41,8 @@ Do not commit real secret values.
 | `DELIVERY_CENTER_LNG` | `-84.4908` |
 | `DELIVERY_RADIUS_MILES` | `12` |
 | `DELIVERY_FEE_CENTS` | `600` |
+| `DELIVERY_ALLOWED_POSTAL_CODES` | `30114,30115,30107,30183` fallback when Supabase is unavailable |
+| `DELIVERY_SERVICE_AREA_COPY` | Fallback service area copy when Supabase is unavailable |
 
 The Blueprint explicitly sets `plan: standard`, one tier above Render's
 default `starter` instance type for new web services.
@@ -64,7 +66,8 @@ default `starter` instance type for new web services.
 - Visit `/api/health` and confirm it returns JSON with `"ok": true`.
 - Visit `/admin/login` and sign in with an approved Supabase Auth email/password.
 - Confirm product photos load from Supabase Storage.
-- Confirm the delivery radius check works.
+- Confirm the delivery ZIP check works.
+- While signed into admin, `POST /api/admin/email-test` and confirm Resend delivers from `orders@landlsourdough.com`.
 - Leave Stripe keys blank until LLC/EIN/Stripe setup is ready.
 
 ## Stripe Later

@@ -229,6 +229,11 @@ export function OrderDashboard({ initialOrders }: { initialOrders: AdminOrder[] 
                     {selectedOrder.deliveryMiles !== null ? (
                       <p className="mt-1">{selectedOrder.deliveryMiles} miles estimated</p>
                     ) : null}
+                    {selectedOrder.deliveryInstructions ? (
+                      <p className="mt-1">
+                        Instructions: {selectedOrder.deliveryInstructions}
+                      </p>
+                    ) : null}
                   </div>
                 </div>
                 <p>Paid: {formatDate(selectedOrder.paidAt)}</p>

@@ -3,18 +3,24 @@ insert into delivery_settings (
   center_lat,
   center_lng,
   radius_miles,
-  delivery_fee_cents
+  delivery_fee_cents,
+  allowed_postal_codes,
+  service_area_copy
 ) values (
   true,
   34.236800,
   -84.490800,
   12,
-  600
+  600,
+  array['30114', '30115', '30107', '30183'],
+  'Delivery is available in selected Canton-area ZIP codes: 30114, 30115, 30107, and 30183.'
 ) on conflict (id) do update set
   center_lat = excluded.center_lat,
   center_lng = excluded.center_lng,
   radius_miles = excluded.radius_miles,
-  delivery_fee_cents = excluded.delivery_fee_cents;
+  delivery_fee_cents = excluded.delivery_fee_cents,
+  allowed_postal_codes = excluded.allowed_postal_codes,
+  service_area_copy = excluded.service_area_copy;
 
 insert into products (
   id,

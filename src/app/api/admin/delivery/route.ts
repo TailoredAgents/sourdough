@@ -69,6 +69,8 @@ export async function POST(request: Request) {
     center_lng: settings.centerLng,
     radius_miles: settings.radiusMiles,
     delivery_fee_cents: settings.deliveryFeeCents,
+    allowed_postal_codes: settings.allowedPostalCodes,
+    service_area_copy: settings.serviceAreaCopy,
   });
 
   if (settingsError) {

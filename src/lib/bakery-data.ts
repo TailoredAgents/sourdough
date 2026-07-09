@@ -138,7 +138,7 @@ export const aiKnowledge = [
   "Weekly orders close every Thursday at 8:00 PM for the next week's bake and delivery schedule.",
   "After the cutoff, customers can send a last-minute request, but it is not guaranteed.",
   "All product allergen details must come from the product cards. Do not claim allergen-free preparation.",
-  "Delivery radius and delivery fee are configured by the bakery owner before launch.",
+  "Allowed delivery ZIP codes and delivery fee are configured by the bakery owner before launch.",
 ];
 
 export function getProduct(productId: string) {

@@ -1,6 +1,6 @@
 # Luna & Lorelai's Sourdough Launch Checklist
 
-Current status: repo is pushed, Supabase schema exists in the live database, seed data has been applied, the public storefront reads from Supabase with local fallback data, `/admin` is protected by Supabase Auth, admin tools can edit products, product photos, weekly menus, inventory, delivery settings, delivery windows, customer requests, approved AI knowledge, and order statuses, and checkout can create pending Supabase orders before Stripe redirect once Stripe keys are configured.
+Current status: repo is pushed, Supabase schema exists in the live database, seed data has been applied, the public storefront reads from Supabase with local fallback data for development, `/admin` is protected by Supabase Auth, admin tools can edit products, product photos, weekly menus, inventory, delivery settings, delivery windows, customer requests, approved AI knowledge, and order statuses, Resend is configured for app email, ZIP-allowlist delivery is implemented, and checkout can create pending Supabase orders before Stripe redirect once Stripe keys are configured.
 
 ## Phase 1: Supabase Foundation
 
@@ -28,13 +28,14 @@ Current status: repo is pushed, Supabase schema exists in the live database, see
 - [x] Product editor: name, category, description, ingredients, allergens, price, active status
 - [x] Product image upload/storage
 - [x] Weekly menu builder
+- [x] Weekly menu create/clone flow
 - [x] Inventory limits per product per week
 - [x] Delivery window editor
 - [x] Delivery settings editor: radius, fee, center point
 - [x] Order dashboard with statuses
 - [x] Customer message/last-minute request inbox
 - [x] AI knowledge editor with approve/unapprove toggle
-- [ ] AI draft history or copy/send workflow
+- [x] AI draft copy workflow
 
 ## Phase 4: Real Checkout
 
@@ -45,50 +46,53 @@ Current status: repo is pushed, Supabase schema exists in the live database, see
 - [x] Prevent overselling with a database transaction/RPC
 - [x] Store Stripe checkout session ID on order
 - [x] Send real customer confirmation after payment
-- [ ] Send bakery owner notification after payment
-- [ ] Handle checkout cancellation
+- [x] Send bakery owner notification after payment
+- [x] Handle checkout cancellation
 - [x] Release inventory when checkout expires
-- [ ] Make success page show real order confirmation details
+- [x] Make success page show real order confirmation details
+- [x] Make editable `weekly_menus.order_cutoff_at` drive checkout open/closed behavior
 
 ## Phase 5: Stripe Webhooks
 
 - [ ] Configure Stripe test keys
+- [ ] Sync Supabase products into the Stripe test catalog
 - [ ] Configure local webhook testing with Stripe CLI
 - [ ] Configure deployed webhook URL
 - [x] On `checkout.session.completed`: mark order paid, finalize inventory, send customer email
 - [x] On `checkout.session.expired`: release inventory and mark order canceled/expired
 - [x] Make webhook handling idempotent so duplicate Stripe events are safe
-- [ ] Add logging for failed webhook handling
+- [x] Add logging for failed webhook handling
 
 ## Phase 6: Delivery
 
-- [ ] Replace city-estimate delivery logic with a reliable rule
-- [ ] Decide exact launch method: ZIP allowlist, radius geocoding, or manual approval
-- [ ] Validate street/city/state/ZIP together
-- [ ] Store delivery mileage/eligibility on order
-- [ ] Prevent checkout outside Georgia
-- [ ] Add owner-editable delivery copy and service area
-- [ ] Add delivery instructions field to order records
+- [x] Replace city-estimate delivery logic with a ZIP allowlist
+- [x] Decide exact launch method: ZIP allowlist
+- [x] Validate state and ZIP eligibility together
+- [x] Store delivery eligibility on order
+- [x] Prevent checkout outside Georgia
+- [x] Add owner-editable delivery copy and service area
+- [x] Add delivery instructions field to order records
 
 ## Phase 7: AI Guardrails
 
 - [x] Move AI knowledge from static file to Supabase
 - [x] Customer chat reads only approved `ai_knowledge_entries`
-- [ ] Customer chat includes current Supabase menu and inventory
-- [ ] Add refusal tests for unsupported allergen, legal, medical, and custom-order claims
-- [ ] Add rate limiting or abuse protection
-- [ ] Add contact-bakery escalation path
-- [ ] Protect admin drafting endpoint behind auth
+- [x] Customer chat includes current Supabase menu and inventory
+- [x] Add refusal tests for unsupported allergen, legal, medical, and custom-order claims
+- [x] Add rate limiting or abuse protection
+- [x] Add contact-bakery escalation path
+- [x] Protect admin drafting endpoint behind auth
 
 ## Phase 8: Emails
 
-- [ ] Configure Resend API key
-- [ ] Verify sending domain for `landlsourdough.com`
-- [ ] Create customer order confirmation template
-- [ ] Create owner new-order notification template
-- [ ] Create last-minute request notification template
-- [ ] Create order status update template
-- [ ] Add email failure logging
+- [x] Configure Resend API key
+- [x] Verify sending domain for `landlsourdough.com`
+- [x] Add admin-only app-path test email endpoint
+- [x] Create polished customer order confirmation template
+- [x] Create owner new-order notification template
+- [x] Create last-minute request notification template
+- [x] Create order status update template
+- [x] Add email failure logging
 
 ## Phase 9: Compliance And Business Readiness
 
@@ -106,13 +110,16 @@ Current status: repo is pushed, Supabase schema exists in the live database, see
 
 - [x] Add Render Blueprint `render.yaml`
 - [x] Add Render production environment variable checklist
+- [x] Add Vitest and Playwright launch smoke tests
 - [ ] Create Render Blueprint service
 - [ ] Add all `sync: false` environment variables to Render
 - [ ] Connect `landlsourdough.com`
 - [ ] Configure Supabase production URL keys
 - [ ] Configure Stripe live keys only after test checkout passes
+- [ ] Sync Supabase products into the Stripe live catalog after switching live keys
 - [ ] Configure Stripe webhook secret in Render
-- [ ] Configure Resend DNS records
+- [x] Configure Resend DNS records
+- [ ] Run admin email smoke test in production
 - [ ] Run mobile/desktop visual check
 - [ ] Run complete test order
 - [ ] Run failed payment/canceled checkout test
@@ -121,4 +128,4 @@ Current status: repo is pushed, Supabase schema exists in the live database, see
 
 ## Recommended Next Step
 
-Finish Phase 2 external setup next by setting `ADMIN_EMAILS` and confirming Supabase Auth magic-link email settings. After that, start Phase 3 admin functionality.
+Finish the external launch tasks next: create/test the owner Supabase Auth account, confirm Render production environment variables, add Stripe test keys/webhook secret, and run a full test checkout.

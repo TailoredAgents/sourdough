@@ -5,14 +5,14 @@ Agentic retail bakery platform for `landlsourdough.com`, built for local sourdou
 ## What Is Implemented
 
 - Next.js App Router storefront with warm artisan design and generated hero photography.
-- Weekly menu, limited quantities, bread plus add-ons, allergen display, and Thursday cutoff behavior.
-- Radius-style local delivery check from Canton, GA with configurable fee/radius.
+- Weekly menu, limited quantities, bread plus add-ons, allergen display, and editable menu cutoff behavior.
+- ZIP-allowlist local delivery check from Canton, GA with configurable fee, service-area copy, and allowed ZIPs.
 - Stripe Checkout endpoint with demo fallback when Stripe keys are absent.
 - Stripe webhook route for paid and expired checkout events.
-- Resend email helper with console/demo fallback.
-- Customer AI chat constrained to approved bakery facts and product/allergen data.
-- Admin dashboard for menu review, delivery windows, product catalog, and AI drafting.
-- Supabase schema for products, menus, orders, customers, delivery settings, messages, and AI knowledge.
+- Resend-backed email helper with console/demo fallback when the API key is absent.
+- Customer AI chat constrained to approved bakery facts, current menu data, inventory, and product/allergen data.
+- Protected admin dashboard for product catalog, weekly menus, inventory, delivery windows, delivery settings, customer requests, AI knowledge, order statuses, and AI drafting.
+- Supabase schema for products, menus, orders, customers, delivery settings, email logs, rate limits, messages, and AI knowledge.
 
 ## Local Development
 
@@ -43,6 +43,8 @@ Required before live launch:
 - `OPENAI_MODEL`
 - `DELIVERY_RADIUS_MILES`
 - `DELIVERY_FEE_CENTS`
+- `DELIVERY_ALLOWED_POSTAL_CODES`
+- `DELIVERY_SERVICE_AREA_COPY`
 
 Use `.env.example` as the complete template. Real values belong in
 `.env.local` locally and in Render's Environment tab for production. Do not
@@ -68,7 +70,7 @@ Detailed deployment steps and the production env var checklist are in
 
 Run `supabase/schema.sql` in a Supabase project SQL editor or with `psql`, then run `supabase/seed.sql` to load the starter products, weekly menu, delivery windows, delivery settings, and approved AI knowledge.
 
-The public storefront reads from Supabase when the Supabase environment variables are configured. Local fallback data remains in `src/lib/bakery-data.ts` so the app can still be reviewed without credentials. The next major implementation step is adding Supabase Auth around `/admin` and replacing the display-only admin surface with protected admin mutations.
+The public storefront reads from Supabase when the Supabase environment variables are configured. Local fallback data remains in `src/lib/bakery-data.ts` so the app can still be reviewed without credentials. Admin pages and admin API routes are protected by Supabase Auth and approved owner email checks.
 
 ## Admin Access
 
@@ -85,6 +87,16 @@ approved admins can also be added later through the `admin_users` table.
 ## Stripe
 
 The checkout route uses Stripe Checkout Sessions for one-time payments. Without `STRIPE_SECRET_KEY`, checkout redirects to a demo success page and logs email output instead of collecting money.
+
+Products are synced from Supabase into Stripe Products and one-time Prices. After
+editing product names, descriptions, active status, or prices, run:
+
+```bash
+npm run stripe:sync-catalog
+```
+
+Checkout uses the synced Stripe Price ID when it matches the current Supabase
+price, with inline price data as a fallback while a product is unsynced.
 
 Webhook path:
 
@@ -103,12 +115,12 @@ The customer chat and admin drafting routes use the Responses API through the `o
 
 ## Pre-Launch Checklist
 
-- Confirm Georgia cottage food licensing and required labels.
+- Confirm Georgia cottage food training, operating rules, and required labels.
 - Confirm Canton/Cherokee home-business or occupational tax requirements.
 - Confirm sales tax setup with an accountant.
-- Replace sample data with Supabase-backed admin CRUD.
-- Add Supabase Auth and restrict `/admin`.
+- Create and test the owner Supabase Auth account.
 - Configure Stripe live keys and webhook secret.
-- Configure Resend sending domain for `landlsourdough.com`.
-- Set the exact delivery radius, fee, and windows.
+- Sync the active Supabase product catalog into Stripe.
+- Send a real Resend email from the admin smoke-test path in production.
+- Configure Stripe test keys and webhook secret, then run full checkout, cancellation, expiry, and sold-out tests.
 - Test mobile, desktop, Stripe test cards, expired checkouts, emails, and AI refusal behavior.

@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
-import { sendOrderConfirmation } from "@/lib/email";
+import {
+  sendCustomerOrderConfirmation,
+  sendOwnerNewOrderNotification,
+} from "@/lib/email";
 import {
   cancelExpiredCheckoutSession,
   markCheckoutSessionPaid,
@@ -32,33 +35,57 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: message }, { status: 400 });
   }
 
-  if (event.type === "checkout.session.completed") {
-    const session = event.data.object;
-    const paidOrder = await markCheckoutSessionPaid(session.id);
+  try {
+    if (event.type === "checkout.session.completed") {
+      const session = event.data.object;
+      const paidOrder = await markCheckoutSessionPaid(session.id);
 
-    if (paidOrder?.customerEmail) {
-      await sendOrderConfirmation({
-        to: paidOrder.customerEmail,
-        customerName: paidOrder.customerName,
-        orderSummary: paidOrder.orderSummary,
-        deliveryWindow: paidOrder.deliveryWindow,
+      if (paidOrder?.customerEmail) {
+        await sendCustomerOrderConfirmation({
+          to: paidOrder.customerEmail,
+          customerName: paidOrder.customerName,
+          orderSummary: paidOrder.orderSummary,
+          deliveryWindow: paidOrder.deliveryWindow,
+          orderId: paidOrder.orderId,
+        });
+      }
+
+      if (paidOrder && process.env.BAKERY_EMAIL) {
+        await sendOwnerNewOrderNotification({
+          to: process.env.BAKERY_EMAIL,
+          customerName: paidOrder.customerName,
+          customerEmail: paidOrder.customerEmail,
+          customerPhone: paidOrder.customerPhone,
+          orderSummary: paidOrder.orderSummary,
+          deliveryWindow: paidOrder.deliveryWindow,
+          orderId: paidOrder.orderId,
+          address: paidOrder.deliveryAddress,
+          notes: paidOrder.notes || "",
+        });
+      }
+
+      console.log("[stripe:webhook] paid order", {
+        sessionId: session.id,
+        orderId: paidOrder?.orderId || session.metadata?.order_id,
+        customerEmail: paidOrder?.customerEmail || session.customer_email,
+        deliveryWindow: paidOrder?.deliveryWindow || session.metadata?.delivery_window,
       });
     }
 
-    console.log("[stripe:webhook] paid order", {
-      sessionId: session.id,
-      orderId: paidOrder?.orderId || session.metadata?.order_id,
-      customerEmail: paidOrder?.customerEmail || session.customer_email,
-      deliveryWindow: paidOrder?.deliveryWindow || session.metadata?.delivery_window,
+    if (event.type === "checkout.session.expired") {
+      const orderId = await cancelExpiredCheckoutSession(event.data.object.id);
+      console.log("[stripe:webhook] checkout expired", {
+        sessionId: event.data.object.id,
+        orderId,
+      });
+    }
+  } catch (error) {
+    console.error("[stripe:webhook] handling failed", {
+      eventId: event.id,
+      eventType: event.type,
+      error,
     });
-  }
-
-  if (event.type === "checkout.session.expired") {
-    const orderId = await cancelExpiredCheckoutSession(event.data.object.id);
-    console.log("[stripe:webhook] checkout expired", {
-      sessionId: event.data.object.id,
-      orderId,
-    });
+    return NextResponse.json({ error: "Webhook handling failed." }, { status: 500 });
   }
 
   return NextResponse.json({ received: true });

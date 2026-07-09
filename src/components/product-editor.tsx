@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { CheckCircle2, ImagePlus, Loader2, Pencil, Plus } from "lucide-react";
 import type { Product, ProductCategory } from "@/lib/types";
 import { joinList, splitList } from "@/lib/product-admin";
@@ -18,6 +19,9 @@ type ProductForm = {
   imageUrl: string;
   imageStyle: string;
   active: boolean;
+  includeInCurrentMenu: boolean;
+  weeklyQuantity: string;
+  featured: boolean;
 };
 
 function productToForm(product?: Product): ProductForm {
@@ -33,6 +37,9 @@ function productToForm(product?: Product): ProductForm {
     imageStyle:
       product?.imageStyle || "from-stone-100 via-amber-100 to-orange-200",
     active: product?.active ?? true,
+    includeInCurrentMenu: !product,
+    weeklyQuantity: !product ? "1" : "0",
+    featured: false,
   };
 }
 
@@ -48,10 +55,14 @@ function formToPayload(form: ProductForm) {
     imageUrl: form.imageUrl.trim() || null,
     imageStyle: form.imageStyle.trim(),
     active: form.active,
+    includeInCurrentMenu: !form.id && form.includeInCurrentMenu,
+    weeklyQuantity: Math.max(0, Math.round(Number(form.weeklyQuantity || 0))),
+    featured: form.featured,
   };
 }
 
 export function ProductEditor({ initialProducts }: { initialProducts: Product[] }) {
+  const router = useRouter();
   const [products, setProducts] = useState<Product[]>(initialProducts);
   const [selectedId, setSelectedId] = useState<string | null>(
     initialProducts[0]?.id ?? null,
@@ -90,6 +101,7 @@ export function ProductEditor({ initialProducts }: { initialProducts: Product[] 
       });
       const payload = (await response.json()) as {
         products?: Product[];
+        productId?: string;
         error?: string;
       };
 
@@ -99,12 +111,19 @@ export function ProductEditor({ initialProducts }: { initialProducts: Product[] 
       }
 
       setProducts(payload.products);
-      const savedProduct = payload.products.find(
-        (product) => product.name.toLowerCase() === form.name.trim().toLowerCase(),
-      );
+      const savedProduct =
+        payload.products.find((product) => product.id === payload.productId) ??
+        payload.products.find(
+          (product) => product.name.toLowerCase() === form.name.trim().toLowerCase(),
+        );
       setSelectedId(savedProduct?.id ?? payload.products[0]?.id ?? null);
       setForm(productToForm(savedProduct ?? payload.products[0]));
-      setMessage("Product saved.");
+      setMessage(
+        form.includeInCurrentMenu && !form.id
+          ? "Product saved and added to this week's menu."
+          : "Product saved.",
+      );
+      router.refresh();
     });
   }
 
@@ -150,7 +169,7 @@ export function ProductEditor({ initialProducts }: { initialProducts: Product[] 
         </Button>
       </div>
 
-      <div className="mt-5 grid gap-5 lg:grid-cols-[0.8fr_1.2fr]">
+      <div className="mt-5 grid gap-5 xl:grid-cols-[0.8fr_minmax(0,1.2fr)]">
         <div className="grid max-h-[620px] content-start gap-2 overflow-y-auto pr-1">
           {products.map((product) => (
             <button
@@ -190,8 +209,8 @@ export function ProductEditor({ initialProducts }: { initialProducts: Product[] 
           ))}
         </div>
 
-        <div className="grid gap-3 rounded-md border border-stone-100 bg-[#fffaf2] p-4">
-          <div className="grid gap-3 sm:grid-cols-[180px_1fr]">
+        <div className="grid min-w-0 gap-4 rounded-md border border-stone-100 bg-[#fffaf2] p-4">
+          <div className="grid min-w-0 gap-3 xl:grid-cols-[180px_minmax(0,1fr)]">
             <div
               className={`min-h-36 rounded-md border border-stone-200 bg-cover bg-center bg-no-repeat ${
                 form.imageUrl ? "bg-white" : `bg-gradient-to-br ${form.imageStyle}`
@@ -202,11 +221,11 @@ export function ProductEditor({ initialProducts }: { initialProducts: Product[] 
                   : undefined
               }
             />
-            <div className="grid content-start gap-3">
+            <div className="grid min-w-0 content-start gap-3">
               <label className="grid gap-1 text-sm font-semibold text-stone-700">
                 Product photo
                 <input
-                  className="h-11 rounded-md border border-stone-300 bg-white px-3 py-2 font-normal"
+                  className="h-11 min-w-0 rounded-md border border-stone-300 bg-white px-3 py-2 font-normal"
                   accept="image/jpeg,image/png,image/webp"
                   type="file"
                   onChange={(event) =>
@@ -217,7 +236,7 @@ export function ProductEditor({ initialProducts }: { initialProducts: Product[] 
               <label className="grid gap-1 text-sm font-semibold text-stone-700">
                 Image URL
                 <input
-                  className="h-11 rounded-md border border-stone-300 px-3 font-normal"
+                  className="h-11 min-w-0 rounded-md border border-stone-300 px-3 font-normal"
                   value={form.imageUrl}
                   onChange={(event) => updateForm("imageUrl", event.target.value)}
                   placeholder="Uploaded image URL"
@@ -230,11 +249,11 @@ export function ProductEditor({ initialProducts }: { initialProducts: Product[] 
             </div>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid min-w-0 gap-3 md:grid-cols-2">
             <label className="grid gap-1 text-sm font-semibold text-stone-700">
               Name
               <input
-                className="h-11 rounded-md border border-stone-300 px-3 font-normal"
+                className="h-11 min-w-0 rounded-md border border-stone-300 px-3 font-normal"
                 value={form.name}
                 onChange={(event) => updateForm("name", event.target.value)}
               />
@@ -242,7 +261,7 @@ export function ProductEditor({ initialProducts }: { initialProducts: Product[] 
             <label className="grid gap-1 text-sm font-semibold text-stone-700">
               Category
               <select
-                className="h-11 rounded-md border border-stone-300 px-3 font-normal"
+                className="h-11 min-w-0 rounded-md border border-stone-300 px-3 font-normal"
                 value={form.category}
                 onChange={(event) =>
                   updateForm("category", event.target.value as ProductCategory)
@@ -257,13 +276,13 @@ export function ProductEditor({ initialProducts }: { initialProducts: Product[] 
           <label className="grid gap-1 text-sm font-semibold text-stone-700">
             Description
             <textarea
-              className="min-h-24 rounded-md border border-stone-300 p-3 font-normal leading-6"
+              className="min-h-24 min-w-0 rounded-md border border-stone-300 p-3 font-normal leading-6"
               value={form.description}
               onChange={(event) => updateForm("description", event.target.value)}
             />
           </label>
 
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid min-w-0 gap-3 md:grid-cols-2">
             <label className="grid gap-1 text-sm font-semibold text-stone-700">
               Ingredients
               <textarea
@@ -284,7 +303,7 @@ export function ProductEditor({ initialProducts }: { initialProducts: Product[] 
             </label>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-[160px_1fr]">
+          <div className="grid min-w-0 gap-3 md:grid-cols-[160px_minmax(0,1fr)]">
             <label className="grid gap-1 text-sm font-semibold text-stone-700">
               Price
               <input
@@ -297,13 +316,46 @@ export function ProductEditor({ initialProducts }: { initialProducts: Product[] 
             </label>
             <label className="grid gap-1 text-sm font-semibold text-stone-700">
               Product color style
-              <input
-                className="h-11 rounded-md border border-stone-300 px-3 font-normal"
+              <textarea
+                className="min-h-20 min-w-0 rounded-md border border-stone-300 p-3 font-normal leading-6"
                 value={form.imageStyle}
                 onChange={(event) => updateForm("imageStyle", event.target.value)}
               />
             </label>
           </div>
+
+          {!form.id ? (
+            <div className="grid gap-3 rounded-md border border-stone-200 bg-white p-3 md:grid-cols-[1fr_140px_120px]">
+              <label className="flex items-center gap-2 text-sm font-semibold text-stone-700">
+                <input
+                  type="checkbox"
+                  checked={form.includeInCurrentMenu}
+                  onChange={(event) =>
+                    updateForm("includeInCurrentMenu", event.target.checked)
+                  }
+                />
+                Add to current weekly menu
+              </label>
+              <label className="grid gap-1 text-sm font-semibold text-stone-700">
+                Weekly quantity
+                <input
+                  className="h-10 rounded-md border border-stone-300 px-3 font-normal"
+                  min={0}
+                  type="number"
+                  value={form.weeklyQuantity}
+                  onChange={(event) => updateForm("weeklyQuantity", event.target.value)}
+                />
+              </label>
+              <label className="flex items-end gap-2 pb-2 text-sm font-semibold text-stone-700">
+                <input
+                  type="checkbox"
+                  checked={form.featured}
+                  onChange={(event) => updateForm("featured", event.target.checked)}
+                />
+                Featured
+              </label>
+            </div>
+          ) : null}
 
           <label className="flex items-center gap-2 text-sm font-semibold text-stone-700">
             <input
@@ -311,7 +363,7 @@ export function ProductEditor({ initialProducts }: { initialProducts: Product[] 
               checked={form.active}
               onChange={(event) => updateForm("active", event.target.checked)}
             />
-            Active on storefront and menus
+            Active in catalog and eligible for weekly menus
           </label>
 
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -322,12 +374,12 @@ export function ProductEditor({ initialProducts }: { initialProducts: Product[] 
             {message ? (
               <span
                 className={`inline-flex items-center gap-2 text-sm font-semibold ${
-                  message === "Product saved." || message.startsWith("Image uploaded")
+                  message.startsWith("Product saved") || message.startsWith("Image uploaded")
                     ? "text-emerald-800"
                     : "text-[#a94334]"
                 }`}
               >
-                {message === "Product saved." || message.startsWith("Image uploaded") ? (
+                {message.startsWith("Product saved") || message.startsWith("Image uploaded") ? (
                   <CheckCircle2 size={16} />
                 ) : null}
                 {message}

@@ -8,6 +8,10 @@ export type Product = {
   ingredients: string[];
   allergens: string[];
   priceCents: number;
+  stripeProductId?: string | null;
+  stripePriceId?: string | null;
+  stripePriceCents?: number | null;
+  stripeSyncedAt?: string | null;
   imageUrl: string | null;
   imageStyle: string;
   active: boolean;
@@ -87,6 +91,7 @@ export type CheckoutRequest = {
   customer: CustomerDetails;
   address: DeliveryAddress;
   deliveryWindowId: string;
+  deliveryInstructions?: string;
   notes?: string;
 };
 
@@ -122,10 +127,13 @@ export type AdminOrder = {
     phone?: string;
   };
   deliveryMiles: number | null;
+  deliveryInstructions: string | null;
+  deliveryCheck: Record<string, unknown> | null;
   notes: string | null;
   paidAt: string | null;
   createdAt: string;
   updatedAt: string;
   stripeCheckoutSessionId: string | null;
+  checkoutCancelToken: string | null;
   items: AdminOrderItem[];
 };

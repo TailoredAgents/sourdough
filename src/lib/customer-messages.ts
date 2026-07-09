@@ -55,6 +55,7 @@ export function buildLastMinuteRequestBody({
     "",
     `Preferred delivery window: ${deliveryWindowLabel}`,
     `Address: ${address.line1}${address.line2 ? `, ${address.line2}` : ""}, ${address.city}, ${address.state} ${address.postalCode}`,
+    `Delivery instructions: ${checkout.deliveryInstructions || "None"}`,
     "",
     `Notes: ${checkout.notes || "None"}`,
   ].join("\n");

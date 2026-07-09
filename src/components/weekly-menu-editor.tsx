@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { CheckCircle2, Loader2, Save } from "lucide-react";
+import { CheckCircle2, Copy, Loader2, Save } from "lucide-react";
 import type { Product, WeeklyMenu } from "@/lib/types";
 import { formatCurrency } from "@/lib/utils";
 import { Button } from "./button";
@@ -90,20 +90,38 @@ export function WeeklyMenuEditor({
     }));
   }
 
+  function cloneAsNewMenu() {
+    setMessage("Cloned current menu. Adjust dates, then save to create it.");
+    setForm((current) => {
+      const startsAt = current.startsAt ? new Date(current.startsAt) : new Date();
+      const endsAt = current.endsAt ? new Date(current.endsAt) : new Date();
+      const cutoffAt = current.orderCutoffAt
+        ? new Date(current.orderCutoffAt)
+        : new Date();
+      startsAt.setDate(startsAt.getDate() + 7);
+      endsAt.setDate(endsAt.getDate() + 7);
+      cutoffAt.setDate(cutoffAt.getDate() + 7);
+      return {
+        ...current,
+        id: "",
+        name: `${current.name} Copy`,
+        startsAt: toLocalInputValue(startsAt.toISOString()),
+        endsAt: toLocalInputValue(endsAt.toISOString()),
+        orderCutoffAt: toLocalInputValue(cutoffAt.toISOString()),
+        items: current.items.map((item) => ({ ...item, soldQuantity: 0 })),
+      };
+    });
+  }
+
   function saveWeeklyMenu() {
     setMessage(null);
-
-    if (!form.id) {
-      setMessage("No published weekly menu exists yet.");
-      return;
-    }
 
     startTransition(async () => {
       const response = await fetch("/api/admin/weekly-menu", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          id: form.id,
+          id: form.id || undefined,
           name: form.name,
           orderCutoffAt: fromLocalInputValue(form.orderCutoffAt),
           startsAt: fromLocalInputValue(form.startsAt),
@@ -138,7 +156,11 @@ export function WeeklyMenuEditor({
         </div>
         <Button type="button" onClick={saveWeeklyMenu} disabled={isPending}>
           {isPending ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
-          Save weekly menu
+          {form.id ? "Save weekly menu" : "Create weekly menu"}
+        </Button>
+        <Button type="button" variant="secondary" onClick={cloneAsNewMenu}>
+          <Copy size={16} />
+          Clone as new
         </Button>
       </div>
 

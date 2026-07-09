@@ -31,6 +31,10 @@ create table if not exists products (
   ingredients text[] not null default '{}',
   allergens text[] not null default '{}',
   price_cents integer not null check (price_cents >= 0),
+  stripe_product_id text,
+  stripe_price_id text,
+  stripe_price_cents integer check (stripe_price_cents is null or stripe_price_cents >= 0),
+  stripe_synced_at timestamptz,
   image_url text,
   image_style text not null default 'from-stone-100 via-amber-100 to-orange-200',
   active boolean not null default true,
@@ -43,6 +47,18 @@ alter table products
 
 alter table products
   add column if not exists image_style text not null default 'from-stone-100 via-amber-100 to-orange-200';
+
+alter table products
+  add column if not exists stripe_product_id text;
+
+alter table products
+  add column if not exists stripe_price_id text;
+
+alter table products
+  add column if not exists stripe_price_cents integer check (stripe_price_cents is null or stripe_price_cents >= 0);
+
+alter table products
+  add column if not exists stripe_synced_at timestamptz;
 
 insert into storage.buckets (
   id,
@@ -90,8 +106,16 @@ create table if not exists delivery_settings (
   center_lng numeric(9,6) not null default -84.490800,
   radius_miles numeric(5,2) not null default 12,
   delivery_fee_cents integer not null default 600,
+  allowed_postal_codes text[] not null default array['30114', '30115', '30107', '30183'],
+  service_area_copy text not null default 'Delivery is available to selected local ZIP codes near Canton, GA.',
   check (id)
 );
+
+alter table delivery_settings
+  add column if not exists allowed_postal_codes text[] not null default array['30114', '30115', '30107', '30183'];
+
+alter table delivery_settings
+  add column if not exists service_area_copy text not null default 'Delivery is available to selected local ZIP codes near Canton, GA.';
 
 create table if not exists delivery_windows (
   id uuid primary key default gen_random_uuid(),
@@ -122,11 +146,23 @@ create table if not exists orders (
   total_cents integer not null default 0,
   delivery_address jsonb not null,
   delivery_miles numeric(5,2),
+  delivery_instructions text,
+  delivery_check jsonb,
   notes text,
   paid_at timestamptz,
+  checkout_cancel_token text unique,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table orders
+  add column if not exists delivery_instructions text;
+
+alter table orders
+  add column if not exists delivery_check jsonb;
+
+alter table orders
+  add column if not exists checkout_cancel_token text unique;
 
 create table if not exists order_items (
   id uuid primary key default gen_random_uuid(),
@@ -162,6 +198,29 @@ create table if not exists admin_users (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+create table if not exists email_events (
+  id uuid primary key default gen_random_uuid(),
+  template text not null,
+  recipient text not null,
+  order_id uuid references orders(id) on delete set null,
+  customer_message_id uuid references customer_messages(id) on delete set null,
+  status text not null,
+  provider_id text,
+  provider_response jsonb,
+  error_message text,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists rate_limit_events (
+  id uuid primary key default gen_random_uuid(),
+  scope text not null,
+  key_hash text not null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists rate_limit_events_scope_key_created_idx
+  on rate_limit_events(scope, key_hash, created_at desc);
 
 create or replace function reserve_order_inventory(
   p_delivery_window_id uuid,
@@ -276,6 +335,8 @@ alter table order_items enable row level security;
 alter table customer_messages enable row level security;
 alter table ai_knowledge_entries enable row level security;
 alter table admin_users enable row level security;
+alter table email_events enable row level security;
+alter table rate_limit_events enable row level security;
 
 drop policy if exists "Public can read active products" on products;
 create policy "Public can read active products" on products

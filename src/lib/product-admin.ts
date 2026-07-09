@@ -11,6 +11,9 @@ export const productAdminSchema = z.object({
   imageUrl: z.string().url().nullable().optional(),
   imageStyle: z.string().min(3).max(160),
   active: z.boolean(),
+  includeInCurrentMenu: z.boolean().optional().default(false),
+  weeklyQuantity: z.number().int().min(0).max(1000).optional().default(0),
+  featured: z.boolean().optional().default(false),
 });
 
 export type ProductAdminInput = z.infer<typeof productAdminSchema>;

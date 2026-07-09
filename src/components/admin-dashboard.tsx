@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import {
   Bot,
   ClipboardList,
+  Copy,
   Inbox,
   Loader2,
   Megaphone,
@@ -54,6 +55,7 @@ export function AdminDashboard({
     "Announce this week's classic country loaf, rosemary garlic loaf, and honey butter. Mention Thursday cutoff.",
   );
   const [draft, setDraft] = useState("");
+  const [draftMessage, setDraftMessage] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const openRequestCount = customerMessages.filter(
     (message) => message.status === "new" || message.status === "in_progress",
@@ -69,6 +71,7 @@ export function AdminDashboard({
   ];
 
   function generateDraft() {
+    setDraftMessage(null);
     startTransition(async () => {
       const response = await fetch("/api/admin/draft", {
         method: "POST",
@@ -77,7 +80,14 @@ export function AdminDashboard({
       });
       const payload = (await response.json()) as { draft: string };
       setDraft(payload.draft);
+      setDraftMessage("Draft generated for review.");
     });
+  }
+
+  async function copyDraft() {
+    if (!draft) return;
+    await navigator.clipboard.writeText(draft);
+    setDraftMessage("Draft copied.");
   }
 
   return (
@@ -92,12 +102,12 @@ export function AdminDashboard({
               Luna &amp; Lorelai&apos;s Sourdough admin
             </h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-stone-700">
-              This is the v1 operating console. It is demo-backed locally and
-              ready to connect to Supabase Auth and database tables.
+              This is the v1 operating console for menu, delivery, orders,
+              customer requests, and approved AI knowledge.
             </p>
           </div>
           <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900">
-            Add Supabase Auth before live launch
+            Drafts and order status changes should be reviewed before sending
           </div>
         </div>
 
@@ -155,7 +165,7 @@ export function AdminDashboard({
               <h2 className="text-xl font-bold text-stone-950">AI drafting assistant</h2>
             </div>
             <p className="mt-1 text-sm text-stone-700">
-              Drafts must be reviewed and edited before sending to customers.
+              Draft only. Review, edit, and copy before sending anywhere.
             </p>
             <div className="mt-5 grid gap-3">
               <select
@@ -183,6 +193,22 @@ export function AdminDashboard({
                 onChange={(event) => setDraft(event.target.value)}
                 placeholder="Generated draft appears here for editing."
               />
+              <div className="flex items-center gap-3">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={copyDraft}
+                  disabled={!draft}
+                >
+                  <Copy size={16} />
+                  Copy draft
+                </Button>
+                {draftMessage ? (
+                  <span className="text-sm font-semibold text-stone-700">
+                    {draftMessage}
+                  </span>
+                ) : null}
+              </div>
             </div>
           </div>
         </section>

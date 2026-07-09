@@ -14,6 +14,8 @@ type DeliveryCheck = {
   miles: number | null;
   message: string;
   feeCents: number;
+  postalCode: string | null;
+  allowedPostalCodes: string[];
 };
 
 export function OrderBuilder({
@@ -41,6 +43,7 @@ export function OrderBuilder({
   const [deliveryWindowId, setDeliveryWindowId] = useState(
     deliveryWindows[0]?.id || "",
   );
+  const [deliveryInstructions, setDeliveryInstructions] = useState("");
   const [notes, setNotes] = useState("");
   const [deliveryCheck, setDeliveryCheck] = useState<DeliveryCheck | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -93,6 +96,7 @@ export function OrderBuilder({
           customer,
           address,
           deliveryWindowId,
+          deliveryInstructions,
           notes,
         }),
       });
@@ -140,7 +144,7 @@ export function OrderBuilder({
           </p>
 
           <div className="mt-8 grid gap-4">
-            {menu.map((item) => {
+              {menu.map((item) => {
               const quantity = quantities[item.id] || 0;
               return (
                 <article
@@ -206,6 +210,11 @@ export function OrderBuilder({
                 </article>
               );
             })}
+            {!menu.length ? (
+              <div className="rounded-md border border-dashed border-stone-300 bg-[#fffaf2] p-5 text-sm leading-6 text-stone-700">
+                Ordering is not open yet. Please check back for the next published bake drop.
+              </div>
+            ) : null}
           </div>
         </div>
 
@@ -214,7 +223,7 @@ export function OrderBuilder({
             <div>
               <h3 className="text-xl font-bold text-stone-950">Checkout details</h3>
               <p className="mt-1 text-sm text-stone-700">
-                Delivery is radius-based from Canton, GA.
+                Delivery is available to selected Canton-area ZIP codes.
               </p>
             </div>
             <span className="rounded-sm bg-white px-2 py-1 text-xs font-bold uppercase text-[#a94334]">
@@ -294,7 +303,7 @@ export function OrderBuilder({
             </div>
             <Button type="button" variant="secondary" onClick={checkDelivery}>
               {isPending ? <Loader2 className="animate-spin" size={16} /> : null}
-              Check delivery radius
+              Check delivery ZIP
             </Button>
             {deliveryCheck ? (
               <div className="flex gap-2 rounded-md bg-white p-3 text-sm text-stone-700">
@@ -311,13 +320,23 @@ export function OrderBuilder({
               className="h-11 rounded-md border border-stone-300 px-3 text-sm"
               value={deliveryWindowId}
               onChange={(event) => setDeliveryWindowId(event.target.value)}
+              disabled={!deliveryWindows.length}
             >
+              {!deliveryWindows.length ? (
+                <option value="">No delivery windows published</option>
+              ) : null}
               {deliveryWindows.map((window) => (
                 <option key={window.id} value={window.id}>
                   {window.label} ({window.capacity - window.reserved} spots)
                 </option>
               ))}
             </select>
+            <textarea
+              className="min-h-20 rounded-md border border-stone-300 p-3 text-sm"
+              placeholder="Delivery instructions"
+              value={deliveryInstructions}
+              onChange={(event) => setDeliveryInstructions(event.target.value)}
+            />
             <textarea
               className="min-h-24 rounded-md border border-stone-300 p-3 text-sm"
               placeholder="Notes, delivery details, or last-minute request"
@@ -361,7 +380,7 @@ export function OrderBuilder({
             onClick={submitOrder}
           >
             {isPending ? <Loader2 className="animate-spin" size={16} /> : <Send size={16} />}
-            {afterCutoff ? "Send request" : "Continue to Stripe Checkout"}
+            {afterCutoff ? "Send request" : "Continue to secure checkout"}
           </Button>
           {message ? <p className="mt-3 text-sm text-[#a94334]">{message}</p> : null}
         </aside>
