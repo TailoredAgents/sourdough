@@ -6,4 +6,4 @@ export function getOpenAI() {
   return new OpenAI({ apiKey });
 }
 
-export const aiModel = process.env.OPENAI_MODEL || "gpt-5.4-mini";
+export const aiModel = process.env.OPENAI_MODEL || "gpt-5-mini";

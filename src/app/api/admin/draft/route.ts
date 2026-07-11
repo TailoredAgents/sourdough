@@ -17,9 +17,9 @@ const draftSchema = z.object({
   context: z.string().min(1).max(2000),
 });
 
-function fallbackDraft(type: string, context: string) {
+export function fallbackDraft(type: string, context: string) {
   if (type === "weekly_announcement") {
-    return `This week's Luna & Lorelai's Sourdough bake is open for orders. Order by Thursday at 8:00 PM for next week's local delivery from Canton, GA.\n\n${context}\n\nQuantities are limited, and last-minute requests after Thursday are reviewed manually.`;
+    return `This week's Luna & Lorelai's Sourdough bake is open for local delivery orders from Canton, GA.\n\n${context}\n\nQuantities are limited. Review the current weekly menu cutoff before publishing this draft.`;
   }
 
   return `Draft for review:\n\n${context}\n\nPlease confirm product details, delivery timing, and any allergen wording before sending.`;
@@ -46,23 +46,30 @@ export async function POST(request: Request) {
     });
   }
 
-  const [menu, aiKnowledge] = await Promise.all([
-    getActiveMenuData(),
-    getApprovedAiKnowledgeData(),
-  ]);
+  try {
+    const [menu, aiKnowledge] = await Promise.all([
+      getActiveMenuData(),
+      getApprovedAiKnowledgeData(),
+    ]);
 
-  const menuContext = menu
-    .map((item) => `${item.name}: ${item.description}`)
-    .join("\n");
+    const menuContext = menu
+      .map((item) => `${item.name}: ${item.description}`)
+      .join("\n");
 
-  const response = await openai.responses.create({
-    model: aiModel,
-    instructions:
-      "You draft concise bakery copy for the owner of Luna & Lorelai's Sourdough. Draft only; never claim the message has been sent. Preserve legal and allergen caution. Mention that customer-facing text should be reviewed before publishing.",
-    input: `Draft type: ${parsed.data.type}\n\nOwner context:\n${parsed.data.context}\n\nApproved facts:\n${aiKnowledge.join("\n")}\n\nMenu:\n${menuContext}`,
-  });
+    const response = await openai.responses.create({
+      model: aiModel,
+      instructions:
+        "You draft concise bakery copy for the owner of Luna & Lorelai's Sourdough. Draft only; never claim the message has been sent. Preserve legal and allergen caution. Mention that customer-facing text should be reviewed before publishing.",
+      input: `Draft type: ${parsed.data.type}\n\nOwner context:\n${parsed.data.context}\n\nApproved facts:\n${aiKnowledge.join("\n")}\n\nMenu:\n${menuContext}`,
+    });
 
-  return NextResponse.json({
-    draft: response.output_text || fallbackDraft(parsed.data.type, parsed.data.context),
-  });
+    return NextResponse.json({
+      draft: response.output_text || fallbackDraft(parsed.data.type, parsed.data.context),
+    });
+  } catch (error) {
+    console.error("[admin:draft] failed to generate draft", error);
+    return NextResponse.json({
+      draft: fallbackDraft(parsed.data.type, parsed.data.context),
+    });
+  }
 }

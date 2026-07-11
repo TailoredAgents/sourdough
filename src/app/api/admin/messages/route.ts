@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { getCurrentAdmin } from "@/lib/admin-auth";
 import {
+  customerMessageReplySchema,
   customerMessageStatusSchema,
   getCustomerMessagesData,
+  sendCustomerMessageReply,
   updateCustomerMessageStatus,
 } from "@/lib/customer-messages";
 
@@ -45,6 +47,37 @@ export async function PATCH(request: Request) {
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Message could not be updated.";
+    return NextResponse.json({ error: message }, { status: 400 });
+  }
+}
+
+export async function POST(request: Request) {
+  const admin = await getCurrentAdmin();
+  if (!admin) {
+    return NextResponse.json(
+      { error: "Admin authorization is required." },
+      { status: 401 },
+    );
+  }
+
+  const parsed = customerMessageReplySchema.safeParse(await request.json());
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: parsed.error.issues[0]?.message || "Invalid customer reply." },
+      { status: 400 },
+    );
+  }
+
+  try {
+    return NextResponse.json(
+      await sendCustomerMessageReply({
+        ...parsed.data,
+        adminEmail: admin.email,
+      }),
+    );
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Reply could not be sent.";
     return NextResponse.json({ error: message }, { status: 400 });
   }
 }

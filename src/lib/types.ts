@@ -34,6 +34,10 @@ export type WeeklyMenu = {
   items: MenuProduct[];
 };
 
+export type WeeklyMenuSummary = Omit<WeeklyMenu, "items"> & {
+  itemCount: number;
+};
+
 export type MenuProduct = Product &
   WeeklyMenuItem & {
     remainingQuantity: number;
@@ -55,6 +59,19 @@ export type CustomerMessage = {
   subject: string;
   body: string;
   status: string;
+  createdAt: string;
+};
+
+export type CustomerMessageReply = {
+  id: string;
+  customerMessageId: string;
+  adminEmail: string;
+  recipient: string;
+  subject: string;
+  body: string;
+  status: string;
+  providerId: string | null;
+  errorMessage: string | null;
   createdAt: string;
 };
 

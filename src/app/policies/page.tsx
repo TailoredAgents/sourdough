@@ -8,7 +8,7 @@ import { policyLastUpdated, policyPages } from "@/lib/policies";
 export const metadata: Metadata = {
   title: "Policies",
   description:
-    "Luna & Lorelai's Sourdough customer policies, cottage food notice, privacy terms, and refund information.",
+    "Luna & Lorelai's Sourdough customer policies for local delivery, allergens, cottage-food notices, privacy, refunds, and order terms.",
 };
 
 export default function PoliciesPage() {
@@ -25,8 +25,9 @@ export default function PoliciesPage() {
               Policies and bakery notices
             </h1>
             <p className="mt-4 max-w-3xl text-base leading-7 text-stone-700">
-              These pages set expectations for local delivery, allergens,
-              refunds, privacy, and order handling.
+              Review the customer policies for local delivery, allergens,
+              Georgia cottage-food notices, refunds, privacy, and order
+              handling before placing an order.
             </p>
             <p className="mt-3 text-sm text-stone-500">
               Last updated: {policyLastUpdated}

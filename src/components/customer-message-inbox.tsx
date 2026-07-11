@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { CheckCircle2, Inbox, Loader2, MailOpen } from "lucide-react";
+import { CheckCircle2, Inbox, Loader2, MailOpen, Send } from "lucide-react";
 import type { CustomerMessage } from "@/lib/types";
 import { Button } from "./button";
 
@@ -21,6 +21,10 @@ function formatDate(value: string) {
   }).format(date);
 }
 
+function defaultReplySubject(message?: CustomerMessage) {
+  return message ? `Re: ${message.subject}` : "";
+}
+
 export function CustomerMessageInbox({
   initialMessages,
 }: {
@@ -31,6 +35,13 @@ export function CustomerMessageInbox({
     initialMessages[0]?.id ?? null,
   );
   const [message, setMessage] = useState<string | null>(null);
+  const [replySubject, setReplySubject] = useState(
+    defaultReplySubject(initialMessages[0]),
+  );
+  const [replyBody, setReplyBody] = useState("");
+  const [statusAfterSend, setStatusAfterSend] = useState<"in_progress" | "handled">(
+    "handled",
+  );
   const [isPending, startTransition] = useTransition();
 
   const selectedMessage = useMemo(
@@ -66,6 +77,37 @@ export function CustomerMessageInbox({
     });
   }
 
+  function sendReply() {
+    if (!selectedMessage) return;
+    setMessage(null);
+    startTransition(async () => {
+      const response = await fetch("/api/admin/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: selectedMessage.id,
+          subject: replySubject.trim(),
+          body: replyBody.trim(),
+          statusAfterSend,
+        }),
+      });
+      const payload = (await response.json()) as {
+        messages?: CustomerMessage[];
+        error?: string;
+      };
+
+      if (!response.ok || !payload.messages) {
+        setMessage(payload.error || "Reply could not be sent.");
+        return;
+      }
+
+      setMessages(payload.messages);
+      setSelectedId(selectedMessage.id);
+      setReplyBody("");
+      setMessage("Reply sent.");
+    });
+  }
+
   return (
     <section className="mt-8 rounded-md border border-stone-200 bg-white p-5">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
@@ -93,6 +135,9 @@ export function CustomerMessageInbox({
               type="button"
               onClick={() => {
                 setSelectedId(entry.id);
+                setReplySubject(defaultReplySubject(entry));
+                setReplyBody("");
+                setStatusAfterSend("handled");
                 setMessage(null);
               }}
               className={`rounded-md border p-3 text-left transition ${
@@ -156,6 +201,47 @@ export function CustomerMessageInbox({
                 {selectedMessage.body}
               </pre>
 
+              <div className="mt-4 grid gap-3 rounded-md border border-stone-200 bg-white p-4">
+                <label className="grid gap-1 text-sm font-semibold text-stone-700">
+                  Reply subject
+                  <input
+                    className="h-10 rounded-md border border-stone-300 px-3 font-normal"
+                    value={replySubject}
+                    onChange={(event) => setReplySubject(event.target.value)}
+                  />
+                </label>
+                <label className="grid gap-1 text-sm font-semibold text-stone-700">
+                  Reply body
+                  <textarea
+                    className="min-h-32 rounded-md border border-stone-300 p-3 font-normal leading-6"
+                    value={replyBody}
+                    onChange={(event) => setReplyBody(event.target.value)}
+                    placeholder="Write the customer reply here."
+                  />
+                </label>
+                <label className="grid max-w-xs gap-1 text-sm font-semibold text-stone-700">
+                  After sending
+                  <select
+                    className="h-10 rounded-md border border-stone-300 bg-white px-3 font-normal"
+                    value={statusAfterSend}
+                    onChange={(event) =>
+                      setStatusAfterSend(event.target.value as "in_progress" | "handled")
+                    }
+                  >
+                    <option value="handled">Mark handled</option>
+                    <option value="in_progress">Keep in progress</option>
+                  </select>
+                </label>
+                <Button
+                  type="button"
+                  disabled={isPending || !replySubject.trim() || !replyBody.trim()}
+                  onClick={sendReply}
+                >
+                  {isPending ? <Loader2 className="animate-spin" size={16} /> : <Send size={16} />}
+                  Send reply
+                </Button>
+              </div>
+
               <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
                 <Button
                   type="button"
@@ -185,12 +271,14 @@ export function CustomerMessageInbox({
                 {message ? (
                   <span
                     className={`inline-flex items-center gap-2 text-sm font-semibold ${
-                      message === "Message updated."
+                      message === "Message updated." || message === "Reply sent."
                         ? "text-emerald-800"
                         : "text-[#a94334]"
                     }`}
                   >
-                    {message === "Message updated." ? <CheckCircle2 size={16} /> : null}
+                    {message === "Message updated." || message === "Reply sent." ? (
+                      <CheckCircle2 size={16} />
+                    ) : null}
                     {message}
                   </span>
                 ) : null}

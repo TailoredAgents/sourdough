@@ -97,8 +97,20 @@ create table if not exists weekly_menu_items (
   available_quantity integer not null check (available_quantity >= 0),
   sold_quantity integer not null default 0 check (sold_quantity >= 0),
   featured boolean not null default false,
+  check (sold_quantity <= available_quantity),
   unique (weekly_menu_id, product_id)
 );
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'weekly_menu_items_sold_lte_available'
+  ) then
+    alter table weekly_menu_items
+      add constraint weekly_menu_items_sold_lte_available
+      check (sold_quantity <= available_quantity);
+  end if;
+end $$;
 
 create table if not exists delivery_settings (
   id boolean primary key default true,
@@ -124,8 +136,20 @@ create table if not exists delivery_windows (
   starts_at timestamptz not null,
   ends_at timestamptz not null,
   capacity integer not null check (capacity >= 0),
-  reserved integer not null default 0 check (reserved >= 0)
+  reserved integer not null default 0 check (reserved >= 0),
+  check (reserved <= capacity)
 );
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'delivery_windows_reserved_lte_capacity'
+  ) then
+    alter table delivery_windows
+      add constraint delivery_windows_reserved_lte_capacity
+      check (reserved <= capacity);
+  end if;
+end $$;
 
 create table if not exists customers (
   id uuid primary key default gen_random_uuid(),
@@ -179,6 +203,19 @@ create table if not exists customer_messages (
   subject text not null,
   body text not null,
   status text not null default 'new',
+  created_at timestamptz not null default now()
+);
+
+create table if not exists customer_message_replies (
+  id uuid primary key default gen_random_uuid(),
+  customer_message_id uuid not null references customer_messages(id) on delete cascade,
+  admin_email text not null,
+  recipient text not null,
+  subject text not null,
+  body text not null,
+  status text not null default 'pending',
+  provider_id text,
+  error_message text,
   created_at timestamptz not null default now()
 );
 
@@ -333,6 +370,7 @@ alter table customers enable row level security;
 alter table orders enable row level security;
 alter table order_items enable row level security;
 alter table customer_messages enable row level security;
+alter table customer_message_replies enable row level security;
 alter table ai_knowledge_entries enable row level security;
 alter table admin_users enable row level security;
 alter table email_events enable row level security;

@@ -1,5 +1,11 @@
 import { z } from "zod";
-import type { CheckoutRequest, CustomerMessage, MenuProduct } from "./types";
+import type {
+  CheckoutRequest,
+  CustomerMessage,
+  CustomerMessageReply,
+  MenuProduct,
+} from "./types";
+import { sendCustomerMessageReply as sendCustomerMessageReplyEmail } from "./email";
 import { getSupabaseAdminClient } from "./supabase";
 
 type CustomerMessageRow = {
@@ -9,6 +15,19 @@ type CustomerMessageRow = {
   subject: string;
   body: string;
   status: string;
+  created_at: string;
+};
+
+type CustomerMessageReplyRow = {
+  id: string;
+  customer_message_id: string;
+  admin_email: string;
+  recipient: string;
+  subject: string;
+  body: string;
+  status: string;
+  provider_id: string | null;
+  error_message: string | null;
   created_at: string;
 };
 
@@ -23,6 +42,13 @@ export const customerMessageStatusSchema = z.object({
   status: z.enum(["new", "in_progress", "handled", "closed"]),
 });
 
+export const customerMessageReplySchema = z.object({
+  id: z.string().uuid(),
+  subject: z.string().min(2).max(160),
+  body: z.string().min(2).max(4000),
+  statusAfterSend: z.enum(["in_progress", "handled"]).default("handled"),
+});
+
 function mapCustomerMessage(row: CustomerMessageRow): CustomerMessage {
   return {
     id: row.id,
@@ -33,6 +59,36 @@ function mapCustomerMessage(row: CustomerMessageRow): CustomerMessage {
     status: row.status,
     createdAt: row.created_at,
   };
+}
+
+function mapCustomerMessageReply(row: CustomerMessageReplyRow): CustomerMessageReply {
+  return {
+    id: row.id,
+    customerMessageId: row.customer_message_id,
+    adminEmail: row.admin_email,
+    recipient: row.recipient,
+    subject: row.subject,
+    body: row.body,
+    status: row.status,
+    providerId: row.provider_id,
+    errorMessage: row.error_message,
+    createdAt: row.created_at,
+  };
+}
+
+function getProviderId(result: unknown) {
+  if (
+    result &&
+    typeof result === "object" &&
+    "data" in result &&
+    result.data &&
+    typeof result.data === "object" &&
+    "id" in result.data
+  ) {
+    return String(result.data.id);
+  }
+
+  return null;
 }
 
 function buildItemSummary(items: LastMinuteRequestInput["items"]) {
@@ -116,4 +172,91 @@ export async function updateCustomerMessageStatus(id: string, status: string) {
 
   if (error) throw new Error(error.message);
   return getCustomerMessagesData();
+}
+
+export async function sendCustomerMessageReply({
+  adminEmail,
+  body,
+  id,
+  statusAfterSend,
+  subject,
+}: z.infer<typeof customerMessageReplySchema> & { adminEmail: string }) {
+  const supabase = getSupabaseAdminClient();
+  if (!supabase) throw new Error("Supabase admin client is not configured.");
+
+  const { data: message, error: lookupError } = await supabase
+    .from("customer_messages")
+    .select("id, customer_email")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (lookupError) throw new Error(lookupError.message);
+  const recipient = String(message?.customer_email || "");
+  if (!message || !recipient) {
+    throw new Error("This message does not have a customer email to reply to.");
+  }
+
+  const { data: reply, error: insertError } = await supabase
+    .from("customer_message_replies")
+    .insert({
+      customer_message_id: id,
+      admin_email: adminEmail,
+      recipient,
+      subject,
+      body,
+      status: "pending",
+    })
+    .select(
+      "id, customer_message_id, admin_email, recipient, subject, body, status, provider_id, error_message, created_at",
+    )
+    .single();
+
+  if (insertError) throw new Error(insertError.message);
+  const replyRow = reply as CustomerMessageReplyRow;
+
+  try {
+    const result = await sendCustomerMessageReplyEmail({
+      to: recipient,
+      subject,
+      body,
+      customerMessageId: id,
+    });
+    const providerId = getProviderId(result);
+    const { error: updateReplyError } = await supabase
+      .from("customer_message_replies")
+      .update({
+        status: "sent",
+        provider_id: providerId,
+      })
+      .eq("id", replyRow.id);
+
+    if (updateReplyError) throw new Error(updateReplyError.message);
+
+    const { error: updateMessageError } = await supabase
+      .from("customer_messages")
+      .update({ status: statusAfterSend })
+      .eq("id", id);
+
+    if (updateMessageError) throw new Error(updateMessageError.message);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Reply could not be sent.";
+    await supabase
+      .from("customer_message_replies")
+      .update({
+        status: "failed",
+        error_message: message,
+      })
+      .eq("id", replyRow.id);
+    throw error;
+  }
+
+  return {
+    messages: await getCustomerMessagesData(),
+    reply: mapCustomerMessageReply({
+      ...replyRow,
+      status: "sent",
+      provider_id: null,
+      error_message: null,
+    }),
+  };
 }

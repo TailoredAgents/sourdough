@@ -4,7 +4,7 @@ import { requireAdmin } from "@/lib/admin-auth";
 import { getAiKnowledgeEntriesData } from "@/lib/ai-knowledge-admin";
 import { getCustomerMessagesData } from "@/lib/customer-messages";
 import { getAdminOrdersData } from "@/lib/order-admin";
-import { getStorefrontData } from "@/lib/storefront-data";
+import { getStorefrontData, getWeeklyMenusData } from "@/lib/storefront-data";
 
 export const metadata = {
   title: "Admin",
@@ -17,11 +17,13 @@ export default async function AdminPage() {
     customerMessages,
     aiKnowledgeEntries,
     orders,
+    weeklyMenus,
   ] = await Promise.all([
     getStorefrontData(),
     getCustomerMessagesData(),
     getAiKnowledgeEntriesData(),
     getAdminOrdersData(),
+    getWeeklyMenusData(),
   ]);
 
   return (
@@ -55,6 +57,7 @@ export default async function AdminPage() {
         orders={orders}
         products={products}
         weeklyMenu={weeklyMenu}
+        weeklyMenus={weeklyMenus}
       />
     </>
   );

@@ -208,13 +208,13 @@ insert into ai_knowledge_entries (
   (
     '00000000-0000-4000-8000-000000000303',
     'Weekly cutoff',
-    'Weekly orders close every Thursday at 8:00 PM for the next week''s bake and delivery schedule.',
+    'The current order cutoff is set on the active weekly menu and shown before checkout.',
     true
   ),
   (
     '00000000-0000-4000-8000-000000000304',
     'Last-minute requests',
-    'After the cutoff, customers can send a last-minute request, but it is not guaranteed.',
+    'After the posted cutoff, customers can send a last-minute request, but the bakery must confirm availability.',
     true
   ),
   (
@@ -226,7 +226,7 @@ insert into ai_knowledge_entries (
   (
     '00000000-0000-4000-8000-000000000306',
     'Delivery settings',
-    'Delivery radius and delivery fee are configured by the bakery owner before launch.',
+    'Allowed delivery ZIP codes and delivery fee are configured by the bakery owner in admin.',
     true
   )
 on conflict (id) do update set

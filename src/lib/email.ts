@@ -5,7 +5,8 @@ type EmailTemplate =
   | "customer_order_confirmation"
   | "owner_new_order"
   | "last_minute_request"
-  | "order_status_update";
+  | "order_status_update"
+  | "customer_message_reply";
 
 type BaseEmail = {
   to: string;
@@ -25,6 +26,13 @@ type OwnerEmail = BaseEmail & {
 
 type StatusEmail = BaseEmail & {
   statusLabel: string;
+};
+
+type CustomerReplyEmail = {
+  to: string;
+  subject: string;
+  body: string;
+  customerMessageId: string;
 };
 
 function fromAddress() {
@@ -130,6 +138,13 @@ function renderStatusUpdate({
   };
 }
 
+function renderCustomerMessageReply({ subject, body }: CustomerReplyEmail) {
+  return {
+    subject,
+    text: `${body}\n\nLuna & Lorelai's Sourdough`,
+  };
+}
+
 async function sendTemplatedEmail({
   template,
   to,
@@ -231,6 +246,15 @@ export async function sendOrderStatusUpdate(input: StatusEmail) {
     to: input.to,
     orderId: input.orderId,
     ...renderStatusUpdate(input),
+  });
+}
+
+export async function sendCustomerMessageReply(input: CustomerReplyEmail) {
+  return sendTemplatedEmail({
+    template: "customer_message_reply",
+    to: input.to,
+    customerMessageId: input.customerMessageId,
+    ...renderCustomerMessageReply(input),
   });
 }
 

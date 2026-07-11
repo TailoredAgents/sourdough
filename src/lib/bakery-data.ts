@@ -135,10 +135,10 @@ export const deliveryWindows: DeliveryWindow[] = [
 export const aiKnowledge = [
   `${bakery.name} is a local cottage bakery in ${bakery.location}.`,
   "Orders are intended for local Georgia delivery only. The v1 site does not ship bread.",
-  "Weekly orders close every Thursday at 8:00 PM for the next week's bake and delivery schedule.",
-  "After the cutoff, customers can send a last-minute request, but it is not guaranteed.",
+  "The current order cutoff is set on the active weekly menu and shown before checkout.",
+  "After the posted cutoff, customers can send a last-minute request, but the bakery must confirm availability.",
   "All product allergen details must come from the product cards. Do not claim allergen-free preparation.",
-  "Allowed delivery ZIP codes and delivery fee are configured by the bakery owner before launch.",
+  "Allowed delivery ZIP codes and delivery fee are configured by the bakery owner in admin.",
 ];
 
 export function getProduct(productId: string) {

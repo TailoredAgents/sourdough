@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { CheckCircle2, Loader2, Plus, Save, Trash2 } from "lucide-react";
 import type { DeliverySettings } from "@/lib/delivery";
-import type { DeliveryWindow } from "@/lib/types";
+import type { DeliveryWindow, WeeklyMenuSummary } from "@/lib/types";
 import { formatCurrency } from "@/lib/utils";
 import { Button } from "./button";
 
@@ -30,6 +30,7 @@ type DeliveryWindowForm = {
 type DeliveryPayload = {
   deliverySettings?: DeliverySettings;
   deliveryWindows?: DeliveryWindow[];
+  weeklyMenuId?: string | null;
   error?: string;
 };
 
@@ -97,14 +98,21 @@ function buildNewWindow(): DeliveryWindowForm {
 export function DeliveryEditor({
   initialDeliverySettings,
   initialDeliveryWindows,
+  onSelectedWeeklyMenuIdChange,
+  selectedWeeklyMenuId,
+  weeklyMenus,
 }: {
   initialDeliverySettings: DeliverySettings;
   initialDeliveryWindows: DeliveryWindow[];
+  onSelectedWeeklyMenuIdChange: (id: string) => void;
+  selectedWeeklyMenuId: string;
+  weeklyMenus: WeeklyMenuSummary[];
 }) {
   const [settings, setSettings] = useState(() => buildSettingsForm(initialDeliverySettings));
   const [windows, setWindows] = useState(() => initialDeliveryWindows.map(buildWindowForm));
   const [message, setMessage] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const lastLoadedMenuId = useRef(selectedWeeklyMenuId);
 
   const activeWindows = windows.filter((window) => !window.remove);
   const deliveryFeeCents = Math.round(Number(settings.deliveryFeeDollars || 0) * 100);
@@ -124,6 +132,32 @@ export function DeliveryEditor({
         return window.id ? [{ ...window, remove: true }] : [];
       }),
     );
+  }
+
+  useEffect(() => {
+    if (!selectedWeeklyMenuId || lastLoadedMenuId.current === selectedWeeklyMenuId) return;
+    lastLoadedMenuId.current = selectedWeeklyMenuId;
+    setMessage(null);
+
+    startTransition(async () => {
+      const response = await fetch(
+        `/api/admin/delivery?weeklyMenuId=${encodeURIComponent(selectedWeeklyMenuId)}`,
+      );
+      const payload = (await response.json()) as DeliveryPayload;
+
+      if (!response.ok || !payload.deliverySettings || !payload.deliveryWindows) {
+        setMessage(payload.error || "Delivery windows could not be loaded.");
+        return;
+      }
+
+      setSettings(buildSettingsForm(payload.deliverySettings));
+      setWindows(payload.deliveryWindows.map(buildWindowForm));
+    });
+  }, [selectedWeeklyMenuId]);
+
+  function selectWeeklyMenu(id: string) {
+    if (!id) return;
+    onSelectedWeeklyMenuIdChange(id);
   }
 
   function saveDelivery() {
@@ -150,6 +184,7 @@ export function DeliveryEditor({
               .filter(Boolean),
             serviceAreaCopy: settings.serviceAreaCopy,
           },
+          weeklyMenuId: selectedWeeklyMenuId || undefined,
           windows: windows.map((window) => ({
             id: window.id,
             label: window.label,
@@ -170,6 +205,7 @@ export function DeliveryEditor({
 
       setSettings(buildSettingsForm(payload.deliverySettings));
       setWindows(payload.deliveryWindows.map(buildWindowForm));
+      if (payload.weeklyMenuId) onSelectedWeeklyMenuIdChange(payload.weeklyMenuId);
       setMessage("Delivery settings saved.");
     });
   }
@@ -190,6 +226,22 @@ export function DeliveryEditor({
       </div>
 
       <div className="mt-5 grid gap-3 lg:grid-cols-[1fr_1.2fr]">
+        <label className="grid gap-1 text-sm font-semibold text-stone-700 lg:col-span-2">
+          Delivery windows for bake drop
+          <select
+            className="h-11 rounded-md border border-stone-300 bg-white px-3 font-normal"
+            value={selectedWeeklyMenuId}
+            onChange={(event) => selectWeeklyMenu(event.target.value)}
+            disabled={isPending || !weeklyMenus.length}
+          >
+            {!weeklyMenus.length ? <option value="">No menus yet</option> : null}
+            {weeklyMenus.map((menu) => (
+              <option key={menu.id} value={menu.id}>
+                {menu.name} - {menu.published ? "published" : "draft"} - {menu.itemCount} items
+              </option>
+            ))}
+          </select>
+        </label>
         <label className="grid gap-1 text-sm font-semibold text-stone-700">
           Allowed ZIP codes
           <input

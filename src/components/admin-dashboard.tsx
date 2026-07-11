@@ -21,6 +21,7 @@ import type {
   Product,
   WeeklyMenu,
   AdminOrder,
+  WeeklyMenuSummary,
 } from "@/lib/types";
 import { formatCurrency } from "@/lib/utils";
 import { AiKnowledgeEditor } from "./ai-knowledge-editor";
@@ -40,6 +41,7 @@ export function AdminDashboard({
   orders,
   products,
   weeklyMenu,
+  weeklyMenus,
 }: {
   aiKnowledgeEntries: AiKnowledgeEntry[];
   customerMessages: CustomerMessage[];
@@ -49,7 +51,12 @@ export function AdminDashboard({
   orders: AdminOrder[];
   products: Product[];
   weeklyMenu: WeeklyMenu | null;
+  weeklyMenus: WeeklyMenuSummary[];
 }) {
+  const [weeklyMenusState, setWeeklyMenusState] = useState(weeklyMenus);
+  const [selectedWeeklyMenuId, setSelectedWeeklyMenuId] = useState(
+    weeklyMenu?.id ?? weeklyMenus[0]?.id ?? "",
+  );
   const [draftType, setDraftType] = useState("weekly_announcement");
   const [context, setContext] = useState(
     "Announce this week's classic country loaf, rosemary garlic loaf, and honey butter. Mention Thursday cutoff.",
@@ -63,10 +70,11 @@ export function AdminDashboard({
   const openOrderCount = orders.filter((order) =>
     ["paid", "baking", "out_for_delivery"].includes(order.status),
   ).length;
+  const menuCapacity = menu.reduce((sum, item) => sum + item.availableQuantity, 0);
   const stats: { label: string; value: string; Icon: LucideIcon }[] = [
     { label: "Open orders", value: String(openOrderCount), Icon: ClipboardList },
     { label: "Customer requests", value: String(openRequestCount), Icon: Inbox },
-    { label: "Bake capacity", value: "28 loaves", Icon: Package },
+    { label: "Menu capacity", value: String(menuCapacity), Icon: Package },
     { label: "Delivery windows", value: String(deliveryWindows.length), Icon: Truck },
   ];
 
@@ -245,7 +253,14 @@ export function AdminDashboard({
           </div>
         </section>
 
-        <WeeklyMenuEditor initialWeeklyMenu={weeklyMenu} products={products} />
+        <WeeklyMenuEditor
+          initialWeeklyMenu={weeklyMenu}
+          initialWeeklyMenus={weeklyMenusState}
+          onSelectedWeeklyMenuIdChange={setSelectedWeeklyMenuId}
+          onWeeklyMenusChange={setWeeklyMenusState}
+          products={products}
+          selectedWeeklyMenuId={selectedWeeklyMenuId}
+        />
 
         <OrderDashboard initialOrders={orders} />
 
@@ -256,6 +271,9 @@ export function AdminDashboard({
         <DeliveryEditor
           initialDeliverySettings={deliverySettings}
           initialDeliveryWindows={deliveryWindows}
+          onSelectedWeeklyMenuIdChange={setSelectedWeeklyMenuId}
+          selectedWeeklyMenuId={selectedWeeklyMenuId}
+          weeklyMenus={weeklyMenusState}
         />
 
         <ProductEditor initialProducts={products} />

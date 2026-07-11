@@ -23,6 +23,11 @@ describe("weekly cutoff", () => {
   });
 
   it("formats a menu-specific cutoff message", () => {
-    expect(getCutoffMessage("2026-07-10T00:00:00.000Z")).toContain("Order by");
+    expect(
+      getCutoffMessage(
+        "2026-07-10T00:00:00.000Z",
+        new Date("2026-07-09T12:00:00.000Z"),
+      ),
+    ).toContain("Order by");
   });
 });

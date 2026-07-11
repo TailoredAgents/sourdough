@@ -16,6 +16,7 @@ const deliveryWindowAdminSchema = z
   });
 
 export const deliveryAdminSchema = z.object({
+  weeklyMenuId: z.string().uuid().optional(),
   settings: z.object({
     centerLat: z.number().min(-90).max(90),
     centerLng: z.number().min(-180).max(180),

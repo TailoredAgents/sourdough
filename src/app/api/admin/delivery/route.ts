@@ -3,21 +3,22 @@ import { getCurrentAdmin } from "@/lib/admin-auth";
 import { deliveryAdminSchema } from "@/lib/delivery-admin";
 import { getSupabaseAdminClient } from "@/lib/supabase";
 import {
+  getDeliveryWindowsForMenuData,
   getDeliverySettingsData,
-  getDeliveryWindowsData,
   getPublishedMenuId,
 } from "@/lib/storefront-data";
 
-async function getDeliveryAdminData() {
+async function getDeliveryAdminData(weeklyMenuId?: string | null) {
+  const selectedWeeklyMenuId = weeklyMenuId || (await getPublishedMenuId());
   const [deliverySettings, deliveryWindows] = await Promise.all([
     getDeliverySettingsData(),
-    getDeliveryWindowsData(),
+    getDeliveryWindowsForMenuData(selectedWeeklyMenuId),
   ]);
 
-  return { deliverySettings, deliveryWindows };
+  return { deliverySettings, deliveryWindows, weeklyMenuId: selectedWeeklyMenuId };
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   const admin = await getCurrentAdmin();
   if (!admin) {
     return NextResponse.json(
@@ -26,7 +27,8 @@ export async function GET() {
     );
   }
 
-  return NextResponse.json(await getDeliveryAdminData());
+  const weeklyMenuId = new URL(request.url).searchParams.get("weeklyMenuId");
+  return NextResponse.json(await getDeliveryAdminData(weeklyMenuId));
 }
 
 export async function POST(request: Request) {
@@ -54,7 +56,8 @@ export async function POST(request: Request) {
     );
   }
 
-  const weeklyMenuId = await getPublishedMenuId();
+  const { settings, windows } = parsed.data;
+  const weeklyMenuId = parsed.data.weeklyMenuId || (await getPublishedMenuId());
   if (!weeklyMenuId) {
     return NextResponse.json(
       { error: "Create and publish a weekly menu before editing delivery windows." },
@@ -62,7 +65,6 @@ export async function POST(request: Request) {
     );
   }
 
-  const { settings, windows } = parsed.data;
   const { error: settingsError } = await supabase.from("delivery_settings").upsert({
     id: true,
     center_lat: settings.centerLat,
@@ -84,6 +86,7 @@ export async function POST(request: Request) {
     const { error } = await supabase
       .from("delivery_windows")
       .delete()
+      .eq("weekly_menu_id", weeklyMenuId)
       .in("id", windowsToRemove);
 
     if (error) {
@@ -130,5 +133,5 @@ export async function POST(request: Request) {
     }
   }
 
-  return NextResponse.json(await getDeliveryAdminData());
+  return NextResponse.json(await getDeliveryAdminData(weeklyMenuId));
 }

@@ -34,7 +34,7 @@ Do not commit real secret values.
 | `RESEND_FROM` | `Luna & Lorelai's Sourdough <orders@landlsourdough.com>` |
 | `BAKERY_EMAIL` | `orders@landlsourdough.com` or another monitored owner/order inbox |
 | `OPENAI_API_KEY` | OpenAI API key, blank to use fallback replies |
-| `OPENAI_MODEL` | `gpt-5.4-mini` |
+| `OPENAI_MODEL` | `gpt-5-mini` |
 | `STRIPE_SECRET_KEY` | Blank until Stripe setup is ready |
 | `STRIPE_WEBHOOK_SECRET` | Blank until Stripe webhook is ready |
 | `DELIVERY_CENTER_LAT` | `34.2368` |

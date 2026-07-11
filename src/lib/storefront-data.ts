@@ -7,7 +7,13 @@ import {
 } from "./bakery-data";
 import { getSupabaseAdminClient } from "./supabase";
 import { getDeliverySettings, type DeliverySettings } from "./delivery";
-import type { DeliveryWindow, MenuProduct, Product, WeeklyMenu } from "./types";
+import type {
+  DeliveryWindow,
+  MenuProduct,
+  Product,
+  WeeklyMenu,
+  WeeklyMenuSummary,
+} from "./types";
 
 type ProductRow = {
   id: string;
@@ -41,6 +47,10 @@ type WeeklyMenuRow = {
   starts_at: string;
   ends_at: string;
   published: boolean;
+};
+
+type WeeklyMenuItemCountRow = {
+  weekly_menu_id: string;
 };
 
 type DeliveryWindowRow = {
@@ -115,6 +125,21 @@ export async function getPublishedMenuId() {
   return row?.id ?? null;
 }
 
+function mapWeeklyMenuSummary(
+  row: WeeklyMenuRow,
+  itemCounts: Map<string, number>,
+): WeeklyMenuSummary {
+  return {
+    id: row.id,
+    name: row.name,
+    orderCutoffAt: row.order_cutoff_at,
+    startsAt: row.starts_at,
+    endsAt: row.ends_at,
+    published: row.published,
+    itemCount: itemCounts.get(row.id) || 0,
+  };
+}
+
 async function getPublishedMenuRow() {
   const supabase = getSupabaseAdminClient();
   if (!supabase) return null;
@@ -166,6 +191,74 @@ async function getMenuItemsData(weeklyMenuId: string): Promise<MenuProduct[]> {
   return menu.length ? menu : canUseLocalFallback(supabase) ? getFallbackActiveMenu() : [];
 }
 
+export async function getWeeklyMenusData(): Promise<WeeklyMenuSummary[]> {
+  const supabase = getSupabaseAdminClient();
+  if (!supabase) return [];
+
+  const recentSince = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const { data, error } = await supabase
+    .from("weekly_menus")
+    .select("id, name, order_cutoff_at, starts_at, ends_at, published")
+    .gte("ends_at", recentSince)
+    .order("starts_at", { ascending: true });
+
+  if (error) {
+    console.error("[supabase] weekly menus lookup failed", error.message);
+    return [];
+  }
+
+  const rows = (data as WeeklyMenuRow[]) || [];
+  const ids = rows.map((row) => row.id);
+  const itemCounts = new Map<string, number>();
+
+  if (ids.length) {
+    const { data: itemRows, error: itemError } = await supabase
+      .from("weekly_menu_items")
+      .select("weekly_menu_id")
+      .in("weekly_menu_id", ids);
+
+    if (itemError) {
+      console.error("[supabase] weekly menu item count lookup failed", itemError.message);
+    } else {
+      for (const item of (itemRows as WeeklyMenuItemCountRow[]) || []) {
+        itemCounts.set(item.weekly_menu_id, (itemCounts.get(item.weekly_menu_id) || 0) + 1);
+      }
+    }
+  }
+
+  return rows.map((row) => mapWeeklyMenuSummary(row, itemCounts));
+}
+
+export async function getWeeklyMenuData(weeklyMenuId: string): Promise<WeeklyMenu | null> {
+  const supabase = getSupabaseAdminClient();
+  if (!supabase) return null;
+
+  const { data, error } = await supabase
+    .from("weekly_menus")
+    .select("id, name, order_cutoff_at, starts_at, ends_at, published")
+    .eq("id", weeklyMenuId)
+    .maybeSingle();
+
+  if (error) {
+    console.error("[supabase] selected weekly menu lookup failed", error.message);
+    return null;
+  }
+
+  const row = data as WeeklyMenuRow | null;
+  if (!row) return null;
+  const items = await getMenuItemsData(row.id);
+
+  return {
+    id: row.id,
+    name: row.name,
+    orderCutoffAt: row.order_cutoff_at,
+    startsAt: row.starts_at,
+    endsAt: row.ends_at,
+    published: row.published,
+    items,
+  };
+}
+
 export async function getActiveMenuData(): Promise<MenuProduct[]> {
   const supabase = getSupabaseAdminClient();
   const weeklyMenuId = await getPublishedMenuId();
@@ -212,16 +305,17 @@ export async function getProductsData(): Promise<Product[]> {
 
   if (error) {
     console.error("[supabase] products lookup failed", error.message);
-    return fallbackProducts;
+    return canUseLocalFallback(supabase) ? fallbackProducts : [];
   }
 
   const products = (data as ProductRow[]).map(mapProduct);
-  return products.length ? products : fallbackProducts;
+  return products.length ? products : canUseLocalFallback(supabase) ? fallbackProducts : [];
 }
 
-export async function getDeliveryWindowsData(): Promise<DeliveryWindow[]> {
+export async function getDeliveryWindowsForMenuData(
+  weeklyMenuId: string | null,
+): Promise<DeliveryWindow[]> {
   const supabase = getSupabaseAdminClient();
-  const weeklyMenuId = await getPublishedMenuId();
   if (!supabase || !weeklyMenuId) {
     return canUseLocalFallback(supabase) ? fallbackDeliveryWindows : [];
   }
@@ -238,6 +332,10 @@ export async function getDeliveryWindowsData(): Promise<DeliveryWindow[]> {
   }
 
   return (data as DeliveryWindowRow[]).map(mapDeliveryWindow);
+}
+
+export async function getDeliveryWindowsData(): Promise<DeliveryWindow[]> {
+  return getDeliveryWindowsForMenuData(await getPublishedMenuId());
 }
 
 export async function getDeliveryWindowData(deliveryWindowId: string) {

@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { CheckCircle2, Copy, Loader2, Save } from "lucide-react";
-import type { Product, WeeklyMenu } from "@/lib/types";
+import type { Product, WeeklyMenu, WeeklyMenuSummary } from "@/lib/types";
 import { formatCurrency } from "@/lib/utils";
 import { Button } from "./button";
 
@@ -59,10 +59,18 @@ function buildForm(weeklyMenu: WeeklyMenu, products: Product[]): WeeklyMenuForm 
 
 export function WeeklyMenuEditor({
   initialWeeklyMenu,
+  initialWeeklyMenus,
+  onSelectedWeeklyMenuIdChange,
+  onWeeklyMenusChange,
   products,
+  selectedWeeklyMenuId,
 }: {
   initialWeeklyMenu: WeeklyMenu | null;
+  initialWeeklyMenus: WeeklyMenuSummary[];
+  onSelectedWeeklyMenuIdChange: (id: string) => void;
+  onWeeklyMenusChange: (menus: WeeklyMenuSummary[]) => void;
   products: Product[];
+  selectedWeeklyMenuId: string;
 }) {
   const fallbackWeeklyMenu = useMemo<WeeklyMenu>(
     () =>
@@ -78,6 +86,7 @@ export function WeeklyMenuEditor({
     [initialWeeklyMenu],
   );
   const [form, setForm] = useState(() => buildForm(fallbackWeeklyMenu, products));
+  const [weeklyMenus, setWeeklyMenus] = useState(initialWeeklyMenus);
   const [message, setMessage] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -113,6 +122,31 @@ export function WeeklyMenuEditor({
     });
   }
 
+  function selectWeeklyMenu(id: string) {
+    if (!id) return;
+    setMessage(null);
+    onSelectedWeeklyMenuIdChange(id);
+    startTransition(async () => {
+      const response = await fetch(`/api/admin/weekly-menu?id=${encodeURIComponent(id)}`);
+      const payload = (await response.json()) as {
+        weeklyMenus?: WeeklyMenuSummary[];
+        selectedWeeklyMenu?: WeeklyMenu | null;
+        error?: string;
+      };
+
+      if (!response.ok || !payload.selectedWeeklyMenu) {
+        setMessage(payload.error || "Weekly menu could not be loaded.");
+        return;
+      }
+
+      if (payload.weeklyMenus) {
+        setWeeklyMenus(payload.weeklyMenus);
+        onWeeklyMenusChange(payload.weeklyMenus);
+      }
+      setForm(buildForm(payload.selectedWeeklyMenu, products));
+    });
+  }
+
   function saveWeeklyMenu() {
     setMessage(null);
 
@@ -131,16 +165,22 @@ export function WeeklyMenuEditor({
         }),
       });
       const payload = (await response.json()) as {
-        weeklyMenu?: WeeklyMenu;
+        weeklyMenus?: WeeklyMenuSummary[];
+        selectedWeeklyMenu?: WeeklyMenu | null;
         error?: string;
       };
 
-      if (!response.ok || !payload.weeklyMenu) {
+      if (!response.ok || !payload.selectedWeeklyMenu) {
         setMessage(payload.error || "Weekly menu could not be saved.");
         return;
       }
 
-      setForm(buildForm(payload.weeklyMenu, products));
+      if (payload.weeklyMenus) {
+        setWeeklyMenus(payload.weeklyMenus);
+        onWeeklyMenusChange(payload.weeklyMenus);
+      }
+      onSelectedWeeklyMenuIdChange(payload.selectedWeeklyMenu.id);
+      setForm(buildForm(payload.selectedWeeklyMenu, products));
       setMessage("Weekly menu saved.");
     });
   }
@@ -154,15 +194,34 @@ export function WeeklyMenuEditor({
             Choose products for the active bake drop and set sellable inventory.
           </p>
         </div>
-        <Button type="button" onClick={saveWeeklyMenu} disabled={isPending}>
-          {isPending ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
-          {form.id ? "Save weekly menu" : "Create weekly menu"}
-        </Button>
-        <Button type="button" variant="secondary" onClick={cloneAsNewMenu}>
-          <Copy size={16} />
-          Clone as new
-        </Button>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Button type="button" onClick={saveWeeklyMenu} disabled={isPending}>
+            {isPending ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
+            {form.id ? "Save weekly menu" : "Create weekly menu"}
+          </Button>
+          <Button type="button" variant="secondary" onClick={cloneAsNewMenu}>
+            <Copy size={16} />
+            Clone as new
+          </Button>
+        </div>
       </div>
+
+      <label className="mt-5 grid gap-1 text-sm font-semibold text-stone-700">
+        Edit bake drop
+        <select
+          className="h-11 rounded-md border border-stone-300 bg-white px-3 font-normal"
+          value={form.id || selectedWeeklyMenuId || ""}
+          onChange={(event) => selectWeeklyMenu(event.target.value)}
+          disabled={isPending || !weeklyMenus.length}
+        >
+          {!weeklyMenus.length ? <option value="">No menus yet</option> : null}
+          {weeklyMenus.map((menu) => (
+            <option key={menu.id} value={menu.id}>
+              {menu.name} - {menu.published ? "published" : "draft"} - {menu.itemCount} items
+            </option>
+          ))}
+        </select>
+      </label>
 
       <div className="mt-5 grid gap-3 lg:grid-cols-[1fr_180px_180px_140px]">
         <label className="grid gap-1 text-sm font-semibold text-stone-700">

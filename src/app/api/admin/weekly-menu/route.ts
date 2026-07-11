@@ -1,10 +1,33 @@
 import { NextResponse } from "next/server";
 import { getCurrentAdmin } from "@/lib/admin-auth";
 import { getSupabaseAdminClient } from "@/lib/supabase";
-import { getActiveWeeklyMenuData } from "@/lib/storefront-data";
+import {
+  getActiveWeeklyMenuData,
+  getWeeklyMenuData,
+  getWeeklyMenusData,
+} from "@/lib/storefront-data";
 import { weeklyMenuAdminSchema } from "@/lib/weekly-menu-admin";
 
-export async function GET() {
+async function getWeeklyMenuAdminPayload(selectedId?: string | null) {
+  const [weeklyMenus, activeWeeklyMenu] = await Promise.all([
+    getWeeklyMenusData(),
+    getActiveWeeklyMenuData(),
+  ]);
+  const fallbackId = activeWeeklyMenu?.id ?? weeklyMenus[0]?.id ?? null;
+  const selectedWeeklyMenu = selectedId
+    ? await getWeeklyMenuData(selectedId)
+    : fallbackId
+      ? await getWeeklyMenuData(fallbackId)
+      : null;
+
+  return {
+    weeklyMenus,
+    selectedWeeklyMenu,
+    activeWeeklyMenu,
+  };
+}
+
+export async function GET(request: Request) {
   const admin = await getCurrentAdmin();
   if (!admin) {
     return NextResponse.json(
@@ -13,7 +36,8 @@ export async function GET() {
     );
   }
 
-  return NextResponse.json({ weeklyMenu: await getActiveWeeklyMenuData() });
+  const selectedId = new URL(request.url).searchParams.get("id");
+  return NextResponse.json(await getWeeklyMenuAdminPayload(selectedId));
 }
 
 export async function POST(request: Request) {
@@ -113,23 +137,5 @@ export async function POST(request: Request) {
     }
   }
 
-  return NextResponse.json({
-    weeklyMenu: {
-      id: weeklyMenuId,
-      name: weeklyMenu.name,
-      orderCutoffAt: weeklyMenu.orderCutoffAt,
-      startsAt: weeklyMenu.startsAt,
-      endsAt: weeklyMenu.endsAt,
-      published: weeklyMenu.published,
-      items: weeklyMenu.items
-        .filter((item) => item.included)
-        .map((item) => ({
-          productId: item.productId,
-          availableQuantity: item.availableQuantity,
-          soldQuantity: item.soldQuantity,
-          featured: item.featured,
-        })),
-    },
-    activeWeeklyMenu: await getActiveWeeklyMenuData(),
-  });
+  return NextResponse.json(await getWeeklyMenuAdminPayload(weeklyMenuId));
 }
