@@ -2,6 +2,11 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { CheckCircle2, Inbox, Loader2, MailOpen, Send } from "lucide-react";
+import {
+  getAdminPayloadError,
+  hasAdminKeys,
+  readAdminJsonResponse,
+} from "@/lib/admin-api";
 import { getAdminMessageStatusActions } from "@/lib/admin-message-workflow";
 import type { CustomerMessage } from "@/lib/types";
 import { Button } from "./button";
@@ -84,25 +89,30 @@ export function CustomerMessageInbox({
   function updateStatus(id: string, status: string) {
     setMessage(null);
     startTransition(async () => {
-      const response = await fetch("/api/admin/messages", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, status }),
-      });
-      const payload = (await response.json()) as {
-        messages?: CustomerMessage[];
-        error?: string;
-      };
+      try {
+        const response = await fetch("/api/admin/messages", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id, status }),
+        });
+        const payload = await readAdminJsonResponse(response);
 
-      if (!response.ok || !payload.messages) {
-        setMessage(payload.error || "Message could not be updated.");
-        return;
+        if (
+          !response.ok ||
+          !hasAdminKeys(payload, ["messages"]) ||
+          !Array.isArray(payload.messages)
+        ) {
+          setMessage(getAdminPayloadError(payload) || "Message could not be updated.");
+          return;
+        }
+
+        setMessages(payload.messages as CustomerMessage[]);
+        setSelectedId(id);
+        setFilter(openStatuses.includes(status) ? "open" : status);
+        setMessage("Message updated.");
+      } catch {
+        setMessage("Message could not be updated. Check your connection and try again.");
       }
-
-      setMessages(payload.messages);
-      setSelectedId(id);
-      setFilter(openStatuses.includes(status) ? "open" : status);
-      setMessage("Message updated.");
     });
   }
 
@@ -120,31 +130,36 @@ export function CustomerMessageInbox({
     if (!selectedMessage) return;
     setMessage(null);
     startTransition(async () => {
-      const response = await fetch("/api/admin/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: selectedMessage.id,
-          subject: replySubject.trim(),
-          body: replyBody.trim(),
-          statusAfterSend,
-        }),
-      });
-      const payload = (await response.json()) as {
-        messages?: CustomerMessage[];
-        error?: string;
-      };
+      try {
+        const response = await fetch("/api/admin/messages", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: selectedMessage.id,
+            subject: replySubject.trim(),
+            body: replyBody.trim(),
+            statusAfterSend,
+          }),
+        });
+        const payload = await readAdminJsonResponse(response);
 
-      if (!response.ok || !payload.messages) {
-        setMessage(payload.error || "Reply could not be sent.");
-        return;
+        if (
+          !response.ok ||
+          !hasAdminKeys(payload, ["messages"]) ||
+          !Array.isArray(payload.messages)
+        ) {
+          setMessage(getAdminPayloadError(payload) || "Reply could not be sent.");
+          return;
+        }
+
+        setMessages(payload.messages as CustomerMessage[]);
+        setSelectedId(selectedMessage.id);
+        setFilter(statusAfterSend);
+        setReplyBody("");
+        setMessage("Reply sent.");
+      } catch {
+        setMessage("Reply could not be sent. Check your connection and try again.");
       }
-
-      setMessages(payload.messages);
-      setSelectedId(selectedMessage.id);
-      setFilter(statusAfterSend);
-      setReplyBody("");
-      setMessage("Reply sent.");
     });
   }
 

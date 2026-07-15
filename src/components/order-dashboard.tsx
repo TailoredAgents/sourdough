@@ -2,6 +2,11 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { CheckCircle2, ClipboardList, Loader2, MapPin } from "lucide-react";
+import {
+  getAdminPayloadError,
+  hasAdminKeys,
+  readAdminJsonResponse,
+} from "@/lib/admin-api";
 import { getAdminOrderStatusActions } from "@/lib/admin-order-workflow";
 import type { AdminOrder, OrderStatus } from "@/lib/types";
 import { formatCurrency } from "@/lib/utils";
@@ -101,25 +106,30 @@ export function OrderDashboard({ initialOrders }: { initialOrders: AdminOrder[] 
   function updateStatus(id: string, status: OrderStatus) {
     setMessage(null);
     startTransition(async () => {
-      const response = await fetch("/api/admin/orders", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, status }),
-      });
-      const payload = (await response.json()) as {
-        orders?: AdminOrder[];
-        error?: string;
-      };
+      try {
+        const response = await fetch("/api/admin/orders", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id, status }),
+        });
+        const payload = await readAdminJsonResponse(response);
 
-      if (!response.ok || !payload.orders) {
-        setMessage(payload.error || "Order could not be updated.");
-        return;
+        if (
+          !response.ok ||
+          !hasAdminKeys(payload, ["orders"]) ||
+          !Array.isArray(payload.orders)
+        ) {
+          setMessage(getAdminPayloadError(payload) || "Order could not be updated.");
+          return;
+        }
+
+        setOrders(payload.orders as AdminOrder[]);
+        setSelectedId(id);
+        setFilter(activeStatuses.includes(status) ? "active" : status);
+        setMessage("Order updated.");
+      } catch {
+        setMessage("Order could not be updated. Check your connection and try again.");
       }
-
-      setOrders(payload.orders);
-      setSelectedId(id);
-      setFilter(activeStatuses.includes(status) ? "active" : status);
-      setMessage("Order updated.");
     });
   }
 
