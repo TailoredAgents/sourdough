@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { buildChatFallbackAnswer } from "@/lib/chat-fallback";
+import { createCustomerQuestionMessage } from "@/lib/customer-messages";
 import { getCutoffMessage } from "@/lib/cutoff";
 import { aiModel, getOpenAI } from "@/lib/openai";
 import { checkRateLimit } from "@/lib/rate-limit";
@@ -17,6 +18,18 @@ const chatSchema = z.object({
 
 export function fallbackAnswer(message: string) {
   return buildChatFallbackAnswer(message);
+}
+
+async function saveCustomerQuestion(question: string, answer: string) {
+  try {
+    await createCustomerQuestionMessage({
+      question,
+      answer,
+      source: "customer chat",
+    });
+  } catch (error) {
+    console.error("[chat] customer question save failed", error);
+  }
 }
 
 export async function POST(request: Request) {
@@ -70,6 +83,7 @@ export async function POST(request: Request) {
     });
     const openai = getOpenAI();
     if (!openai) {
+      await saveCustomerQuestion(parsed.data.message, fallback);
       return NextResponse.json({ answer: fallback });
     }
 
@@ -89,11 +103,13 @@ export async function POST(request: Request) {
       input: `Approved bakery facts:\n${aiKnowledge.join("\n")}\n\nCurrent cutoff:\n${cutoffContext}\n\nDelivery:\n${deliveryContext}\n\nCurrent menu:\n${menuContext}\n\nCustomer question:\n${parsed.data.message}`,
     });
 
-    return NextResponse.json({
-      answer: response.output_text || fallback,
-    });
+    const answer = response.output_text || fallback;
+    await saveCustomerQuestion(parsed.data.message, answer);
+
+    return NextResponse.json({ answer });
   } catch (error) {
     console.error("[chat] failed to answer question", error);
+    await saveCustomerQuestion(parsed.data.message, fallback);
     return NextResponse.json({ answer: fallback });
   }
 }

@@ -6,6 +6,7 @@ import type {
   MenuProduct,
 } from "./types";
 import { sendCustomerMessageReply as sendCustomerMessageReplyEmail } from "./email";
+import { sendOwnerAlert } from "./owner-alerts";
 import { getSupabaseAdminClient } from "./supabase";
 
 type CustomerMessageRow = {
@@ -41,6 +42,12 @@ type BakeNotifySignupInput = {
   email: string;
   postalCode?: string;
   preference?: string;
+  source?: string;
+};
+
+type CustomerQuestionInput = {
+  question: string;
+  answer?: string;
   source?: string;
 };
 
@@ -161,7 +168,16 @@ export async function createLastMinuteCustomerMessage(
     return null;
   }
 
-  return mapCustomerMessage(data as CustomerMessageRow);
+  const message = mapCustomerMessage(data as CustomerMessageRow);
+  await sendOwnerAlert({
+    type: "request",
+    customerName: checkout.customer.name,
+    orderSummary: buildItemSummary(input.items),
+    notes: checkout.notes || checkout.deliveryInstructions || null,
+    customerMessageId: message.id,
+  });
+
+  return message;
 }
 
 export function buildBakeNotifySignupBody({
@@ -199,7 +215,62 @@ export async function createBakeNotifySignup(input: BakeNotifySignupInput) {
     return null;
   }
 
-  return mapCustomerMessage(data as CustomerMessageRow);
+  const message = mapCustomerMessage(data as CustomerMessageRow);
+  await sendOwnerAlert({
+    type: "inquiry",
+    customerName: email,
+    orderSummary: "Bake notification signup",
+    notes: buildBakeNotifySignupBody(input),
+    customerMessageId: message.id,
+  });
+
+  return message;
+}
+
+export function buildCustomerQuestionBody({
+  answer,
+  question,
+  source,
+}: CustomerQuestionInput) {
+  return [
+    `Question: ${question.trim()}`,
+    `Source: ${source?.trim() || "customer chat"}`,
+    answer ? `Answer shown: ${answer.trim()}` : null,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+export async function createCustomerQuestionMessage(input: CustomerQuestionInput) {
+  const supabase = getSupabaseAdminClient();
+  if (!supabase) return null;
+
+  const { data, error } = await supabase
+    .from("customer_messages")
+    .insert({
+      customer_email: null,
+      subject: "Customer question from website chat",
+      body: buildCustomerQuestionBody(input),
+      status: "new",
+    })
+    .select("id, order_id, customer_email, subject, body, status, created_at")
+    .single();
+
+  if (error) {
+    console.error("[supabase] customer question insert failed", error.message);
+    return null;
+  }
+
+  const message = mapCustomerMessage(data as CustomerMessageRow);
+  await sendOwnerAlert({
+    type: "inquiry",
+    customerName: "Website visitor",
+    orderSummary: input.question,
+    notes: input.answer || null,
+    customerMessageId: message.id,
+  });
+
+  return message;
 }
 
 export async function getCustomerMessagesData(): Promise<CustomerMessage[]> {

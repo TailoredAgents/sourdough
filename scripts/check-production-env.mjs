@@ -142,6 +142,16 @@ function requireEmailList(key) {
   }
 }
 
+function requireOptionalEmailList(key) {
+  const value = valueFor(key);
+  if (!value) return;
+
+  const emails = value.split(",").map((item) => item.trim()).filter(Boolean);
+  if (!emails.length || emails.some((email) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) {
+    failures.push(`${key} must be a comma-separated list of email addresses.`);
+  }
+}
+
 function requireInteger(key, { min = Number.MIN_SAFE_INTEGER } = {}) {
   const value = valueFor(key);
   requireValue(key);
@@ -188,6 +198,15 @@ requireEmailList("ADMIN_EMAILS");
 requireEmailList("BAKERY_EMAIL");
 requireValue("RESEND_API_KEY");
 requireContains("RESEND_FROM", "orders@landlsourdough.com");
+if (hasValue("OWNER_ALERTS_ENABLED")) {
+  requireOptionalEmailList("OWNER_ALERT_EMAIL");
+  requireOptionalEmailList("OWNER_ALERT_SMS_EMAIL");
+  if (!hasValue("OWNER_ALERT_EMAIL") && !hasValue("OWNER_ALERT_SMS_EMAIL")) {
+    failures.push(
+      "OWNER_ALERT_EMAIL or OWNER_ALERT_SMS_EMAIL is required when OWNER_ALERTS_ENABLED is set.",
+    );
+  }
+}
 requirePrefix("STRIPE_SECRET_KEY", ["sk_test_", "sk_live_"]);
 requirePrefix("STRIPE_WEBHOOK_SECRET", ["whsec_"]);
 requireValue("OPENAI_MODEL");

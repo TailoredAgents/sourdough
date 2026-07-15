@@ -4,6 +4,7 @@ import { getSupabaseAdminClient } from "./supabase";
 type EmailTemplate =
   | "customer_order_confirmation"
   | "owner_new_order"
+  | "owner_short_alert"
   | "last_minute_request"
   | "order_status_update"
   | "customer_message_reply";
@@ -33,6 +34,14 @@ type CustomerReplyEmail = {
   subject: string;
   body: string;
   customerMessageId: string;
+};
+
+type OwnerShortAlertEmail = {
+  to: string;
+  subject: string;
+  body: string;
+  orderId?: string;
+  customerMessageId?: string;
 };
 
 function fromAddress() {
@@ -151,6 +160,21 @@ function renderCustomerMessageReply({ subject, body }: CustomerReplyEmail) {
   };
 }
 
+function getResendErrorMessage(result: unknown) {
+  if (
+    result &&
+    typeof result === "object" &&
+    "error" in result &&
+    result.error &&
+    typeof result.error === "object" &&
+    "message" in result.error
+  ) {
+    return String(result.error.message);
+  }
+
+  return null;
+}
+
 async function sendTemplatedEmail({
   template,
   to,
@@ -202,6 +226,11 @@ async function sendTemplatedEmail({
       subject,
       text,
     });
+    const resendErrorMessage = getResendErrorMessage(result);
+    if (resendErrorMessage) {
+      throw new Error(resendErrorMessage);
+    }
+
     const providerId =
       "data" in result && result.data && "id" in result.data
         ? String(result.data.id)
@@ -247,6 +276,17 @@ export async function sendOwnerNewOrderNotification(input: OwnerEmail) {
     to: input.to,
     orderId: input.orderId,
     ...renderOwnerNewOrder(input),
+  });
+}
+
+export async function sendOwnerShortAlert(input: OwnerShortAlertEmail) {
+  return sendTemplatedEmail({
+    template: "owner_short_alert",
+    to: input.to,
+    orderId: input.orderId,
+    customerMessageId: input.customerMessageId,
+    subject: input.subject,
+    text: input.body,
   });
 }
 

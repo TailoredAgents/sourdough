@@ -208,7 +208,6 @@ export async function POST(request: Request) {
         customerMessageId: lastMinuteMessage?.id,
       });
     }
-
     return NextResponse.json({
       url: `${getSiteUrl()}/order/success?request_id=${lastMinuteMessage?.id || "saved"}`,
       message: "Last-minute request sent.",

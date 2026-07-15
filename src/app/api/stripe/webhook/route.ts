@@ -7,6 +7,7 @@ import {
   cancelExpiredCheckoutSession,
   markCheckoutSessionPaid,
 } from "@/lib/order-records";
+import { sendOwnerAlert } from "@/lib/owner-alerts";
 import { getStripe } from "@/lib/stripe";
 
 export async function POST(request: Request) {
@@ -61,6 +62,15 @@ export async function POST(request: Request) {
           orderId: paidOrder.orderId,
           address: paidOrder.deliveryAddress,
           notes: paidOrder.notes || "",
+        });
+      }
+      if (paidOrder) {
+        await sendOwnerAlert({
+          type: "order",
+          customerName: paidOrder.customerName,
+          orderSummary: paidOrder.orderSummary,
+          notes: paidOrder.notes || null,
+          orderId: paidOrder.orderId,
         });
       }
 

@@ -40,6 +40,12 @@ services:
         value: "Luna & Lorelai's Sourdough <orders@landlsourdough.com>"
       - key: BAKERY_EMAIL
         sync: false
+      - key: OWNER_ALERTS_ENABLED
+        value: "true"
+      - key: OWNER_ALERT_EMAIL
+        sync: false
+      - key: OWNER_ALERT_SMS_EMAIL
+        value: "4703880184@vtext.com"
       - key: OPENAI_API_KEY
         sync: false
       - key: OPENAI_MODEL

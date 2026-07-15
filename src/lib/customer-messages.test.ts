@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { bakeNotifySignupSchema, buildBakeNotifySignupBody } from "./customer-messages";
+import {
+  bakeNotifySignupSchema,
+  buildBakeNotifySignupBody,
+  buildCustomerQuestionBody,
+} from "./customer-messages";
 
 describe("bake notification signup", () => {
   it("allows a blank ZIP or a 5-digit ZIP", () => {
@@ -44,5 +48,17 @@ describe("bake notification signup", () => {
         source: "homepage",
       }),
     ).toContain("Email: customer@example.com\nZIP: 30114");
+  });
+
+  it("formats customer chat questions for the admin inbox", () => {
+    expect(
+      buildCustomerQuestionBody({
+        question: "Do you deliver to Woodstock?",
+        answer: "Yes, 30188 and 30189 are covered.",
+        source: "customer chat",
+      }),
+    ).toContain(
+      "Question: Do you deliver to Woodstock?\nSource: customer chat\nAnswer shown: Yes, 30188 and 30189 are covered.",
+    );
   });
 });
