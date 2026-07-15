@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { CheckCircle2, Loader2, Plus, Save, Trash2 } from "lucide-react";
+import { validateDeliveryForm } from "@/lib/admin-form-validation";
 import type { DeliverySettings } from "@/lib/delivery";
 import type { DeliveryWindow, WeeklyMenuSummary } from "@/lib/types";
 import { formatCurrency } from "@/lib/utils";
@@ -163,8 +164,14 @@ export function DeliveryEditor({
   function saveDelivery() {
     setMessage(null);
 
-    if (Number.isNaN(deliveryFeeCents)) {
-      setMessage("Delivery fee must be a valid dollar amount.");
+    const validationMessage = validateDeliveryForm({
+      deliveryFeeDollars: settings.deliveryFeeDollars,
+      allowedPostalCodes: settings.allowedPostalCodes,
+      serviceAreaCopy: settings.serviceAreaCopy,
+      windows,
+    });
+    if (validationMessage) {
+      setMessage(validationMessage);
       return;
     }
 
@@ -300,6 +307,7 @@ export function DeliveryEditor({
           type="button"
           variant="secondary"
           onClick={() => setWindows((current) => [...current, buildNewWindow()])}
+          disabled={isPending}
         >
           <Plus size={16} />
           Add window
@@ -378,6 +386,7 @@ export function DeliveryEditor({
                     variant="ghost"
                     size="sm"
                     onClick={() => removeWindow(window.clientId)}
+                    disabled={isPending}
                     aria-label={`Remove ${window.label}`}
                   >
                     <Trash2 size={16} />

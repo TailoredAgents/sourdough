@@ -3,6 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { CheckCircle2, ImagePlus, Loader2, Pencil, Plus } from "lucide-react";
+import { validateProductForm } from "@/lib/admin-form-validation";
 import type { Product, ProductCategory } from "@/lib/types";
 import { joinList, splitList } from "@/lib/product-admin";
 import { formatCurrency } from "@/lib/utils";
@@ -106,6 +107,12 @@ export function ProductEditor({
 
   function saveProduct() {
     setMessage(null);
+    const validationMessage = validateProductForm(form);
+    if (validationMessage) {
+      setMessage(validationMessage);
+      return;
+    }
+
     startTransition(async () => {
       const response = await fetch("/api/admin/products", {
         method: "POST",
@@ -180,7 +187,7 @@ export function ProductEditor({
             the weekly menu builder.
           </p>
         </div>
-        <Button type="button" variant="secondary" onClick={newProduct}>
+        <Button type="button" variant="secondary" onClick={newProduct} disabled={isPending}>
           <Plus size={16} />
           New product
         </Button>
@@ -193,6 +200,7 @@ export function ProductEditor({
               key={product.id}
               type="button"
               onClick={() => selectProduct(product)}
+              disabled={isPending}
               className={`rounded-md border p-3 text-left transition ${
                 selectedId === product.id
                   ? "border-[#23443b] bg-[#f7efe3]"

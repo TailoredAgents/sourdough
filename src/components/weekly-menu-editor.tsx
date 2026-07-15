@@ -3,6 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { CheckCircle2, Copy, Loader2, Save } from "lucide-react";
+import { validateWeeklyMenuForm } from "@/lib/admin-form-validation";
 import type { Product, WeeklyMenu, WeeklyMenuSummary } from "@/lib/types";
 import { formatCurrency } from "@/lib/utils";
 import { Button } from "./button";
@@ -155,6 +156,23 @@ export function WeeklyMenuEditor({
   function saveWeeklyMenu() {
     setMessage(null);
 
+    const validationMessage = validateWeeklyMenuForm({
+      name: form.name,
+      orderCutoffAt: form.orderCutoffAt,
+      startsAt: form.startsAt,
+      endsAt: form.endsAt,
+      published: form.published,
+      items: form.items.map((item) => ({
+        ...item,
+        productName:
+          products.find((product) => product.id === item.productId)?.name || undefined,
+      })),
+    });
+    if (validationMessage) {
+      setMessage(validationMessage);
+      return;
+    }
+
     startTransition(async () => {
       const response = await fetch("/api/admin/weekly-menu", {
         method: "POST",
@@ -206,7 +224,12 @@ export function WeeklyMenuEditor({
             {isPending ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
             {form.id ? "Save weekly menu" : "Create weekly menu"}
           </Button>
-          <Button type="button" variant="secondary" onClick={cloneAsNewMenu}>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={cloneAsNewMenu}
+            disabled={isPending}
+          >
             <Copy size={16} />
             Clone as new
           </Button>

@@ -75,6 +75,7 @@ export function AdminDashboard({
   ).length;
   const pendingPaymentCount = orders.filter((order) => order.status === "pending_payment").length;
   const paidOrderCount = orders.filter((order) => order.status === "paid").length;
+  const approvedKnowledgeCount = aiKnowledgeEntries.filter((entry) => entry.approved).length;
   const menuCapacity = menu.reduce((sum, item) => sum + item.availableQuantity, 0);
   const soldCount = menu.reduce((sum, item) => sum + item.soldQuantity, 0);
   const remainingCount = menu.reduce((sum, item) => sum + item.remainingQuantity, 0);
@@ -90,8 +91,9 @@ export function AdminDashboard({
     { label: "Weekly menu", href: "#weekly-menu", count: remainingCount },
     { label: "Delivery", href: "#delivery", count: deliveryWindows.length },
     { label: "Products", href: "#products", count: products.length },
-    { label: "Assistant", href: "#assistant", count: aiKnowledgeEntries.length },
-  ];
+    { label: "Drafts", href: "#assistant", count: "AI" },
+    { label: "Knowledge", href: "#knowledge", count: approvedKnowledgeCount },
+  ].map((link) => ({ ...link, count: String(link.count) }));
 
   function generateDraft() {
     setDraftMessage(null);

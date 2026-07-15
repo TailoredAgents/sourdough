@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { Bot, CheckCircle2, Loader2, Plus, Save } from "lucide-react";
+import { validateAiKnowledgeForm } from "@/lib/admin-form-validation";
 import type { AiKnowledgeEntry } from "@/lib/types";
 import { Button } from "./button";
 
@@ -65,6 +66,12 @@ export function AiKnowledgeEditor({
 
   function saveEntry() {
     setMessage(null);
+    const validationMessage = validateAiKnowledgeForm(form);
+    if (validationMessage) {
+      setMessage(validationMessage);
+      return;
+    }
+
     startTransition(async () => {
       const response = await fetch("/api/admin/ai-knowledge", {
         method: "POST",
@@ -100,7 +107,7 @@ export function AiKnowledgeEditor({
   }
 
   return (
-    <section className="mt-8 rounded-md border border-stone-200 bg-white p-5">
+    <section id="knowledge" className="mt-8 scroll-mt-28 rounded-md border border-stone-200 bg-white p-5">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
         <div>
           <div className="flex items-center gap-2">
@@ -117,7 +124,7 @@ export function AiKnowledgeEditor({
           <div className="rounded-md border border-stone-200 bg-[#fffaf2] px-3 py-2 text-sm font-semibold text-stone-700">
             {approvedCount} approved
           </div>
-          <Button type="button" variant="secondary" onClick={newEntry}>
+          <Button type="button" variant="secondary" onClick={newEntry} disabled={isPending}>
             <Plus size={16} />
             New fact
           </Button>
@@ -131,6 +138,7 @@ export function AiKnowledgeEditor({
               key={entry.id}
               type="button"
               onClick={() => selectEntry(entry)}
+              disabled={isPending}
               className={`rounded-md border p-3 text-left transition ${
                 selectedId === entry.id
                   ? "border-[#23443b] bg-[#f7efe3]"
