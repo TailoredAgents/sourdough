@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { CheckCircle2, Inbox, Loader2, MailOpen, Send } from "lucide-react";
+import { getAdminMessageStatusActions } from "@/lib/admin-message-workflow";
 import type { CustomerMessage } from "@/lib/types";
 import { Button } from "./button";
 
@@ -76,6 +77,9 @@ export function CustomerMessageInbox({
   const openCount = messages.filter(
     (entry) => entry.status === "new" || entry.status === "in_progress",
   ).length;
+  const statusActions = selectedMessage
+    ? getAdminMessageStatusActions(selectedMessage.status)
+    : [];
 
   function updateStatus(id: string, status: string) {
     setMessage(null);
@@ -169,6 +173,7 @@ export function CustomerMessageInbox({
             key={status}
             type="button"
             onClick={() => selectFilter(status)}
+            disabled={isPending}
             className={`h-9 whitespace-nowrap rounded-md border px-3 text-sm font-semibold ${
               filter === status
                 ? "border-[#23443b] bg-[#23443b] text-white"
@@ -193,6 +198,7 @@ export function CustomerMessageInbox({
                 setStatusAfterSend("handled");
                 setMessage(null);
               }}
+              disabled={isPending}
               className={`rounded-md border p-3 text-left transition ${
                 selectedMessage?.id === entry.id
                   ? "border-[#23443b] bg-[#f7efe3]"
@@ -296,31 +302,24 @@ export function CustomerMessageInbox({
               </div>
 
               <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  disabled={isPending}
-                  onClick={() => updateStatus(selectedMessage.id, "in_progress")}
-                >
-                  {isPending ? <Loader2 className="animate-spin" size={16} /> : null}
-                  Working on it
-                </Button>
-                <Button
-                  type="button"
-                  disabled={isPending}
-                  onClick={() => updateStatus(selectedMessage.id, "handled")}
-                >
-                  {isPending ? <Loader2 className="animate-spin" size={16} /> : null}
-                  Mark handled
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  disabled={isPending}
-                  onClick={() => updateStatus(selectedMessage.id, "closed")}
-                >
-                  Close
-                </Button>
+                {statusActions.map((action) => (
+                  <Button
+                    key={action.status}
+                    type="button"
+                    variant={
+                      action.variant === "secondary"
+                        ? "secondary"
+                        : action.variant === "ghost"
+                          ? "ghost"
+                          : "primary"
+                    }
+                    disabled={isPending}
+                    onClick={() => updateStatus(selectedMessage.id, action.status)}
+                  >
+                    {isPending ? <Loader2 className="animate-spin" size={16} /> : null}
+                    {action.label}
+                  </Button>
+                ))}
                 {message ? (
                   <span
                     className={`inline-flex items-center gap-2 text-sm font-semibold ${

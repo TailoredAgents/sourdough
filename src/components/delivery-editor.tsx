@@ -332,6 +332,7 @@ export function DeliveryEditor({
                 <td className="py-3 pr-3">
                   <input
                     className="h-10 w-full min-w-52 rounded-md border border-stone-300 px-3"
+                    aria-label={`Delivery window label for ${window.label}`}
                     value={window.label}
                     onChange={(event) =>
                       updateWindow(window.clientId, { label: event.target.value })
@@ -341,6 +342,7 @@ export function DeliveryEditor({
                 <td className="py-3 pr-3">
                   <input
                     className="h-10 rounded-md border border-stone-300 px-3"
+                    aria-label={`${window.label} start time`}
                     type="datetime-local"
                     value={window.startsAt}
                     onChange={(event) =>
@@ -351,6 +353,7 @@ export function DeliveryEditor({
                 <td className="py-3 pr-3">
                   <input
                     className="h-10 rounded-md border border-stone-300 px-3"
+                    aria-label={`${window.label} end time`}
                     type="datetime-local"
                     value={window.endsAt}
                     onChange={(event) =>
@@ -361,6 +364,7 @@ export function DeliveryEditor({
                 <td className="py-3 pr-3">
                   <input
                     className="h-10 w-24 rounded-md border border-stone-300 px-3"
+                    aria-label={`${window.label} capacity`}
                     min={0}
                     type="number"
                     value={window.capacity}
@@ -372,6 +376,7 @@ export function DeliveryEditor({
                 <td className="py-3 pr-3">
                   <input
                     className="h-10 w-24 rounded-md border border-stone-300 px-3"
+                    aria-label={`${window.label} reserved spots`}
                     min={0}
                     type="number"
                     value={window.reserved}

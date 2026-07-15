@@ -339,6 +339,7 @@ export function WeeklyMenuEditor({
                     <td className="px-4 py-3">
                       <input
                         type="checkbox"
+                        aria-label={`Include ${product.name} in weekly menu`}
                         checked={item.included}
                         onChange={(event) =>
                           updateItem(product.id, { included: event.target.checked })
@@ -357,6 +358,7 @@ export function WeeklyMenuEditor({
                     <td className="px-4 py-3">
                       <input
                         className="h-10 w-24 rounded-md border border-stone-300 px-3"
+                        aria-label={`${product.name} available quantity`}
                         min={0}
                         type="number"
                         value={item.availableQuantity}
@@ -370,6 +372,7 @@ export function WeeklyMenuEditor({
                     <td className="px-4 py-3">
                       <input
                         className="h-10 w-24 rounded-md border border-stone-300 px-3"
+                        aria-label={`${product.name} sold quantity`}
                         min={0}
                         type="number"
                         value={item.soldQuantity}
@@ -383,6 +386,7 @@ export function WeeklyMenuEditor({
                     <td className="px-4 py-3">
                       <input
                         type="checkbox"
+                        aria-label={`Feature ${product.name} on weekly menu`}
                         checked={item.featured}
                         onChange={(event) =>
                           updateItem(product.id, { featured: event.target.checked })
