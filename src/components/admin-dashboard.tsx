@@ -32,6 +32,8 @@ import { OrderDashboard } from "./order-dashboard";
 import { ProductEditor } from "./product-editor";
 import { WeeklyMenuEditor } from "./weekly-menu-editor";
 
+const activeOrderStatuses = ["paid", "baking", "out_for_delivery"] as const;
+
 export function AdminDashboard({
   aiKnowledgeEntries,
   customerMessages,
@@ -67,15 +69,28 @@ export function AdminDashboard({
   const openRequestCount = customerMessages.filter(
     (message) => message.status === "new" || message.status === "in_progress",
   ).length;
+  const newRequestCount = customerMessages.filter((message) => message.status === "new").length;
   const openOrderCount = orders.filter((order) =>
-    ["paid", "baking", "out_for_delivery"].includes(order.status),
+    activeOrderStatuses.includes(order.status as (typeof activeOrderStatuses)[number]),
   ).length;
+  const pendingPaymentCount = orders.filter((order) => order.status === "pending_payment").length;
+  const paidOrderCount = orders.filter((order) => order.status === "paid").length;
   const menuCapacity = menu.reduce((sum, item) => sum + item.availableQuantity, 0);
+  const soldCount = menu.reduce((sum, item) => sum + item.soldQuantity, 0);
+  const remainingCount = menu.reduce((sum, item) => sum + item.remainingQuantity, 0);
   const stats: { label: string; value: string; Icon: LucideIcon }[] = [
-    { label: "Open orders", value: String(openOrderCount), Icon: ClipboardList },
-    { label: "Customer requests", value: String(openRequestCount), Icon: Inbox },
-    { label: "Menu capacity", value: String(menuCapacity), Icon: Package },
+    { label: "Active paid orders", value: String(openOrderCount), Icon: ClipboardList },
+    { label: "Open requests", value: String(openRequestCount), Icon: Inbox },
+    { label: "Loaves/items left", value: String(remainingCount), Icon: Package },
     { label: "Delivery windows", value: String(deliveryWindows.length), Icon: Truck },
+  ];
+  const quickLinks = [
+    { label: "Orders", href: "#orders", count: openOrderCount },
+    { label: "Requests", href: "#requests", count: openRequestCount },
+    { label: "Weekly menu", href: "#weekly-menu", count: remainingCount },
+    { label: "Delivery", href: "#delivery", count: deliveryWindows.length },
+    { label: "Products", href: "#products", count: products.length },
+    { label: "Assistant", href: "#assistant", count: aiKnowledgeEntries.length },
   ];
 
   function generateDraft() {
@@ -129,7 +144,64 @@ export function AdminDashboard({
           ))}
         </section>
 
-        <section className="mt-8 grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+        <nav
+          aria-label="Admin sections"
+          className="sticky top-0 z-30 -mx-4 mt-6 overflow-x-auto border-y border-stone-200 bg-[#fffaf2]/95 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8"
+        >
+          <div className="flex min-w-max gap-2">
+            {quickLinks.map((link) => (
+              <a
+                key={link.href}
+                href={link.href}
+                className="inline-flex h-10 items-center gap-2 rounded-md border border-stone-300 bg-white px-3 text-sm font-bold text-stone-800 transition hover:bg-stone-50"
+              >
+                {link.label}
+                <span className="rounded-sm bg-[#f7efe3] px-2 py-0.5 text-xs text-[#23443b]">
+                  {link.count}
+                </span>
+              </a>
+            ))}
+          </div>
+        </nav>
+
+        <section className="mt-6 grid gap-4 lg:grid-cols-3">
+          <div className="rounded-md border border-[#23443b]/20 bg-white p-4">
+            <p className="text-sm font-bold uppercase tracking-[0.16em] text-[#23443b]">
+              Work queue
+            </p>
+            <p className="mt-2 text-2xl font-bold text-stone-950">
+              {openOrderCount + openRequestCount} needs attention
+            </p>
+            <p className="mt-2 text-sm leading-6 text-stone-700">
+              {paidOrderCount} paid orders ready to work, {newRequestCount} new
+              requests, and {pendingPaymentCount} unpaid checkouts.
+            </p>
+          </div>
+          <div className="rounded-md border border-stone-200 bg-white p-4">
+            <p className="text-sm font-bold uppercase tracking-[0.16em] text-[#a94334]">
+              Bake status
+            </p>
+            <p className="mt-2 text-2xl font-bold text-stone-950">
+              {soldCount} sold / {menuCapacity} capacity
+            </p>
+            <p className="mt-2 text-sm leading-6 text-stone-700">
+              {remainingCount} items remain available on the customer storefront.
+            </p>
+          </div>
+          <div className="rounded-md border border-amber-300 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
+            <p className="font-bold">Owner reminder</p>
+            <p className="mt-1">
+              Work paid orders first. Pending payment orders are not confirmed
+              until Stripe marks them paid.
+            </p>
+          </div>
+        </section>
+
+        <OrderDashboard initialOrders={orders} />
+
+        <CustomerMessageInbox initialMessages={customerMessages} />
+
+        <section id="menu-summary" className="mt-8 scroll-mt-28 grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
           <div className="rounded-md border border-stone-200 bg-white p-5">
             <h2 className="text-xl font-bold text-stone-950">Weekly menu control</h2>
             <p className="mt-1 text-sm text-stone-700">
@@ -167,7 +239,7 @@ export function AdminDashboard({
             </div>
           </div>
 
-          <div className="rounded-md border border-stone-200 bg-white p-5">
+          <div id="assistant" className="scroll-mt-28 rounded-md border border-stone-200 bg-white p-5">
             <div className="flex items-center gap-2">
               <Megaphone className="text-[#a94334]" size={20} />
               <h2 className="text-xl font-bold text-stone-950">AI drafting assistant</h2>
@@ -261,10 +333,6 @@ export function AdminDashboard({
           products={products}
           selectedWeeklyMenuId={selectedWeeklyMenuId}
         />
-
-        <OrderDashboard initialOrders={orders} />
-
-        <CustomerMessageInbox initialMessages={customerMessages} />
 
         <AiKnowledgeEditor initialEntries={aiKnowledgeEntries} />
 

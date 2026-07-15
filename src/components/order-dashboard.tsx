@@ -25,7 +25,10 @@ const statusOptions: OrderStatus[] = [
   "canceled",
 ];
 
-const filterOptions: Array<OrderStatus | "all"> = [
+const activeStatuses: OrderStatus[] = ["paid", "baking", "out_for_delivery"];
+
+const filterOptions: Array<OrderStatus | "all" | "active"> = [
+  "active",
   "all",
   "pending_payment",
   "paid",
@@ -34,6 +37,12 @@ const filterOptions: Array<OrderStatus | "all"> = [
   "delivered",
   "canceled",
 ];
+
+function matchesOrderFilter(order: AdminOrder, filter: OrderStatus | "all" | "active") {
+  if (filter === "active") return activeStatuses.includes(order.status);
+  if (filter === "all") return true;
+  return order.status === filter;
+}
 
 function formatDate(value: string | null) {
   if (!value) return "Not paid";
@@ -61,26 +70,29 @@ function formatAddress(order: AdminOrder) {
 }
 
 export function OrderDashboard({ initialOrders }: { initialOrders: AdminOrder[] }) {
+  const firstActiveOrder = initialOrders.find((order) =>
+    activeStatuses.includes(order.status),
+  );
   const [orders, setOrders] = useState<AdminOrder[]>(initialOrders);
   const [selectedId, setSelectedId] = useState<string | null>(
-    initialOrders[0]?.id ?? null,
+    firstActiveOrder?.id ?? initialOrders[0]?.id ?? null,
   );
-  const [filter, setFilter] = useState<OrderStatus | "all">("all");
+  const [filter, setFilter] = useState<OrderStatus | "all" | "active">(
+    firstActiveOrder ? "active" : "all",
+  );
   const [message, setMessage] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   const filteredOrders = useMemo(
-    () =>
-      filter === "all"
-        ? orders
-        : orders.filter((order) => order.status === filter),
+    () => orders.filter((order) => matchesOrderFilter(order, filter)),
     [filter, orders],
   );
   const selectedOrder =
-    orders.find((order) => order.id === selectedId) ?? filteredOrders[0] ?? orders[0];
+    filteredOrders.find((order) => order.id === selectedId) ?? filteredOrders[0] ?? null;
   const openOrdersCount = orders.filter((order) =>
-    ["paid", "baking", "out_for_delivery"].includes(order.status),
+    activeStatuses.includes(order.status),
   ).length;
+  const pendingPaymentCount = orders.filter((order) => order.status === "pending_payment").length;
 
   function updateStatus(id: string, status: OrderStatus) {
     setMessage(null);
@@ -102,12 +114,19 @@ export function OrderDashboard({ initialOrders }: { initialOrders: AdminOrder[] 
 
       setOrders(payload.orders);
       setSelectedId(id);
+      setFilter(activeStatuses.includes(status) ? "active" : status);
       setMessage("Order updated.");
     });
   }
 
+  function selectFilter(nextFilter: OrderStatus | "all" | "active") {
+    setFilter(nextFilter);
+    setSelectedId(orders.find((order) => matchesOrderFilter(order, nextFilter))?.id ?? null);
+    setMessage(null);
+  }
+
   return (
-    <section className="mt-8 rounded-md border border-stone-200 bg-white p-5">
+    <section id="orders" className="mt-8 scroll-mt-28 rounded-md border border-stone-200 bg-white p-5">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
         <div>
           <div className="flex items-center gap-2">
@@ -119,7 +138,7 @@ export function OrderDashboard({ initialOrders }: { initialOrders: AdminOrder[] 
           </p>
         </div>
         <div className="rounded-md border border-stone-200 bg-[#fffaf2] px-3 py-2 text-sm font-semibold text-stone-700">
-          {openOrdersCount} open orders
+          {openOrdersCount} active orders - {pendingPaymentCount} unpaid
         </div>
       </div>
 
@@ -128,14 +147,18 @@ export function OrderDashboard({ initialOrders }: { initialOrders: AdminOrder[] 
           <button
             key={status}
             type="button"
-            onClick={() => setFilter(status)}
+            onClick={() => selectFilter(status)}
             className={`h-9 whitespace-nowrap rounded-md border px-3 text-sm font-semibold ${
               filter === status
                 ? "border-[#23443b] bg-[#23443b] text-white"
                 : "border-stone-300 bg-white text-stone-700 hover:bg-stone-50"
             }`}
           >
-            {status === "all" ? "All" : statusLabels[status]}
+            {status === "active"
+              ? "Active"
+              : status === "all"
+                ? "All"
+                : statusLabels[status]}
           </button>
         ))}
       </div>
@@ -167,7 +190,7 @@ export function OrderDashboard({ initialOrders }: { initialOrders: AdminOrder[] 
                 </div>
                 <span
                   className={`rounded-sm px-2 py-1 text-xs font-bold uppercase ${
-                    order.status === "paid"
+                    activeStatuses.includes(order.status)
                       ? "bg-emerald-50 text-emerald-800"
                       : order.status === "canceled"
                         ? "bg-stone-100 text-stone-600"
@@ -178,7 +201,11 @@ export function OrderDashboard({ initialOrders }: { initialOrders: AdminOrder[] 
                 </span>
               </div>
               <div className="mt-3 flex items-center justify-between gap-3 text-sm text-stone-700">
-                <span>{order.items.length} items</span>
+                <span>
+                  {order.status === "pending_payment"
+                    ? "Not paid yet"
+                    : `${order.items.length} items`}
+                </span>
                 <span className="font-bold text-[#23443b]">
                   {formatCurrency(order.totalCents)}
                 </span>
@@ -237,9 +264,6 @@ export function OrderDashboard({ initialOrders }: { initialOrders: AdminOrder[] 
                   </div>
                 </div>
                 <p>Paid: {formatDate(selectedOrder.paidAt)}</p>
-                {selectedOrder.stripeCheckoutSessionId ? (
-                  <p>Stripe session: {selectedOrder.stripeCheckoutSessionId}</p>
-                ) : null}
               </div>
 
               <div className="mt-4 overflow-x-auto rounded-md border border-stone-200 bg-white">
@@ -293,6 +317,17 @@ export function OrderDashboard({ initialOrders }: { initialOrders: AdminOrder[] 
                 </div>
               ) : null}
 
+              {selectedOrder.stripeCheckoutSessionId ? (
+                <details className="mt-4 rounded-md border border-stone-200 bg-white p-4 text-sm text-stone-700">
+                  <summary className="cursor-pointer font-semibold text-stone-950">
+                    Payment reference
+                  </summary>
+                  <p className="mt-2 break-all">
+                    Stripe session: {selectedOrder.stripeCheckoutSessionId}
+                  </p>
+                </details>
+              ) : null}
+
               <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
                 <select
                   className="h-11 rounded-md border border-stone-300 bg-white px-3 text-sm"
@@ -330,7 +365,7 @@ export function OrderDashboard({ initialOrders }: { initialOrders: AdminOrder[] 
             </>
           ) : (
             <div className="rounded-md border border-dashed border-stone-300 bg-white p-5 text-sm text-stone-700">
-              No orders yet.
+              No order selected for this filter.
             </div>
           )}
         </div>

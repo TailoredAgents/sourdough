@@ -193,7 +193,7 @@ export function WeeklyMenuEditor({
   }
 
   return (
-    <section className="mt-8 rounded-md border border-stone-200 bg-white p-5">
+    <section id="weekly-menu" className="mt-8 scroll-mt-28 rounded-md border border-stone-200 bg-white p-5">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
         <div>
           <h2 className="text-xl font-bold text-stone-950">Weekly menu builder</h2>

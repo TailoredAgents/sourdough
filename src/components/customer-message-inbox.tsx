@@ -12,6 +12,15 @@ const statusLabels: Record<string, string> = {
   closed: "Closed",
 };
 
+const openStatuses = ["new", "in_progress"];
+const filterOptions = ["open", "all", "new", "in_progress", "handled", "closed"];
+
+function matchesMessageFilter(message: CustomerMessage, filter: string) {
+  if (filter === "open") return openStatuses.includes(message.status);
+  if (filter === "all") return true;
+  return message.status === filter;
+}
+
 function formatDate(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "Unknown date";
@@ -30,13 +39,21 @@ export function CustomerMessageInbox({
 }: {
   initialMessages: CustomerMessage[];
 }) {
+  const firstSelectedMessage =
+    initialMessages.find((entry) => openStatuses.includes(entry.status)) ??
+    initialMessages[0];
   const [messages, setMessages] = useState<CustomerMessage[]>(initialMessages);
   const [selectedId, setSelectedId] = useState<string | null>(
-    initialMessages[0]?.id ?? null,
+    firstSelectedMessage?.id ?? null,
+  );
+  const [filter, setFilter] = useState(
+    initialMessages.some((entry) => openStatuses.includes(entry.status))
+      ? "open"
+      : "all",
   );
   const [message, setMessage] = useState<string | null>(null);
   const [replySubject, setReplySubject] = useState(
-    defaultReplySubject(initialMessages[0]),
+    defaultReplySubject(firstSelectedMessage),
   );
   const [replyBody, setReplyBody] = useState("");
   const [statusAfterSend, setStatusAfterSend] = useState<"in_progress" | "handled">(
@@ -44,9 +61,16 @@ export function CustomerMessageInbox({
   );
   const [isPending, startTransition] = useTransition();
 
+  const filteredMessages = useMemo(
+    () => messages.filter((entry) => matchesMessageFilter(entry, filter)),
+    [filter, messages],
+  );
   const selectedMessage = useMemo(
-    () => messages.find((entry) => entry.id === selectedId) ?? messages[0],
-    [messages, selectedId],
+    () =>
+      filteredMessages.find((entry) => entry.id === selectedId) ??
+      filteredMessages[0] ??
+      null,
+    [filteredMessages, selectedId],
   );
 
   const openCount = messages.filter(
@@ -73,8 +97,19 @@ export function CustomerMessageInbox({
 
       setMessages(payload.messages);
       setSelectedId(id);
+      setFilter(openStatuses.includes(status) ? "open" : status);
       setMessage("Message updated.");
     });
+  }
+
+  function selectFilter(nextFilter: string) {
+    const nextMessage = messages.find((entry) => matchesMessageFilter(entry, nextFilter));
+    setFilter(nextFilter);
+    setSelectedId(nextMessage?.id ?? null);
+    setReplySubject(defaultReplySubject(nextMessage));
+    setReplyBody("");
+    setStatusAfterSend("handled");
+    setMessage(null);
   }
 
   function sendReply() {
@@ -103,13 +138,14 @@ export function CustomerMessageInbox({
 
       setMessages(payload.messages);
       setSelectedId(selectedMessage.id);
+      setFilter(statusAfterSend);
       setReplyBody("");
       setMessage("Reply sent.");
     });
   }
 
   return (
-    <section className="mt-8 rounded-md border border-stone-200 bg-white p-5">
+    <section id="requests" className="mt-8 scroll-mt-28 rounded-md border border-stone-200 bg-white p-5">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
         <div>
           <div className="flex items-center gap-2">
@@ -127,9 +163,26 @@ export function CustomerMessageInbox({
         </div>
       </div>
 
+      <div className="mt-5 flex gap-2 overflow-x-auto pb-1">
+        {filterOptions.map((status) => (
+          <button
+            key={status}
+            type="button"
+            onClick={() => selectFilter(status)}
+            className={`h-9 whitespace-nowrap rounded-md border px-3 text-sm font-semibold ${
+              filter === status
+                ? "border-[#23443b] bg-[#23443b] text-white"
+                : "border-stone-300 bg-white text-stone-700 hover:bg-stone-50"
+            }`}
+          >
+            {status === "open" ? "Open" : status === "all" ? "All" : statusLabels[status]}
+          </button>
+        ))}
+      </div>
+
       <div className="mt-5 grid gap-5 lg:grid-cols-[0.9fr_1.1fr]">
         <div className="grid max-h-[520px] content-start gap-2 overflow-y-auto pr-1">
-          {messages.map((entry) => (
+          {filteredMessages.map((entry) => (
             <button
               key={entry.id}
               type="button"
@@ -171,9 +224,9 @@ export function CustomerMessageInbox({
             </button>
           ))}
 
-          {!messages.length ? (
+          {!filteredMessages.length ? (
             <div className="rounded-md border border-dashed border-stone-300 bg-[#fffaf2] p-5 text-sm text-stone-700">
-              No customer messages yet.
+              No customer messages match this filter.
             </div>
           ) : null}
         </div>
@@ -286,7 +339,7 @@ export function CustomerMessageInbox({
             </>
           ) : (
             <div className="rounded-md border border-dashed border-stone-300 bg-white p-5 text-sm text-stone-700">
-              Select a message to review.
+              No message selected for this filter.
             </div>
           )}
         </div>
