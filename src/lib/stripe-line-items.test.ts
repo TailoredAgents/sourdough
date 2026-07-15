@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildCatalogLineItem } from "./stripe-line-items";
+import { buildCatalogLineItem, buildDeliveryLineItem } from "./stripe-line-items";
 import type { MenuProduct } from "./types";
 
 const product: MenuProduct = {
@@ -49,6 +49,20 @@ describe("stripe line items", () => {
         unit_amount: 1200,
         product_data: {
           name: "Classic Country Loaf",
+        },
+      },
+    });
+  });
+
+  it("charges delivery as a separate line item at the checked delivery fee", () => {
+    expect(buildDeliveryLineItem(600)).toEqual({
+      quantity: 1,
+      price_data: {
+        currency: "usd",
+        unit_amount: 600,
+        product_data: {
+          name: "Local delivery",
+          description: "ZIP-based local delivery around Canton and Woodstock, GA",
         },
       },
     });
