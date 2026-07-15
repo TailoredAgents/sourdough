@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { CheckCircle2, Copy, Loader2, Save } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Copy, Loader2, Save } from "lucide-react";
 import {
   getAdminPayloadError,
   hasAdminKeys,
@@ -64,6 +64,21 @@ function buildForm(weeklyMenu: WeeklyMenu, products: Product[]): WeeklyMenuForm 
   };
 }
 
+function getRemainingQuantity(item: MenuItemForm) {
+  return Math.max(item.availableQuantity - item.soldQuantity, 0);
+}
+
+function getInventoryWarning(item: MenuItemForm, productName: string) {
+  if (!item.included) return null;
+  if (item.soldQuantity > item.availableQuantity) {
+    return `${productName} has more sold than available.`;
+  }
+  if (item.availableQuantity === 0) {
+    return `${productName} is included but has no sellable inventory.`;
+  }
+  return null;
+}
+
 export function WeeklyMenuEditor({
   initialWeeklyMenu,
   initialWeeklyMenus,
@@ -98,6 +113,17 @@ export function WeeklyMenuEditor({
   const [isUnsavedClone, setIsUnsavedClone] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const includedItems = form.items.filter((item) => item.included);
+  const summary = includedItems.reduce(
+    (current, item) => ({
+      available: current.available + item.availableQuantity,
+      sold: current.sold + item.soldQuantity,
+      remaining: current.remaining + getRemainingQuantity(item),
+      featured: current.featured + (item.featured ? 1 : 0),
+    }),
+    { available: 0, sold: 0, remaining: 0, featured: 0 },
+  );
+  const includedItemCount = includedItems.length;
 
   function updateItem(productId: string, patch: Partial<MenuItemForm>) {
     setForm((current) => ({
@@ -330,89 +356,148 @@ export function WeeklyMenuEditor({
         />
       </label>
 
-      <div className="mt-5 overflow-hidden rounded-md border border-stone-200 bg-white">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[760px] text-left text-sm">
-            <thead className="border-b border-stone-200 bg-[#fffaf2] text-xs uppercase tracking-wide text-stone-500">
-              <tr>
-                <th className="px-4 py-3">Include</th>
-                <th className="px-4 py-3">Product</th>
-                <th className="px-4 py-3">Price</th>
-                <th className="px-4 py-3">Available</th>
-                <th className="px-4 py-3">Sold</th>
-                <th className="px-4 py-3">Featured</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-stone-100">
-              {products.map((product) => {
-                const item = form.items.find((entry) => entry.productId === product.id);
-                if (!item) return null;
-
-                return (
-                  <tr key={product.id}>
-                    <td className="px-4 py-3">
-                      <input
-                        type="checkbox"
-                        aria-label={`Include ${product.name} in weekly menu`}
-                        checked={item.included}
-                        onChange={(event) =>
-                          updateItem(product.id, { included: event.target.checked })
-                        }
-                      />
-                    </td>
-                    <td className="px-4 py-3">
-                      <p className="font-semibold text-stone-950">{product.name}</p>
-                      <p className="text-xs uppercase tracking-wide text-stone-500">
-                        {product.category}
-                      </p>
-                    </td>
-                    <td className="px-4 py-3 text-stone-700">
-                      {formatCurrency(product.priceCents)}
-                    </td>
-                    <td className="px-4 py-3">
-                      <input
-                        className="h-10 w-24 rounded-md border border-stone-300 px-3"
-                        aria-label={`${product.name} available quantity`}
-                        min={0}
-                        type="number"
-                        value={item.availableQuantity}
-                        onChange={(event) =>
-                          updateItem(product.id, {
-                            availableQuantity: Number(event.target.value),
-                          })
-                        }
-                      />
-                    </td>
-                    <td className="px-4 py-3">
-                      <input
-                        className="h-10 w-24 rounded-md border border-stone-300 px-3"
-                        aria-label={`${product.name} sold quantity`}
-                        min={0}
-                        type="number"
-                        value={item.soldQuantity}
-                        onChange={(event) =>
-                          updateItem(product.id, {
-                            soldQuantity: Number(event.target.value),
-                          })
-                        }
-                      />
-                    </td>
-                    <td className="px-4 py-3">
-                      <input
-                        type="checkbox"
-                        aria-label={`Feature ${product.name} on weekly menu`}
-                        checked={item.featured}
-                        onChange={(event) =>
-                          updateItem(product.id, { featured: event.target.checked })
-                        }
-                      />
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+      <div className="mt-5 grid gap-3 rounded-md border border-stone-200 bg-[#fffaf2] p-4 sm:grid-cols-4">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wide text-stone-500">
+            Included
+          </p>
+          <p className="mt-1 text-2xl font-bold text-stone-950">{includedItemCount}</p>
         </div>
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wide text-stone-500">
+            Available
+          </p>
+          <p className="mt-1 text-2xl font-bold text-stone-950">{summary.available}</p>
+        </div>
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wide text-stone-500">
+            Sold / left
+          </p>
+          <p className="mt-1 text-2xl font-bold text-stone-950">
+            {summary.sold} / {summary.remaining}
+          </p>
+        </div>
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wide text-stone-500">
+            Featured
+          </p>
+          <p className="mt-1 text-2xl font-bold text-stone-950">{summary.featured}</p>
+        </div>
+      </div>
+
+      <div className="mt-5 grid gap-3">
+        {products.map((product) => {
+          const item = form.items.find((entry) => entry.productId === product.id);
+          if (!item) return null;
+
+          const warning = getInventoryWarning(item, product.name);
+          const remainingQuantity = getRemainingQuantity(item);
+
+          return (
+            <div
+              key={product.id}
+              className={`rounded-md border p-4 ${
+                item.included
+                  ? warning
+                    ? "border-amber-300 bg-amber-50"
+                    : "border-stone-200 bg-white"
+                  : "border-stone-200 bg-stone-50"
+              }`}
+            >
+              <div className="grid gap-4 lg:grid-cols-[minmax(220px,1fr)_360px] lg:items-start">
+                <div>
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="font-semibold text-stone-950">{product.name}</p>
+                      <p className="mt-1 text-xs uppercase tracking-wide text-stone-500">
+                        {product.category} - {formatCurrency(product.priceCents)}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-4">
+                      <label className="inline-flex items-center gap-2 text-sm font-semibold text-stone-700">
+                        <input
+                          type="checkbox"
+                          aria-label={`Include ${product.name} in weekly menu`}
+                          checked={item.included}
+                          onChange={(event) =>
+                            updateItem(product.id, {
+                              included: event.target.checked,
+                              featured: event.target.checked ? item.featured : false,
+                            })
+                          }
+                        />
+                        Include
+                      </label>
+                      <label className="inline-flex items-center gap-2 text-sm font-semibold text-stone-700">
+                        <input
+                          type="checkbox"
+                          aria-label={`Feature ${product.name} on weekly menu`}
+                          checked={item.featured}
+                          disabled={!item.included}
+                          onChange={(event) =>
+                            updateItem(product.id, { featured: event.target.checked })
+                          }
+                        />
+                        Featured
+                      </label>
+                    </div>
+                  </div>
+                  {warning ? (
+                    <p className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-amber-900">
+                      <AlertTriangle size={16} />
+                      {warning}
+                    </p>
+                  ) : null}
+                </div>
+
+                <div className="grid grid-cols-3 gap-3">
+                  <label className="grid gap-1 text-sm font-semibold text-stone-700">
+                    Available
+                    <input
+                      className="h-10 min-w-0 rounded-md border border-stone-300 bg-white px-3 font-normal disabled:bg-stone-100"
+                      aria-label={`${product.name} available quantity`}
+                      disabled={!item.included}
+                      inputMode="numeric"
+                      min={0}
+                      step={1}
+                      type="number"
+                      value={item.availableQuantity}
+                      onChange={(event) =>
+                        updateItem(product.id, {
+                          availableQuantity: Number(event.target.value),
+                        })
+                      }
+                    />
+                  </label>
+                  <label className="grid gap-1 text-sm font-semibold text-stone-700">
+                    Sold
+                    <input
+                      className="h-10 min-w-0 rounded-md border border-stone-300 bg-white px-3 font-normal disabled:bg-stone-100"
+                      aria-label={`${product.name} sold quantity`}
+                      disabled={!item.included}
+                      inputMode="numeric"
+                      min={0}
+                      step={1}
+                      type="number"
+                      value={item.soldQuantity}
+                      onChange={(event) =>
+                        updateItem(product.id, {
+                          soldQuantity: Number(event.target.value),
+                        })
+                      }
+                    />
+                  </label>
+                  <div className="grid gap-1 text-sm font-semibold text-stone-700">
+                    Left
+                    <div className="flex h-10 items-center rounded-md border border-stone-200 bg-[#fffaf2] px-3 font-bold text-[#23443b]">
+                      {item.included ? remainingQuantity : "-"}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       {message ? (
