@@ -1,14 +1,22 @@
 import { z } from "zod";
 
+function isValidDate(value: string) {
+  return !Number.isNaN(new Date(value).getTime());
+}
+
 const deliveryWindowAdminSchema = z
   .object({
     id: z.string().uuid().optional(),
     label: z.string().min(2).max(120),
-    startsAt: z.string().min(1),
-    endsAt: z.string().min(1),
+    startsAt: z.string().min(1).refine(isValidDate, "Use a valid start date."),
+    endsAt: z.string().min(1).refine(isValidDate, "Use a valid end date."),
     capacity: z.number().int().min(0).max(1000),
     reserved: z.number().int().min(0).max(1000),
     remove: z.boolean().optional().default(false),
+  })
+  .refine((window) => new Date(window.startsAt) < new Date(window.endsAt), {
+    message: "Delivery window start must be before the end.",
+    path: ["endsAt"],
   })
   .refine((window) => window.reserved <= window.capacity, {
     message: "Reserved spots cannot be higher than capacity.",

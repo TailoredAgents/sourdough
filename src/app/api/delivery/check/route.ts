@@ -8,11 +8,17 @@ const addressSchema = z.object({
   line2: z.string().optional().default(""),
   city: z.string().min(1),
   state: z.string().min(1),
-  postalCode: z.string().min(3),
+  postalCode: z.string().regex(/^\d{5}$/),
 });
 
 export async function POST(request: Request) {
-  const body = await request.json();
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    body = null;
+  }
+  const deliverySettings = await getDeliverySettingsData();
   const parsed = addressSchema.safeParse(body);
 
   if (!parsed.success) {
@@ -22,12 +28,13 @@ export async function POST(request: Request) {
         needsReview: false,
         miles: null,
         message: "Please enter a complete delivery address.",
-        feeCents: 0,
+        feeCents: deliverySettings.deliveryFeeCents,
+        postalCode: null,
+        allowedPostalCodes: deliverySettings.allowedPostalCodes,
       },
       { status: 400 },
     );
   }
 
-  const deliverySettings = await getDeliverySettingsData();
   return NextResponse.json(checkDeliveryAddress(parsed.data, deliverySettings));
 }

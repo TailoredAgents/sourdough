@@ -1,6 +1,10 @@
 import { createHash } from "crypto";
 import { getSupabaseAdminClient } from "./supabase";
 
+export function canBypassRateLimit(nodeEnv = process.env.NODE_ENV) {
+  return nodeEnv !== "production";
+}
+
 export async function checkRateLimit({
   scope,
   key,
@@ -13,7 +17,11 @@ export async function checkRateLimit({
   windowMs: number;
 }) {
   const supabase = getSupabaseAdminClient();
-  if (!supabase) return { allowed: true, remaining: limit };
+  if (!supabase) {
+    return canBypassRateLimit()
+      ? { allowed: true, remaining: limit }
+      : { allowed: false, remaining: 0 };
+  }
 
   const keyHash = createHash("sha256").update(key).digest("hex");
   const since = new Date(Date.now() - windowMs).toISOString();
@@ -27,7 +35,9 @@ export async function checkRateLimit({
 
   if (countError) {
     console.error("[rate-limit] lookup failed", countError.message);
-    return { allowed: true, remaining: limit };
+    return canBypassRateLimit()
+      ? { allowed: true, remaining: limit }
+      : { allowed: false, remaining: 0 };
   }
 
   if ((count || 0) >= limit) {
@@ -41,7 +51,9 @@ export async function checkRateLimit({
 
   if (insertError) {
     console.error("[rate-limit] insert failed", insertError.message);
-    return { allowed: true, remaining: limit - (count || 0) };
+    return canBypassRateLimit()
+      ? { allowed: true, remaining: limit - (count || 0) }
+      : { allowed: false, remaining: 0 };
   }
 
   return { allowed: true, remaining: Math.max(limit - (count || 0) - 1, 0) };

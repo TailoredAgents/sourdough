@@ -3,6 +3,10 @@ import { AdminLoginForm } from "@/components/admin-login-form";
 
 export const metadata = {
   title: "Admin Login",
+  robots: {
+    index: false,
+    follow: false,
+  },
 };
 
 function getErrorMessage(error?: string, message?: string) {

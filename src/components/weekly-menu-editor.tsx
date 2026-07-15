@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { CheckCircle2, Copy, Loader2, Save } from "lucide-react";
 import type { Product, WeeklyMenu, WeeklyMenuSummary } from "@/lib/types";
 import { formatCurrency } from "@/lib/utils";
@@ -72,6 +73,7 @@ export function WeeklyMenuEditor({
   products: Product[];
   selectedWeeklyMenuId: string;
 }) {
+  const router = useRouter();
   const fallbackWeeklyMenu = useMemo<WeeklyMenu>(
     () =>
       initialWeeklyMenu ?? {
@@ -87,6 +89,7 @@ export function WeeklyMenuEditor({
   );
   const [form, setForm] = useState(() => buildForm(fallbackWeeklyMenu, products));
   const [weeklyMenus, setWeeklyMenus] = useState(initialWeeklyMenus);
+  const [isUnsavedClone, setIsUnsavedClone] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -101,6 +104,7 @@ export function WeeklyMenuEditor({
 
   function cloneAsNewMenu() {
     setMessage("Cloned current menu. Adjust dates, then save to create it.");
+    setIsUnsavedClone(true);
     setForm((current) => {
       const startsAt = current.startsAt ? new Date(current.startsAt) : new Date();
       const endsAt = current.endsAt ? new Date(current.endsAt) : new Date();
@@ -123,8 +127,9 @@ export function WeeklyMenuEditor({
   }
 
   function selectWeeklyMenu(id: string) {
-    if (!id) return;
+    if (!id || id === "unsaved-clone") return;
     setMessage(null);
+    setIsUnsavedClone(false);
     onSelectedWeeklyMenuIdChange(id);
     startTransition(async () => {
       const response = await fetch(`/api/admin/weekly-menu?id=${encodeURIComponent(id)}`);
@@ -180,8 +185,10 @@ export function WeeklyMenuEditor({
         onWeeklyMenusChange(payload.weeklyMenus);
       }
       onSelectedWeeklyMenuIdChange(payload.selectedWeeklyMenu.id);
+      setIsUnsavedClone(false);
       setForm(buildForm(payload.selectedWeeklyMenu, products));
       setMessage("Weekly menu saved.");
+      router.refresh();
     });
   }
 
@@ -210,11 +217,14 @@ export function WeeklyMenuEditor({
         Edit bake drop
         <select
           className="h-11 rounded-md border border-stone-300 bg-white px-3 font-normal"
-          value={form.id || selectedWeeklyMenuId || ""}
+          value={isUnsavedClone ? "unsaved-clone" : form.id || selectedWeeklyMenuId || ""}
           onChange={(event) => selectWeeklyMenu(event.target.value)}
           disabled={isPending || !weeklyMenus.length}
         >
           {!weeklyMenus.length ? <option value="">No menus yet</option> : null}
+          {isUnsavedClone ? (
+            <option value="unsaved-clone">Unsaved cloned menu</option>
+          ) : null}
           {weeklyMenus.map((menu) => (
             <option key={menu.id} value={menu.id}>
               {menu.name} - {menu.published ? "published" : "draft"} - {menu.itemCount} items

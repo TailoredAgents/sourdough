@@ -1,5 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
+import { Mail } from "lucide-react";
 import { bakery } from "@/lib/bakery-data";
 import { policyPages } from "@/lib/policies";
 
@@ -11,7 +12,7 @@ export function SiteFooter() {
           <Link href="/" className="inline-flex items-center gap-3">
             <span className="relative flex size-12 shrink-0 overflow-hidden rounded-full border border-amber-200 bg-white shadow-sm">
               <Image
-                src="/images/luna-lorelais-logo-square.png"
+                src="/images/luna-lorelais-logo-square-180.png"
                 alt="Luna & Lorelai's Sourdough logo"
                 fill
                 sizes="48px"
@@ -26,16 +27,27 @@ export function SiteFooter() {
             </span>
           </Link>
           <p className="mt-4 max-w-xl text-sm leading-6 text-stone-700">
-            Weekly sourdough drops and small-batch add-ons for local delivery
-            from Canton, Georgia.
+            Weekly sourdough loaves and small-batch add-ons available by
+            preorder for local delivery around Canton, Georgia.
           </p>
+          <a
+            href={`mailto:${bakery.orderEmail}`}
+            className="mt-4 inline-flex items-center gap-2 text-sm font-bold text-[#23443b] underline"
+          >
+            <Mail size={16} />
+            {bakery.orderEmail}
+          </a>
         </div>
 
         <div>
           <p className="text-sm font-bold uppercase tracking-[0.16em] text-stone-500">
-            Policies
+            Helpful links
           </p>
           <nav className="mt-3 grid gap-2 text-sm font-semibold text-stone-700">
+            <Link href="/sourdough-delivery-canton-ga">
+              Sourdough Delivery in Canton, GA
+            </Link>
+            <Link href="/contact">Contact the bakery</Link>
             <Link href="/policies">Policy overview</Link>
             {policyPages.map((page) => (
               <Link key={page.slug} href={`/policies/${page.slug}`}>

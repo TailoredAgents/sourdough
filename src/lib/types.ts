@@ -110,6 +110,7 @@ export type CheckoutRequest = {
   deliveryWindowId: string;
   deliveryInstructions?: string;
   notes?: string;
+  acknowledgedTerms: true;
 };
 
 export type OrderStatus =

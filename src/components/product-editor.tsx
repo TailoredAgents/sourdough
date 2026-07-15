@@ -61,9 +61,18 @@ function formToPayload(form: ProductForm) {
   };
 }
 
-export function ProductEditor({ initialProducts }: { initialProducts: Product[] }) {
+export function ProductEditor({
+  currentMenuProductIds,
+  initialProducts,
+}: {
+  currentMenuProductIds: string[];
+  initialProducts: Product[];
+}) {
   const router = useRouter();
   const [products, setProducts] = useState<Product[]>(initialProducts);
+  const [locallyVisibleProductIds, setLocallyVisibleProductIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [selectedId, setSelectedId] = useState<string | null>(
     initialProducts[0]?.id ?? null,
   );
@@ -74,6 +83,10 @@ export function ProductEditor({ initialProducts }: { initialProducts: Product[] 
   const [form, setForm] = useState<ProductForm>(productToForm(selectedProduct));
   const [message, setMessage] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const visibleProductIds = useMemo(
+    () => new Set([...currentMenuProductIds, ...locallyVisibleProductIds]),
+    [currentMenuProductIds, locallyVisibleProductIds],
+  );
 
   function selectProduct(product: Product) {
     setSelectedId(product.id);
@@ -118,10 +131,13 @@ export function ProductEditor({ initialProducts }: { initialProducts: Product[] 
         );
       setSelectedId(savedProduct?.id ?? payload.products[0]?.id ?? null);
       setForm(productToForm(savedProduct ?? payload.products[0]));
+      if (savedProduct && form.includeInCurrentMenu && !form.id) {
+        setLocallyVisibleProductIds((current) => new Set(current).add(savedProduct.id));
+      }
       setMessage(
         form.includeInCurrentMenu && !form.id
           ? "Product saved and added to this week's menu."
-          : "Product saved.",
+          : "Product saved. Add it to the weekly menu before expecting it on the storefront.",
       );
       router.refresh();
     });
@@ -160,7 +176,8 @@ export function ProductEditor({ initialProducts }: { initialProducts: Product[] 
         <div>
           <h2 className="text-xl font-bold text-stone-950">Product editor</h2>
           <p className="mt-1 text-sm leading-6 text-stone-700">
-            Manage the product catalog that powers the public storefront.
+            Manage the product catalog. Public storefront visibility is controlled by
+            the weekly menu builder.
           </p>
         </div>
         <Button type="button" variant="secondary" onClick={newProduct}>
@@ -205,6 +222,15 @@ export function ProductEditor({ initialProducts }: { initialProducts: Product[] 
               >
                 {product.active ? "Active" : "Hidden"}
               </span>
+              <span
+                className={`ml-2 mt-3 inline-flex rounded-sm px-2 py-1 text-xs font-bold uppercase ${
+                  visibleProductIds.has(product.id)
+                    ? "bg-sky-50 text-sky-800"
+                    : "bg-amber-50 text-amber-800"
+                }`}
+              >
+                {visibleProductIds.has(product.id) ? "Public this week" : "Not in weekly menu"}
+              </span>
             </button>
           ))}
         </div>
@@ -244,8 +270,27 @@ export function ProductEditor({ initialProducts }: { initialProducts: Product[] 
               </label>
               <p className="inline-flex items-center gap-2 text-xs leading-5 text-stone-600">
                 <ImagePlus size={14} />
-                JPEG, PNG, or WebP. Upload first, then save the product.
+                JPEG, PNG, or WebP. Minimum 1000x750px. Upload first, then save.
               </p>
+              <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-stone-700">
+                <p className="font-bold text-stone-900">Launch photo standard</p>
+                <ul className="mt-1 list-disc space-y-1 pl-4">
+                  <li>Use a real photo of the exact product customers will receive.</li>
+                  <li>
+                    Shoot a horizontal 4:3 or 3:2 frame so menu cards and product
+                    pages can crop cleanly.
+                  </li>
+                  <li>Show crust, crumb, size, and add-ons clearly in the first frame.</li>
+                  <li>
+                    Use bright natural light and avoid heavy filters, dark shadows,
+                    or props that hide the food.
+                  </li>
+                  <li>
+                    Keep one consistent counter, board, or plate style across the
+                    weekly menu.
+                  </li>
+                </ul>
+              </div>
             </div>
           </div>
 

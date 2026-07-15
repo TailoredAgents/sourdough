@@ -105,6 +105,12 @@ on conflict (slug) do update set
   active = excluded.active,
   updated_at = now();
 
+with launch_schedule as (
+  select
+    ((date_trunc('day', now() at time zone 'America/New_York') + interval '1 day 20 hours') at time zone 'America/New_York') as order_cutoff_at,
+    ((date_trunc('day', now() at time zone 'America/New_York') + interval '2 days') at time zone 'America/New_York') as starts_at,
+    ((date_trunc('day', now() at time zone 'America/New_York') + interval '5 days 23 hours 59 minutes') at time zone 'America/New_York') as ends_at
+)
 insert into weekly_menus (
   id,
   name,
@@ -112,14 +118,16 @@ insert into weekly_menus (
   starts_at,
   ends_at,
   published
-) values (
+)
+select
   '00000000-0000-4000-8000-000000000100',
-  'Launch Week Bake Drop',
-  '2026-07-09T20:00:00-04:00',
-  '2026-07-15T00:00:00-04:00',
-  '2026-07-17T23:59:59-04:00',
+  'Starter Bake Drop',
+  order_cutoff_at,
+  starts_at,
+  ends_at,
   true
-) on conflict (id) do update set
+from launch_schedule
+on conflict (id) do update set
   name = excluded.name,
   order_cutoff_at = excluded.order_cutoff_at,
   starts_at = excluded.starts_at,
@@ -143,6 +151,49 @@ on conflict (weekly_menu_id, product_id) do update set
   sold_quantity = excluded.sold_quantity,
   featured = excluded.featured;
 
+with launch_windows as (
+  select
+    ((date_trunc('day', now() at time zone 'America/New_York') + interval '2 days 15 hours') at time zone 'America/New_York') as first_starts_at,
+    ((date_trunc('day', now() at time zone 'America/New_York') + interval '2 days 18 hours') at time zone 'America/New_York') as first_ends_at,
+    ((date_trunc('day', now() at time zone 'America/New_York') + interval '3 days 9 hours') at time zone 'America/New_York') as second_starts_at,
+    ((date_trunc('day', now() at time zone 'America/New_York') + interval '3 days 12 hours') at time zone 'America/New_York') as second_ends_at,
+    ((date_trunc('day', now() at time zone 'America/New_York') + interval '4 days 14 hours') at time zone 'America/New_York') as third_starts_at,
+    ((date_trunc('day', now() at time zone 'America/New_York') + interval '4 days 17 hours') at time zone 'America/New_York') as third_ends_at
+),
+windows as (
+  select
+    '00000000-0000-4000-8000-000000000201' as id,
+    '00000000-0000-4000-8000-000000000100' as weekly_menu_id,
+    to_char(first_starts_at at time zone 'America/New_York', 'FMDay, Mon FMDD, FMHH12:MI AM') || '-' ||
+      to_char(first_ends_at at time zone 'America/New_York', 'FMHH12:MI AM') as label,
+    first_starts_at as starts_at,
+    first_ends_at as ends_at,
+    16 as capacity,
+    5 as reserved
+  from launch_windows
+  union all
+  select
+    '00000000-0000-4000-8000-000000000202',
+    '00000000-0000-4000-8000-000000000100',
+    to_char(second_starts_at at time zone 'America/New_York', 'FMDay, Mon FMDD, FMHH12:MI AM') || '-' ||
+      to_char(second_ends_at at time zone 'America/New_York', 'FMHH12:MI AM'),
+    second_starts_at,
+    second_ends_at,
+    12,
+    4
+  from launch_windows
+  union all
+  select
+    '00000000-0000-4000-8000-000000000203',
+    '00000000-0000-4000-8000-000000000100',
+    to_char(third_starts_at at time zone 'America/New_York', 'FMDay, Mon FMDD, FMHH12:MI AM') || '-' ||
+      to_char(third_ends_at at time zone 'America/New_York', 'FMHH12:MI AM'),
+    third_starts_at,
+    third_ends_at,
+    12,
+    3
+  from launch_windows
+)
 insert into delivery_windows (
   id,
   weekly_menu_id,
@@ -151,34 +202,9 @@ insert into delivery_windows (
   ends_at,
   capacity,
   reserved
-) values
-  (
-    '00000000-0000-4000-8000-000000000201',
-    '00000000-0000-4000-8000-000000000100',
-    'Wednesday, 3:00-6:00 PM',
-    '2026-07-15T15:00:00-04:00',
-    '2026-07-15T18:00:00-04:00',
-    16,
-    5
-  ),
-  (
-    '00000000-0000-4000-8000-000000000202',
-    '00000000-0000-4000-8000-000000000100',
-    'Thursday, 9:00 AM-12:00 PM',
-    '2026-07-16T09:00:00-04:00',
-    '2026-07-16T12:00:00-04:00',
-    12,
-    4
-  ),
-  (
-    '00000000-0000-4000-8000-000000000203',
-    '00000000-0000-4000-8000-000000000100',
-    'Friday, 2:00-5:00 PM',
-    '2026-07-17T14:00:00-04:00',
-    '2026-07-17T17:00:00-04:00',
-    12,
-    3
-  )
+)
+select id, weekly_menu_id, label, starts_at, ends_at, capacity, reserved
+from windows
 on conflict (id) do update set
   weekly_menu_id = excluded.weekly_menu_id,
   label = excluded.label,

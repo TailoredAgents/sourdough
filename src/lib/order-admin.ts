@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { AdminOrder, AdminOrderItem, DeliveryAddress, OrderStatus } from "./types";
 import { sendOrderStatusUpdate } from "./email";
+import { getCustomerOrderStatusLabel } from "./order-status";
 import { getSupabaseAdminClient } from "./supabase";
 
 type OrderCustomerRow = {
@@ -184,7 +185,7 @@ export async function updateAdminOrderStatus(id: string, status: OrderStatus) {
           .join("\n"),
         deliveryWindow: updatedOrder.deliveryWindowLabel || "Selected window",
         orderId: updatedOrder.id,
-        statusLabel: orderStatuses.includes(status) ? status.replace(/_/g, " ") : status,
+        statusLabel: getCustomerOrderStatusLabel(status),
       });
     } catch (emailError) {
       console.error("[orders] status email failed", emailError);

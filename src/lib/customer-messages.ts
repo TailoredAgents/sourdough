@@ -37,6 +37,13 @@ type LastMinuteRequestInput = {
   items: Array<MenuProduct & { quantity: number }>;
 };
 
+type BakeNotifySignupInput = {
+  email: string;
+  postalCode?: string;
+  preference?: string;
+  source?: string;
+};
+
 export const customerMessageStatusSchema = z.object({
   id: z.string().uuid(),
   status: z.enum(["new", "in_progress", "handled", "closed"]),
@@ -47,6 +54,20 @@ export const customerMessageReplySchema = z.object({
   subject: z.string().min(2).max(160),
   body: z.string().min(2).max(4000),
   statusAfterSend: z.enum(["in_progress", "handled"]).default("handled"),
+});
+
+export const bakeNotifySignupSchema = z.object({
+  email: z.string().trim().email(),
+  postalCode: z
+    .string()
+    .trim()
+    .optional()
+    .default("")
+    .refine((value) => value === "" || /^\d{5}$/.test(value), {
+      message: "Enter a 5-digit ZIP code or leave it blank.",
+    }),
+  preference: z.string().trim().max(120).optional().default("Weekly menu alerts"),
+  source: z.string().trim().max(80).optional().default("storefront"),
 });
 
 function mapCustomerMessage(row: CustomerMessageRow): CustomerMessage {
@@ -137,6 +158,44 @@ export async function createLastMinuteCustomerMessage(
 
   if (error) {
     console.error("[supabase] customer message insert failed", error.message);
+    return null;
+  }
+
+  return mapCustomerMessage(data as CustomerMessageRow);
+}
+
+export function buildBakeNotifySignupBody({
+  email,
+  postalCode,
+  preference,
+  source,
+}: BakeNotifySignupInput) {
+  return [
+    `Email: ${email.trim().toLowerCase()}`,
+    `ZIP: ${postalCode?.trim() || "Not provided"}`,
+    `Interest: ${preference?.trim() || "Weekly menu alerts"}`,
+    `Source: ${source?.trim() || "storefront"}`,
+  ].join("\n");
+}
+
+export async function createBakeNotifySignup(input: BakeNotifySignupInput) {
+  const supabase = getSupabaseAdminClient();
+  if (!supabase) return null;
+
+  const email = input.email.trim().toLowerCase();
+  const { data, error } = await supabase
+    .from("customer_messages")
+    .insert({
+      customer_email: email,
+      subject: `Bake notification signup from ${email}`,
+      body: buildBakeNotifySignupBody(input),
+      status: "new",
+    })
+    .select("id, order_id, customer_email, subject, body, status, created_at")
+    .single();
+
+  if (error) {
+    console.error("[supabase] bake notification signup insert failed", error.message);
     return null;
   }
 

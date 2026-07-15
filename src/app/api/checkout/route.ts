@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { isAfterWeeklyCutoff } from "@/lib/cutoff";
 import { createLastMinuteCustomerMessage } from "@/lib/customer-messages";
-import { checkDeliveryAddress } from "@/lib/delivery";
+import { checkDeliveryAddress, type DeliveryCheckResult } from "@/lib/delivery";
 import {
   sendCustomerOrderConfirmation,
   sendLastMinuteRequestNotification,
@@ -19,11 +19,16 @@ import {
   getActiveWeeklyMenuData,
   getMenuProductData,
 } from "@/lib/storefront-data";
+import { checkRateLimit } from "@/lib/rate-limit";
 import { getStripe } from "@/lib/stripe";
 import { buildCatalogLineItem, buildDeliveryLineItem } from "@/lib/stripe-line-items";
 import { getSiteUrl } from "@/lib/utils";
 
-const checkoutSchema = z.object({
+function hasMinimumPhoneDigits(value: string) {
+  return value.replace(/\D/g, "").length >= 7;
+}
+
+export const checkoutSchema = z.object({
   cart: z
     .array(
       z.object({
@@ -33,24 +38,68 @@ const checkoutSchema = z.object({
     )
     .min(1),
   customer: z.object({
-    name: z.string().min(2),
-    email: z.string().email(),
-    phone: z.string().min(7),
+    name: z.string().trim().min(2),
+    email: z.string().trim().email(),
+    phone: z.string().trim().refine(hasMinimumPhoneDigits, {
+      message: "Enter a phone number with at least 7 digits.",
+    }),
   }),
   address: z.object({
-    line1: z.string().min(3),
+    line1: z.string().trim().min(3),
     line2: z.string().optional().default(""),
-    city: z.string().min(1),
-    state: z.string().min(1),
-    postalCode: z.string().min(3),
+    city: z.string().trim().min(1),
+    state: z.string().trim().min(1),
+    postalCode: z.string().trim().regex(/^\d{5}$/, {
+      message: "Enter a valid 5-digit ZIP code.",
+    }),
   }),
   deliveryWindowId: z.string().min(1),
   deliveryInstructions: z.string().max(1000).optional().default(""),
   notes: z.string().max(1000).optional().default(""),
+  acknowledgedTerms: z.literal(true),
 });
 
+export function getCheckoutDeliveryError(deliveryCheck: DeliveryCheckResult) {
+  return deliveryCheck.eligible
+    ? null
+    : deliveryCheck.message || "This address is outside delivery range.";
+}
+
+export function getDeliveryWindowAvailabilityError(deliveryWindow: {
+  capacity: number;
+  reserved: number;
+}) {
+  return deliveryWindow.reserved < deliveryWindow.capacity
+    ? null
+    : "That delivery window is full. Please choose another available delivery window.";
+}
+
+export function getLastMinuteNotificationDeliveryWindow(deliveryWindow: {
+  label: string;
+}) {
+  return deliveryWindow.label;
+}
+
+export function getMissingStripeCheckoutError(nodeEnv = process.env.NODE_ENV) {
+  return nodeEnv === "production"
+    ? "Online checkout is temporarily unavailable. Please contact the bakery before placing an order."
+    : null;
+}
+
+export function getCheckoutRateLimitKey(request: Request, email: string) {
+  const forwardedFor = request.headers.get("x-forwarded-for") || "";
+  const ip = forwardedFor.split(",")[0]?.trim() || "unknown-ip";
+  return `${ip}:${email.toLowerCase()}`;
+}
+
 export async function POST(request: Request) {
-  const parsed = checkoutSchema.safeParse(await request.json());
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    body = null;
+  }
+  const parsed = checkoutSchema.safeParse(body);
 
   if (!parsed.success) {
     return NextResponse.json(
@@ -60,6 +109,20 @@ export async function POST(request: Request) {
   }
 
   const checkout = parsed.data;
+  const rateLimit = await checkRateLimit({
+    scope: "checkout_start",
+    key: getCheckoutRateLimitKey(request, checkout.customer.email),
+    limit: 5,
+    windowMs: 60 * 60 * 1000,
+  });
+
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { error: "Too many order attempts. Please try again later." },
+      { status: 429 },
+    );
+  }
+
   const weeklyMenu = await getActiveWeeklyMenuData();
   const afterCutoff = isAfterWeeklyCutoff(weeklyMenu?.orderCutoffAt);
 
@@ -79,19 +142,28 @@ export async function POST(request: Request) {
     );
   }
 
+  const deliveryWindowError = getDeliveryWindowAvailabilityError(deliveryWindow);
+  if (deliveryWindowError) {
+    return NextResponse.json(
+      { error: deliveryWindowError },
+      { status: 400 },
+    );
+  }
+
   const deliverySettings = await getDeliverySettingsData();
   const deliveryCheck = checkDeliveryAddress(checkout.address, deliverySettings);
   const state = checkout.address.state.trim().toUpperCase();
   if (state !== "GA" && state !== "GEORGIA") {
     return NextResponse.json(
-      { error: "Delivery is only available within Georgia for launch." },
+      { error: "Delivery is currently available only within Georgia." },
       { status: 400 },
     );
   }
 
-  if (!deliveryCheck.eligible && !afterCutoff) {
+  const deliveryError = getCheckoutDeliveryError(deliveryCheck);
+  if (deliveryError) {
     return NextResponse.json(
-      { error: deliveryCheck.message || "This address is outside delivery range." },
+      { error: deliveryError },
       { status: 400 },
     );
   }
@@ -130,7 +202,7 @@ export async function POST(request: Request) {
         customerEmail: checkout.customer.email,
         customerPhone: checkout.customer.phone,
         orderSummary,
-        deliveryWindow: "Last-minute request after Thursday cutoff",
+        deliveryWindow: getLastMinuteNotificationDeliveryWindow(deliveryWindow),
         address: `${checkout.address.line1}, ${checkout.address.city}, ${checkout.address.state} ${checkout.address.postalCode}`,
         notes: checkout.notes,
         customerMessageId: lastMinuteMessage?.id,
@@ -145,6 +217,11 @@ export async function POST(request: Request) {
 
   const stripe = getStripe();
   if (!stripe) {
+    const missingStripeError = getMissingStripeCheckoutError();
+    if (missingStripeError) {
+      return NextResponse.json({ error: missingStripeError }, { status: 503 });
+    }
+
     await sendCustomerOrderConfirmation({
       to: checkout.customer.email,
       customerName: checkout.customer.name,

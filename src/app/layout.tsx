@@ -1,5 +1,10 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { AnalyticsEvents } from "@/components/analytics-events";
+import {
+  AnalyticsScripts,
+  GoogleTagManagerNoScript,
+} from "@/components/analytics-scripts";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -14,26 +19,74 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://landlsourdough.com"),
+  applicationName: "Luna & Lorelai's Sourdough",
   title: {
     default: "Luna & Lorelai's Sourdough | Local Sourdough Delivery in Canton, GA",
     template: "%s | Luna & Lorelai's Sourdough",
   },
   description:
-    "Warm, naturally leavened sourdough bread and add-ons delivered locally from Canton, Georgia.",
+    "Order naturally leavened sourdough bread, cinnamon sourdough, crackers, and small-batch add-ons for local delivery around Canton, Georgia.",
+  keywords: [
+    "Canton GA sourdough",
+    "sourdough delivery Canton GA",
+    "local sourdough bread",
+    "cottage bakery Canton Georgia",
+    "fresh bread delivery Canton",
+  ],
+  alternates: {
+    canonical: "/",
+  },
+  robots: {
+    index: true,
+    follow: true,
+  },
   icons: {
-    icon: "/images/luna-lorelais-logo-square.png",
-    apple: "/images/luna-lorelais-logo-square.png",
+    icon: "/images/luna-lorelais-logo-square-180.png",
+    apple: "/images/luna-lorelais-logo-square-180.png",
+  },
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    title: "L&L Sourdough",
+    statusBarStyle: "default",
+  },
+  formatDetection: {
+    telephone: false,
   },
   openGraph: {
-    title: "Luna & Lorelai's Sourdough",
+    title: "Luna & Lorelai's Sourdough | Canton, GA Local Delivery",
     description:
-      "Weekly sourdough drops, local delivery, and small-batch add-ons from Canton, Georgia.",
+      "Fresh sourdough loaves and small-batch add-ons available by weekly preorder for local delivery around Canton, Georgia.",
     url: "https://landlsourdough.com",
     siteName: "Luna & Lorelai's Sourdough",
-    images: ["/images/luna-lorelais-logo.png"],
+    images: [
+      {
+        url: "/images/sourdough-hero-og.jpg",
+        width: 1200,
+        height: 630,
+        alt: "Fresh sourdough loaves from Luna & Lorelai's Sourdough",
+      },
+    ],
     locale: "en_US",
     type: "website",
   },
+  twitter: {
+    card: "summary_large_image",
+    title: "Luna & Lorelai's Sourdough | Canton, GA",
+    description:
+      "Order weekly sourdough loaves and small-batch add-ons for local delivery around Canton, Georgia.",
+    images: ["/images/sourdough-hero-og.jpg"],
+  },
+  verification: {
+    google: process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION,
+    other: {
+      "msvalidate.01": process.env.NEXT_PUBLIC_BING_SITE_VERIFICATION || "",
+    },
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#23443b",
 };
 
 export default function RootLayout({
@@ -47,7 +100,12 @@ export default function RootLayout({
       data-scroll-behavior="smooth"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full bg-[#fffaf2] text-stone-950">{children}</body>
+      <body className="min-h-full bg-[#fffaf2] text-stone-950">
+        <GoogleTagManagerNoScript />
+        <AnalyticsScripts />
+        <AnalyticsEvents />
+        {children}
+      </body>
     </html>
   );
 }

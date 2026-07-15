@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentAdmin } from "@/lib/admin-auth";
+import { validateProductImageQuality } from "@/lib/product-image-quality";
 import { getSupabaseAdminClient } from "@/lib/supabase";
 
 const allowedTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
@@ -57,6 +58,12 @@ export async function POST(request: Request) {
     );
   }
 
+  const imageBytes = new Uint8Array(await file.arrayBuffer());
+  const quality = validateProductImageQuality(imageBytes, file.type);
+  if (!quality.ok) {
+    return NextResponse.json({ error: quality.error }, { status: 400 });
+  }
+
   const safeProductId = productId
     .trim()
     .toLowerCase()
@@ -77,5 +84,9 @@ export async function POST(request: Request) {
   }
 
   const { data } = supabase.storage.from("product-images").getPublicUrl(path);
-  return NextResponse.json({ imageUrl: data.publicUrl });
+  return NextResponse.json({
+    imageUrl: data.publicUrl,
+    width: quality.dimensions.width,
+    height: quality.dimensions.height,
+  });
 }

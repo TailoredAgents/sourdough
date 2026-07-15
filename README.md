@@ -7,10 +7,11 @@ Agentic retail bakery platform for `landlsourdough.com`, built for local sourdou
 - Next.js App Router storefront with warm artisan design and generated hero photography.
 - Weekly menu, limited quantities, bread plus add-ons, allergen display, and editable menu cutoff behavior.
 - ZIP-allowlist local delivery check from Canton, GA with configurable fee, service-area copy, and allowed ZIPs.
-- Stripe Checkout endpoint with demo fallback when Stripe keys are absent.
+- Stripe Checkout endpoint with local/test demo fallback and production safety guard when Stripe keys are absent.
 - Stripe webhook route for paid and expired checkout events.
-- Resend-backed email helper with console/demo fallback when the API key is absent.
+- Resend-backed email helper with local/test demo fallback and production safety guard when the API key is absent.
 - Customer AI chat constrained to approved bakery facts, current menu data, inventory, and product/allergen data.
+- Customer-facing rate limits use local/test bypass only; production fails closed if rate-limit storage is unavailable.
 - Protected admin dashboard for product catalog, weekly menus, inventory, delivery windows, delivery settings, customer requests, AI knowledge, order statuses, and AI drafting.
 - Supabase schema for products, menus, orders, customers, delivery settings, email logs, rate limits, messages, and AI knowledge.
 
@@ -29,7 +30,7 @@ The app works in demo mode without secrets. Copy `.env.example` to `.env.local` 
 
 Required before live launch:
 
-- `NEXT_PUBLIC_SITE_URL`
+- `NEXT_PUBLIC_SITE_URL` set to `https://landlsourdough.com`
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY`
@@ -41,10 +42,17 @@ Required before live launch:
 - `BAKERY_EMAIL`
 - `OPENAI_API_KEY`
 - `OPENAI_MODEL`
-- `DELIVERY_RADIUS_MILES`
 - `DELIVERY_FEE_CENTS`
 - `DELIVERY_ALLOWED_POSTAL_CODES`
 - `DELIVERY_SERVICE_AREA_COPY`
+
+Optional before live launch:
+
+- `NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION`
+- `NEXT_PUBLIC_BING_SITE_VERIFICATION`
+- `NEXT_PUBLIC_GA_MEASUREMENT_ID`
+- `NEXT_PUBLIC_GTM_ID`
+- `NEXT_PUBLIC_PLAUSIBLE_DOMAIN`
 
 Use `.env.example` as the complete template. Real values belong in
 `.env.local` locally and in Render's Environment tab for production. Do not
@@ -66,11 +74,54 @@ Render service settings:
 Detailed deployment steps and the production env var checklist are in
 `docs/render-deployment.md`.
 
+The final proof checklist and post-launch growth roadmap are in
+`docs/ultimate-launch-roadmap.md`.
+
+## Validation
+
+Run the full local launch gate before shipping changes:
+
+```bash
+npm run validate
+```
+
+This runs lint, the Supabase seed freshness check, the public asset readiness
+check, unit tests, Playwright launch smoke tests, and a production build. The
+same command runs in GitHub Actions for pushes to `main` and pull requests.
+
+After the production domain is live, run the public smoke suite against the real
+site:
+
+```bash
+npm run smoke:live
+```
+
+For a staging Render URL, override the target:
+
+```bash
+PLAYWRIGHT_BASE_URL=https://your-render-service.onrender.com npm run test:e2e
+```
+
+Before enabling real customer orders, check the production environment values:
+
+```bash
+npm run check:prod-env
+```
+
 ## Supabase
 
 Run `supabase/schema.sql` in a Supabase project SQL editor or with `psql`, then run `supabase/seed.sql` to load the starter products, weekly menu, delivery windows, delivery settings, and approved AI knowledge.
 
-The public storefront reads from Supabase when the Supabase environment variables are configured. Local fallback data remains in `src/lib/bakery-data.ts` so the app can still be reviewed without credentials. Admin pages and admin API routes are protected by Supabase Auth and approved owner email checks.
+The public storefront reads from Supabase when the Supabase environment
+variables are configured. Local fallback data remains in `src/lib/bakery-data.ts`
+so the app can still be reviewed without credentials. In production, missing
+Supabase admin configuration fails closed instead of showing sample menu data.
+Admin pages and admin API routes are protected by Supabase Auth and approved
+owner email checks.
+
+Product catalog visibility is two-step: `active` products are eligible for sale,
+but only products included in the current published weekly menu appear on the
+public storefront.
 
 ## Admin Access
 
@@ -86,7 +137,10 @@ approved admins can also be added later through the `admin_users` table.
 
 ## Stripe
 
-The checkout route uses Stripe Checkout Sessions for one-time payments. Without `STRIPE_SECRET_KEY`, checkout redirects to a demo success page and logs email output instead of collecting money.
+The checkout route uses Stripe Checkout Sessions for one-time payments. Without
+`STRIPE_SECRET_KEY`, local and test environments can use demo checkout. In
+production, missing Stripe configuration disables checkout instead of accepting
+unpaid orders.
 
 Products are synced from Supabase into Stripe Products and one-time Prices. After
 editing product names, descriptions, active status, or prices, run:
@@ -113,6 +167,40 @@ Listen for:
 
 The customer chat and admin drafting routes use the Responses API through the `openai` package when `OPENAI_API_KEY` is present. Without a key, both routes return deterministic fallback text so the UI remains testable.
 
+## Analytics Events
+
+The storefront emits first-party funnel events to `window.dataLayer`, `gtag`,
+and Plausible when those tools are present. No analytics vendor is required for
+the app to run.
+
+Optional analytics script env vars:
+
+- `NEXT_PUBLIC_GA_MEASUREMENT_ID` installs Google Analytics `gtag.js`
+- `NEXT_PUBLIC_GTM_ID` installs Google Tag Manager
+- `NEXT_PUBLIC_PLAUSIBLE_DOMAIN` installs Plausible for the configured domain
+
+Key customer events:
+
+- `page_view`
+- `nav_click`
+- `view_menu_click`
+- `order_cta_click`
+- `product_detail_click`
+- `choose_item_click`
+- `add_to_cart`
+- `remove_from_cart`
+- `check_delivery`
+- `checkout_start`
+- `checkout_error`
+- `checkout_redirect`
+- `availability_request_start`
+- `availability_request_error`
+- `availability_request_redirect`
+- `notify_signup_start`
+- `notify_signup`
+- `notify_signup_error`
+- `customer_question_submit`
+
 ## Pre-Launch Checklist
 
 - Confirm Georgia cottage food training, operating rules, and required labels.
@@ -121,6 +209,6 @@ The customer chat and admin drafting routes use the Responses API through the `o
 - Create and test the owner Supabase Auth account.
 - Configure Stripe live keys and webhook secret.
 - Sync the active Supabase product catalog into Stripe.
-- Send a real Resend email from the admin smoke-test path in production.
+- Send a real Resend email from the admin smoke-test path in production; production email sends fail closed if `RESEND_API_KEY` is missing.
 - Configure Stripe test keys and webhook secret, then run full checkout, cancellation, expiry, and sold-out tests.
 - Test mobile, desktop, Stripe test cards, expired checkouts, emails, and AI refusal behavior.

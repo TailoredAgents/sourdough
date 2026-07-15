@@ -1,5 +1,44 @@
 import { z } from "zod";
 
+export function isSupportedProductImageUrl(
+  value: string,
+  supabaseProjectUrl = process.env.NEXT_PUBLIC_SUPABASE_URL,
+) {
+  const trimmed = value.trim();
+  if (
+    trimmed.startsWith("/images/") &&
+    !trimmed.includes("..") &&
+    !trimmed.includes("\\")
+  ) {
+    return true;
+  }
+
+  try {
+    const url = new URL(trimmed);
+    if (url.protocol !== "https:") return false;
+
+    if (!supabaseProjectUrl) return false;
+
+    const supabaseUrl = new URL(supabaseProjectUrl);
+    return (
+      url.hostname === supabaseUrl.hostname &&
+      url.pathname.startsWith("/storage/v1/object/public/product-images/")
+    );
+  } catch {
+    return false;
+  }
+}
+
+const productImageUrlSchema = z
+  .string()
+  .trim()
+  .refine(
+    (value) => isSupportedProductImageUrl(value),
+    "Use an uploaded product image or an app product image path.",
+  )
+  .nullable()
+  .optional();
+
 export const productAdminSchema = z.object({
   id: z.string().uuid().optional(),
   name: z.string().min(2, "Name is required.").max(120),
@@ -8,7 +47,7 @@ export const productAdminSchema = z.object({
   ingredients: z.array(z.string().min(1)).min(1, "Add at least one ingredient."),
   allergens: z.array(z.string().min(1)).default([]),
   priceCents: z.number().int().min(0).max(50000),
-  imageUrl: z.string().url().nullable().optional(),
+  imageUrl: productImageUrlSchema,
   imageStyle: z.string().min(3).max(160),
   active: z.boolean(),
   includeInCurrentMenu: z.boolean().optional().default(false),

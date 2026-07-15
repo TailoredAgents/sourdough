@@ -272,22 +272,6 @@ export function DeliveryEditor({
 
       <div className="mt-5 grid gap-3 md:grid-cols-2 lg:grid-cols-4">
         <label className="grid gap-1 text-sm font-semibold text-stone-700">
-          Radius miles
-          <input
-            className="h-11 rounded-md border border-stone-300 px-3 font-normal"
-            min={0}
-            step="0.5"
-            type="number"
-            value={settings.radiusMiles}
-            onChange={(event) =>
-              setSettings((current) => ({
-                ...current,
-                radiusMiles: Number(event.target.value),
-              }))
-            }
-          />
-        </label>
-        <label className="grid gap-1 text-sm font-semibold text-stone-700">
           Delivery fee
           <input
             className="h-11 rounded-md border border-stone-300 px-3 font-normal"
@@ -299,36 +283,6 @@ export function DeliveryEditor({
               setSettings((current) => ({
                 ...current,
                 deliveryFeeDollars: event.target.value,
-              }))
-            }
-          />
-        </label>
-        <label className="grid gap-1 text-sm font-semibold text-stone-700">
-          Center latitude
-          <input
-            className="h-11 rounded-md border border-stone-300 px-3 font-normal"
-            step="0.000001"
-            type="number"
-            value={settings.centerLat}
-            onChange={(event) =>
-              setSettings((current) => ({
-                ...current,
-                centerLat: Number(event.target.value),
-              }))
-            }
-          />
-        </label>
-        <label className="grid gap-1 text-sm font-semibold text-stone-700">
-          Center longitude
-          <input
-            className="h-11 rounded-md border border-stone-300 px-3 font-normal"
-            step="0.000001"
-            type="number"
-            value={settings.centerLng}
-            onChange={(event) =>
-              setSettings((current) => ({
-                ...current,
-                centerLng: Number(event.target.value),
               }))
             }
           />

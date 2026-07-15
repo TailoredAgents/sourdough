@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { checkDeliveryAddress, type DeliverySettings } from "./delivery";
+import {
+  checkDeliveryAddress,
+  normalizePostalCode,
+  type DeliverySettings,
+} from "./delivery";
 
 const settings: DeliverySettings = {
   radiusMiles: 12,
@@ -54,5 +58,11 @@ describe("delivery ZIP allowlist", () => {
 
     expect(result.eligible).toBe(false);
     expect(result.message).toContain("Georgia");
+  });
+
+  it("requires an exact 5-digit ZIP code", () => {
+    expect(normalizePostalCode("30114")).toBe("30114");
+    expect(normalizePostalCode("abc30114xyz")).toBeNull();
+    expect(normalizePostalCode("30114-1234")).toBeNull();
   });
 });

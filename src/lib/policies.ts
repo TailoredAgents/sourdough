@@ -1,3 +1,5 @@
+import { bakery } from "./bakery-data";
+
 export type PolicySection = {
   heading: string;
   body: string[];
@@ -10,7 +12,8 @@ export type PolicyPage = {
   sections: PolicySection[];
 };
 
-export const policyLastUpdated = "July 9, 2026";
+export const policyLastUpdated = "July 15, 2026";
+export const policyLastUpdatedIso = "2026-07-15";
 
 export const policyPages: PolicyPage[] = [
   {
@@ -22,15 +25,15 @@ export const policyPages: PolicyPage[] = [
       {
         heading: "Ingredient and allergen information",
         body: [
-          "Each product page lists the ingredients and allergens currently known for that item. Please review the product listing before ordering and email orders@landlsourdough.com with questions before checkout.",
-          "Products may contain or come into contact with wheat, milk, eggs, soy, tree nuts, peanuts, sesame, or other allergens used in a home kitchen. Luna & Lorelai's Sourdough does not make allergen-free claims or promise separation from allergens.",
+          `Each product page lists the ingredients and allergens currently known for that item. Please review the product listing before ordering and email ${bakery.orderEmail} with questions before checkout.`,
+          `Products may contain or come into contact with wheat, milk, eggs, soy, tree nuts, peanuts, sesame, or other allergens used in a home kitchen. ${bakery.name} does not make allergen-free claims or promise separation from allergens.`,
         ],
       },
       {
         heading: "Cottage food status",
         body: [
-          "Luna & Lorelai's Sourdough prepares non-potentially hazardous cottage-food bakery items in a Georgia home kitchen for local customer orders.",
-          "The v1 website offers local Georgia delivery only. We do not offer shipping or out-of-state delivery through this site.",
+          `${bakery.name} prepares non-potentially hazardous cottage-food bakery items in a Georgia home kitchen for local customer orders.`,
+          "Online ordering is available for local Georgia delivery only. Shipping and out-of-state delivery are not currently available.",
         ],
       },
       {
@@ -52,28 +55,28 @@ export const policyPages: PolicyPage[] = [
         heading: "Weekly bake timing",
         body: [
           "Orders are planned around a weekly bake and delivery schedule. The current order cutoff is posted on the weekly menu and shown before checkout.",
-          "After the cutoff, customers may submit a last-minute request, but the request is not confirmed unless Luna & Lorelai's Sourdough responds and accepts it.",
+          `After the cutoff, customers may submit an availability request, but the request is not confirmed unless ${bakery.name} responds and accepts it.`,
         ],
       },
       {
         heading: "Cancellations",
         body: [
-          "Customers may request cancellation by emailing orders@landlsourdough.com. Cancellations received before the posted order cutoff are eligible for refund to the original payment method.",
-          "After the posted cutoff, ingredients, dough, and delivery planning may already be committed. Refunds after the cutoff are discretionary unless Luna & Lorelai's Sourdough cancels the order, cannot fulfill it, or made an order error.",
+          `Customers may request cancellation by emailing ${bakery.orderEmail}. Cancellations received before the posted order cutoff are eligible for refund to the original payment method.`,
+          `After the posted cutoff, ingredients, dough, and delivery planning may already be committed. Refunds after the cutoff are discretionary unless ${bakery.name} cancels the order, cannot fulfill it, or made an order error.`,
         ],
       },
       {
         heading: "Refunds",
         body: [
           "Approved refunds are returned through the original payment method. Stripe or the customer's bank may take additional time to post the refund after it is issued.",
-          "Perishable bakery products generally cannot be returned after delivery. If an item is missing, incorrect, damaged, or not as expected, email orders@landlsourdough.com as soon as possible with the order details so the bakery can review it.",
+          `Perishable bakery products generally cannot be returned after delivery. If an item is missing, incorrect, damaged, or not as expected, email ${bakery.orderEmail} as soon as possible with the order details so the bakery can review it.`,
         ],
       },
       {
         heading: "Delivery problems",
         body: [
           "Customers are responsible for entering a reachable local delivery address, accurate contact information, and any access notes needed to complete delivery.",
-          "If delivery cannot be completed because the address is wrong, access is blocked, or the customer cannot be reached, Luna & Lorelai's Sourdough will review the situation before deciding whether a refund, credit, redelivery, or separately arranged pickup is appropriate.",
+          `If delivery cannot be completed because the address is wrong, access is blocked, or the customer cannot be reached, ${bakery.name} will review the situation before deciding whether a refund, credit, redelivery, or separately arranged pickup is appropriate.`,
         ],
       },
     ],
@@ -87,8 +90,8 @@ export const policyPages: PolicyPage[] = [
       {
         heading: "Information collected",
         body: [
-          "Luna & Lorelai's Sourdough collects information needed to handle orders and customer requests, including name, email, phone number, delivery address, order details, delivery instructions, order notes, messages, and chat or request content sent through the site.",
-          "When online payment is used, payment checkout is handled by Stripe. Luna & Lorelai's Sourdough does not receive or store full card numbers.",
+          `${bakery.name} collects information needed to handle orders and customer requests, including name, email, phone number, delivery address, order details, delivery instructions, order notes, messages, and chat or request content sent through the site.`,
+          `When online payment is used, payment checkout is handled by Stripe. ${bakery.name} does not receive or store full card numbers.`,
         ],
       },
       {
@@ -108,7 +111,7 @@ export const policyPages: PolicyPage[] = [
       {
         heading: "Contact and changes",
         body: [
-          "Customers can email orders@landlsourdough.com to ask about their information, request a correction, or request deletion where business, tax, payment, legal, or fraud-prevention records do not need to be retained.",
+          `Customers can email ${bakery.orderEmail} to ask about their information, request a correction, or request deletion where business, tax, payment, legal, or fraud-prevention records do not need to be retained.`,
           "This policy may be updated as bakery services, delivery areas, or ordering options change.",
         ],
       },
@@ -123,30 +126,30 @@ export const policyPages: PolicyPage[] = [
       {
         heading: "Local delivery only",
         body: [
-          "Luna & Lorelai's Sourdough offers local Georgia delivery from Canton, GA. The site does not offer shipping or out-of-state delivery.",
+          `${bakery.name} offers local Georgia delivery from Canton, GA. The site does not offer shipping or out-of-state delivery.`,
           "Delivery eligibility is checked by Georgia ZIP code. Allowed ZIP codes, delivery fees, and available delivery windows may change by week.",
-          "Pickup is not a standard v1 checkout option. If pickup is ever available for a specific order, it must be separately arranged and confirmed by Luna & Lorelai's Sourdough.",
+          `Pickup is not a standard checkout option. If pickup is available for a specific order, it must be separately arranged and confirmed by ${bakery.name}.`,
         ],
       },
       {
         heading: "Inventory and order acceptance",
         body: [
           "Menu quantities are limited. An item may become unavailable if inventory sells out, a checkout session is not completed, or an order cannot be fulfilled as submitted.",
-          "A paid checkout confirmation means the order has been received for the selected delivery window. A submitted last-minute request is not a confirmed order until Luna & Lorelai's Sourdough responds and accepts it.",
+          `A paid checkout confirmation means the order has been received for the selected delivery window. A submitted availability request is not a confirmed order until ${bakery.name} responds and accepts it.`,
         ],
       },
       {
         heading: "Customer responsibilities",
         body: [
           "Customers are responsible for providing accurate contact information, delivery address, delivery instructions, and product selections.",
-          "Customers with food allergies, sensitivities, or dietary restrictions should review ingredient and allergen information before ordering and email orders@landlsourdough.com with questions before checkout.",
+          `Customers with food allergies, sensitivities, or dietary restrictions should review ingredient and allergen information before ordering and email ${bakery.orderEmail} with questions before checkout.`,
         ],
       },
       {
         heading: "Site information",
         body: [
           "The website and AI assistant provide general bakery information from approved content and current menu data. They do not provide legal, medical, tax, or allergen-safety advice.",
-          "Luna & Lorelai's Sourdough may update menu items, prices, policies, delivery windows, delivery areas, and availability before an order is accepted.",
+          `${bakery.name} may update menu items, prices, policies, delivery windows, delivery areas, and availability before an order is accepted.`,
         ],
       },
     ],
@@ -156,11 +159,11 @@ export const policyPages: PolicyPage[] = [
 export const officialComplianceLinks = [
   {
     label: "Georgia Department of Agriculture Cottage Food",
-    href: "https://www.agr.georgia.gov/cottage-food",
+    href: "https://agr.georgia.gov/cottage-food",
   },
   {
     label: "Georgia Cottage Food FAQ",
-    href: "https://www.agr.georgia.gov/cottage-food-faq",
+    href: "https://agr.georgia.gov/cottage-food-faq",
   },
   {
     label: "Georgia Sales and Use Tax",

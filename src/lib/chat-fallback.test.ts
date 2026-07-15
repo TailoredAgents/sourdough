@@ -51,7 +51,7 @@ describe("dynamic chat fallback", () => {
   it("uses the active menu cutoff when answering cutoff questions", () => {
     expect(
       buildChatFallbackAnswer("When is the cutoff?", {
-        weeklyMenu: { orderCutoffAt: "2026-07-12T20:00:00.000Z" },
+        weeklyMenu: { orderCutoffAt: "2099-07-12T20:00:00.000Z" },
       }),
     ).toContain("Order by");
   });

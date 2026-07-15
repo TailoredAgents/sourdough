@@ -24,7 +24,7 @@ describe("chat fallback guardrails", () => {
 
   it("escalates custom orders", () => {
     expect(fallbackAnswer("Can I make a custom order?")).toContain(
-      "direct bakery confirmation",
+      "direct confirmation",
     );
   });
 });

@@ -1,0 +1,49 @@
+name: Validate
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Check production environment contract
+        env:
+          NODE_ENV: production
+          NEXT_PUBLIC_SITE_URL: https://landlsourdough.com
+          NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-anon-key
+          SUPABASE_SERVICE_ROLE_KEY: ci-service-role-key
+          SUPABASE_DB_URL: postgresql://user:pass@host:5432/db
+          ADMIN_EMAILS: admin@landlsourdough.com
+          BAKERY_EMAIL: orders@landlsourdough.com
+          RESEND_API_KEY: re_ci_key
+          RESEND_FROM: "Luna & Lorelai's Sourdough <orders@landlsourdough.com>"
+          STRIPE_SECRET_KEY: sk_test_ci
+          STRIPE_WEBHOOK_SECRET: whsec_ci
+          OPENAI_MODEL: gpt-5-mini
+          DELIVERY_FEE_CENTS: "600"
+          DELIVERY_ALLOWED_POSTAL_CODES: 30114,30115
+          DELIVERY_SERVICE_AREA_COPY: Delivery available.
+        run: npm run check:prod-env -- --no-env-file
+
+      - name: Run validation
+        run: npm run validate

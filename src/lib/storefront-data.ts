@@ -1,10 +1,12 @@
 import {
   aiKnowledge as fallbackAiKnowledge,
-  deliveryWindows as fallbackDeliveryWindows,
   getActiveMenu as getFallbackActiveMenu,
+  getFallbackDeliveryWindows,
+  getFallbackWeeklyMenu,
   getMenuProduct as getFallbackMenuProduct,
   products as fallbackProducts,
 } from "./bakery-data";
+import { productSlug } from "./product-slugs";
 import { getSupabaseAdminClient } from "./supabase";
 import { getDeliverySettings, type DeliverySettings } from "./delivery";
 import type {
@@ -71,8 +73,31 @@ type DeliverySettingsRow = {
   service_area_copy: string | null;
 };
 
-function canUseLocalFallback(supabase: ReturnType<typeof getSupabaseAdminClient>) {
-  return !supabase || process.env.NODE_ENV !== "production";
+export function canUseLocalFallback(nodeEnv = process.env.NODE_ENV) {
+  return nodeEnv !== "production";
+}
+
+function getUnavailableDeliverySettings(): DeliverySettings {
+  return {
+    ...getDeliverySettings(),
+    deliveryFeeCents: 0,
+    allowedPostalCodes: [],
+    serviceAreaCopy:
+      "Delivery is temporarily unavailable while the bakery updates its service area.",
+  };
+}
+
+function getFallbackProductImageUrl(name: string) {
+  const slug = productSlug({ name });
+  const knownImages = new Set([
+    "classic-country-loaf",
+    "rosemary-garlic-loaf",
+    "cinnamon-swirl-sourdough",
+    "sourdough-starter-crackers",
+    "whipped-honey-butter",
+  ]);
+
+  return knownImages.has(slug) ? `/images/products/${slug}.webp` : null;
 }
 
 function mapProduct(row: ProductRow): Product {
@@ -88,7 +113,7 @@ function mapProduct(row: ProductRow): Product {
     stripePriceId: row.stripe_price_id,
     stripePriceCents: row.stripe_price_cents,
     stripeSyncedAt: row.stripe_synced_at,
-    imageUrl: row.image_url,
+    imageUrl: row.image_url || getFallbackProductImageUrl(row.name),
     imageStyle: row.image_style,
     active: row.active,
   };
@@ -164,7 +189,7 @@ async function getPublishedMenuRow() {
 
 async function getMenuItemsData(weeklyMenuId: string): Promise<MenuProduct[]> {
   const supabase = getSupabaseAdminClient();
-  if (!supabase) return getFallbackActiveMenu();
+  if (!supabase) return canUseLocalFallback() ? getFallbackActiveMenu() : [];
 
   const { data, error } = await supabase
     .from("weekly_menu_items")
@@ -175,7 +200,7 @@ async function getMenuItemsData(weeklyMenuId: string): Promise<MenuProduct[]> {
 
   if (error) {
     console.error("[supabase] menu items lookup failed", error.message);
-    return canUseLocalFallback(supabase) ? getFallbackActiveMenu() : [];
+    return canUseLocalFallback() ? getFallbackActiveMenu() : [];
   }
 
   const menu = (data as WeeklyMenuItemRow[])
@@ -188,7 +213,7 @@ async function getMenuItemsData(weeklyMenuId: string): Promise<MenuProduct[]> {
       return a.name.localeCompare(b.name);
     });
 
-  return menu.length ? menu : canUseLocalFallback(supabase) ? getFallbackActiveMenu() : [];
+  return menu.length ? menu : canUseLocalFallback() ? getFallbackActiveMenu() : [];
 }
 
 export async function getWeeklyMenusData(): Promise<WeeklyMenuSummary[]> {
@@ -263,7 +288,7 @@ export async function getActiveMenuData(): Promise<MenuProduct[]> {
   const supabase = getSupabaseAdminClient();
   const weeklyMenuId = await getPublishedMenuId();
   if (!supabase || !weeklyMenuId) {
-    return canUseLocalFallback(supabase) ? getFallbackActiveMenu() : [];
+    return canUseLocalFallback() ? getFallbackActiveMenu() : [];
   }
 
   return getMenuItemsData(weeklyMenuId);
@@ -271,7 +296,7 @@ export async function getActiveMenuData(): Promise<MenuProduct[]> {
 
 export async function getActiveWeeklyMenuData(): Promise<WeeklyMenu | null> {
   const row = await getPublishedMenuRow();
-  if (!row) return null;
+  if (!row) return canUseLocalFallback() ? getFallbackWeeklyMenu() : null;
   const items = await getMenuItemsData(row.id);
 
   return {
@@ -286,17 +311,16 @@ export async function getActiveWeeklyMenuData(): Promise<WeeklyMenu | null> {
 }
 
 export async function getMenuProductData(productId: string) {
-  const supabase = getSupabaseAdminClient();
   const menu = await getActiveMenuData();
   return (
     menu.find((item) => item.id === productId) ??
-    (canUseLocalFallback(supabase) ? getFallbackMenuProduct(productId) : null)
+    (canUseLocalFallback() ? getFallbackMenuProduct(productId) : null)
   );
 }
 
 export async function getProductsData(): Promise<Product[]> {
   const supabase = getSupabaseAdminClient();
-  if (!supabase) return fallbackProducts;
+  if (!supabase) return canUseLocalFallback() ? fallbackProducts : [];
 
   const { data, error } = await supabase
     .from("products")
@@ -305,11 +329,11 @@ export async function getProductsData(): Promise<Product[]> {
 
   if (error) {
     console.error("[supabase] products lookup failed", error.message);
-    return canUseLocalFallback(supabase) ? fallbackProducts : [];
+    return canUseLocalFallback() ? fallbackProducts : [];
   }
 
   const products = (data as ProductRow[]).map(mapProduct);
-  return products.length ? products : canUseLocalFallback(supabase) ? fallbackProducts : [];
+  return products.length ? products : canUseLocalFallback() ? fallbackProducts : [];
 }
 
 export async function getDeliveryWindowsForMenuData(
@@ -317,7 +341,7 @@ export async function getDeliveryWindowsForMenuData(
 ): Promise<DeliveryWindow[]> {
   const supabase = getSupabaseAdminClient();
   if (!supabase || !weeklyMenuId) {
-    return canUseLocalFallback(supabase) ? fallbackDeliveryWindows : [];
+    return canUseLocalFallback() ? getFallbackDeliveryWindows() : [];
   }
 
   const { data, error } = await supabase
@@ -328,7 +352,7 @@ export async function getDeliveryWindowsForMenuData(
 
   if (error) {
     console.error("[supabase] delivery windows lookup failed", error.message);
-    return canUseLocalFallback(supabase) ? fallbackDeliveryWindows : [];
+    return canUseLocalFallback() ? getFallbackDeliveryWindows() : [];
   }
 
   return (data as DeliveryWindowRow[]).map(mapDeliveryWindow);
@@ -339,19 +363,24 @@ export async function getDeliveryWindowsData(): Promise<DeliveryWindow[]> {
 }
 
 export async function getDeliveryWindowData(deliveryWindowId: string) {
-  const supabase = getSupabaseAdminClient();
   const windows = await getDeliveryWindowsData();
   return (
     windows.find((deliveryWindow) => deliveryWindow.id === deliveryWindowId) ??
-    (canUseLocalFallback(supabase)
-      ? fallbackDeliveryWindows.find((deliveryWindow) => deliveryWindow.id === deliveryWindowId)
+    (canUseLocalFallback()
+      ? getFallbackDeliveryWindows().find(
+          (deliveryWindow) => deliveryWindow.id === deliveryWindowId,
+        )
       : undefined)
   );
 }
 
 export async function getDeliverySettingsData(): Promise<DeliverySettings> {
   const supabase = getSupabaseAdminClient();
-  if (!supabase) return getDeliverySettings();
+  if (!supabase) {
+    return canUseLocalFallback()
+      ? getDeliverySettings()
+      : getUnavailableDeliverySettings();
+  }
 
   const { data, error } = await supabase
     .from("delivery_settings")
@@ -361,7 +390,9 @@ export async function getDeliverySettingsData(): Promise<DeliverySettings> {
 
   if (error || !data) {
     if (error) console.error("[supabase] delivery settings lookup failed", error.message);
-    return getDeliverySettings();
+    return canUseLocalFallback()
+      ? getDeliverySettings()
+      : getUnavailableDeliverySettings();
   }
 
   const row = data as DeliverySettingsRow;

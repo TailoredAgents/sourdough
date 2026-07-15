@@ -3,7 +3,14 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
-import { getPolicyPage, policyLastUpdated, policyPages } from "@/lib/policies";
+import { bakery } from "@/lib/bakery-data";
+import { buildBreadcrumbList } from "@/lib/breadcrumbs";
+import {
+  getPolicyPage,
+  policyLastUpdated,
+  policyLastUpdatedIso,
+  policyPages,
+} from "@/lib/policies";
 
 type PolicyRouteProps = {
   params: Promise<{
@@ -25,6 +32,16 @@ export async function generateMetadata({
   return {
     title: page.title,
     description: page.description,
+    alternates: {
+      canonical: `/policies/${page.slug}`,
+    },
+    openGraph: {
+      title: `${page.title} | ${bakery.name}`,
+      description: page.description,
+      url: `https://${bakery.domain}/policies/${page.slug}`,
+      siteName: bakery.name,
+      type: "article",
+    },
   };
 }
 
@@ -32,11 +49,45 @@ export default async function PolicyPage({ params }: PolicyRouteProps) {
   const { slug } = await params;
   const page = getPolicyPage(slug);
   if (!page) notFound();
+  const siteUrl = `https://${bakery.domain}`;
+  const path = `/policies/${page.slug}`;
+  const structuredData = {
+    "@context": "https://schema.org",
+    "@graph": [
+      buildBreadcrumbList(
+        [
+          { name: "Home", href: "/" },
+          { name: "Policies", href: "/policies" },
+          { name: page.title, href: path },
+        ],
+        siteUrl,
+      ),
+      {
+        "@type": "WebPage",
+        "@id": `${siteUrl}${path}`,
+        name: page.title,
+        description: page.description,
+        url: `${siteUrl}${path}`,
+        dateModified: policyLastUpdatedIso,
+        isPartOf: {
+          "@type": "WebSite",
+          name: bakery.name,
+          url: siteUrl,
+        },
+      },
+    ],
+  };
 
   return (
     <>
       <SiteHeader />
-      <main className="bg-[#fffaf2]">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(structuredData).replace(/</g, "\\u003c"),
+        }}
+      />
+      <main id="main-content" className="bg-[#fffaf2]">
         <section className="border-b border-stone-200 bg-white py-14">
           <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
             <Link

@@ -31,7 +31,7 @@ Current status: repo is pushed, Supabase schema exists in the live database, see
 - [x] Weekly menu create/clone flow
 - [x] Inventory limits per product per week
 - [x] Delivery window editor
-- [x] Delivery settings editor: radius, fee, center point
+- [x] Delivery settings editor: ZIP allowlist, service area copy, delivery fee
 - [x] Order dashboard with statuses
 - [x] Customer message/last-minute request inbox
 - [x] AI knowledge editor with approve/unapprove toggle
@@ -51,6 +51,7 @@ Current status: repo is pushed, Supabase schema exists in the live database, see
 - [x] Release inventory when checkout expires
 - [x] Make success page show real order confirmation details
 - [x] Make editable `weekly_menus.order_cutoff_at` drive checkout open/closed behavior
+- [x] Require eligible delivery ZIPs for both checkout and after-cutoff requests
 
 ## Phase 5: Stripe Webhooks
 
@@ -72,6 +73,7 @@ Current status: repo is pushed, Supabase schema exists in the live database, see
 - [x] Prevent checkout outside Georgia
 - [x] Add owner-editable delivery copy and service area
 - [x] Add delivery instructions field to order records
+- [x] Keep v1 delivery-only; pickup is not a standard checkout option
 
 ## Phase 7: AI Guardrails
 
@@ -96,7 +98,7 @@ Current status: repo is pushed, Supabase schema exists in the live database, see
 
 ## Phase 9: Compliance And Business Readiness
 
-- [ ] Confirm Georgia cottage food license/training requirements
+- [ ] Confirm current Georgia cottage food program rules, training, registration, and label requirements
 - [ ] Confirm Canton/Cherokee home business or occupational tax requirements
 - [ ] Confirm sales tax requirements with accountant
 - [ ] Finalize required cottage food label text
@@ -104,28 +106,51 @@ Current status: repo is pushed, Supabase schema exists in the live database, see
 - [x] Add refund/cancellation policy
 - [x] Add privacy policy
 - [x] Add terms/order policy
-- [ ] Decide whether customer pickup will ever be offered or delivery-only
+- [x] Mark v1 as delivery-only
 
 ## Phase 10: Launch And Deployment
 
 - [x] Add Render Blueprint `render.yaml`
 - [x] Add Render production environment variable checklist
 - [x] Add Vitest and Playwright launch smoke tests
+- [x] Add Supabase seed freshness check to prevent stale starter bake dates
+- [x] Add public asset readiness check for hero, social, logo, and product images
 - [ ] Create Render Blueprint service
 - [ ] Add all `sync: false` environment variables to Render
+- [ ] Run `npm run check:prod-env` with production values
+- [ ] Add search verification env vars after Search Console/Webmaster setup
+- [ ] Add analytics env vars after GA, GTM, or Plausible setup
 - [ ] Connect `landlsourdough.com`
+- [ ] Confirm `https://landlsourdough.com` loads without TLS errors
+- [ ] Redirect `https://www.landlsourdough.com` to `https://landlsourdough.com`
+- [ ] Run `npm run smoke:live` and confirm the domain check plus live Playwright smoke suite pass
 - [ ] Configure Supabase production URL keys
+- [ ] Confirm production storefront does not show sample menu data if Supabase credentials are intentionally blank
+- [ ] Confirm customer-facing rate limits fail closed if Supabase rate-limit storage is unavailable
 - [ ] Configure Stripe live keys only after test checkout passes
 - [ ] Sync Supabase products into the Stripe live catalog after switching live keys
 - [ ] Configure Stripe webhook secret in Render
+- [ ] Confirm production checkout is unavailable if Stripe keys are intentionally blank
 - [x] Configure Resend DNS records
 - [ ] Run admin email smoke test in production
+- [ ] Confirm production email sends fail if `RESEND_API_KEY` is intentionally blank
 - [ ] Run mobile/desktop visual check
 - [ ] Run complete test order
 - [ ] Run failed payment/canceled checkout test
 - [ ] Run sold-out inventory test
 - [ ] Run expired checkout inventory-release test
 
+## Troubleshooting Notes
+
+- If an active product does not appear on the storefront, add it to the current published weekly menu. Product `active` means eligible for menus; weekly-menu inclusion controls public storefront visibility.
+- If checkout or email links are not using the HTTPS apex domain, update `NEXT_PUBLIC_SITE_URL` to `https://landlsourdough.com` in Render and local env files used for testing.
+- If `npm run check:domain` reports that the apex redirects to `www`, fix DNS/hosting redirects before submitting the sitemap or running live smoke tests.
+- If `npm run check:domain` reports TLS packet errors and diagnostics showing
+  HTTP redirects to `safebrowse.io` or another third-party warning page, fix
+  DNS/proxy/registrar forwarding before testing checkout, sitemap submission,
+  or Search Console verification.
+- If an after-cutoff request fails, confirm the customer address passes the same Georgia ZIP allowlist check as normal checkout.
+
 ## Recommended Next Step
 
-Finish the external launch tasks next: create/test the owner Supabase Auth account, confirm Render production environment variables, add Stripe test keys/webhook secret, and run a full test checkout.
+Finish the external launch tasks next: confirm Render production environment variables, fix DNS/SSL for the apex domain, add Stripe test keys/webhook secret, and run the proof checklist in `docs/ultimate-launch-roadmap.md`.

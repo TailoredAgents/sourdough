@@ -95,8 +95,8 @@ export function buildChatFallbackAnswer(
   }
 
   if (lower.includes("custom") || lower.includes("special order")) {
-    return "Custom requests need direct bakery confirmation. Add the request in the order notes or contact the bakery before assuming it is available.";
+    return "Custom requests need direct confirmation. Add the request in the order notes before assuming it is available.";
   }
 
-  return "I can help with the weekly menu, listed allergens, local delivery, and the current order cutoff. For custom or urgent questions, send a note with your order request so the bakery can reply directly.";
+  return "I can help with the weekly menu, listed allergens, local delivery, and the current order cutoff. For custom questions, add a note to your order request so we can reply directly.";
 }

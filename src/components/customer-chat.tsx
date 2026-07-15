@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, type FormEvent } from "react";
 import { Bot, Loader2, Send } from "lucide-react";
+import { trackEvent } from "@/lib/analytics";
 import { Button } from "./button";
 
 type ChatMessage = {
@@ -14,21 +15,27 @@ export function CustomerChat() {
     {
       role: "assistant",
       content:
-        "Ask about this week's menu, allergens listed on product cards, delivery, or last-minute requests.",
+        "Ask about this week's loaves, listed allergens, local delivery, or order timing.",
     },
   ]);
   const [input, setInput] = useState("");
   const [isPending, startTransition] = useTransition();
 
-  function sendMessage() {
+  function sendMessage(event?: FormEvent<HTMLFormElement>) {
+    event?.preventDefault();
+    if (isPending) return;
+
     const question = input.trim();
     if (!question) return;
 
     setInput("");
+    trackEvent("customer_question_submit", {
+      question_length: question.length,
+    });
     setMessages((current) => [...current, { role: "user", content: question }]);
     startTransition(async () => {
       let answer =
-        "I could not answer that right now. Please send a note with your order request so the bakery can reply directly.";
+        "I could not answer that right now. Please include your question in the order notes and we will reply directly.";
 
       try {
         const response = await fetch("/api/chat", {
@@ -53,23 +60,26 @@ export function CustomerChat() {
   }
 
   return (
-    <section id="questions" className="bg-[#fffaf2] py-16 sm:py-20">
+    <section id="questions" className="scroll-mt-32 bg-[#fffaf2] py-16 sm:py-20">
       <div className="mx-auto grid max-w-7xl gap-8 px-4 sm:px-6 lg:grid-cols-[0.8fr_1.2fr] lg:px-8">
-        <div>
+        <div className="min-w-0">
           <p className="text-sm font-bold uppercase tracking-[0.18em] text-[#a94334]">
-            Bakery assistant
+            Questions
           </p>
           <h2 className="mt-3 text-3xl font-bold text-stone-950 sm:text-4xl">
             Quick answers about ordering
           </h2>
           <p className="mt-4 text-base leading-7 text-stone-700">
             Ask about this week&apos;s menu, delivery area, order cutoff, and
-            listed allergens. For anything custom or urgent, send a note with
-            your order.
+            listed allergens before you checkout. For custom requests, include
+            a note with your order.
           </p>
         </div>
-        <div className="rounded-md border border-stone-200 bg-white p-4 shadow-sm">
-          <div className="flex max-h-96 flex-col gap-3 overflow-y-auto pr-1">
+        <div className="min-w-0 rounded-md border border-stone-200 bg-white p-4 shadow-sm">
+          <div
+            className="flex max-h-96 flex-col gap-3 overflow-y-auto pr-1"
+            aria-live="polite"
+          >
             {messages.map((message, index) => (
               <div
                 key={`${message.role}-${index}`}
@@ -86,26 +96,26 @@ export function CustomerChat() {
               </div>
             ))}
           </div>
-          <div className="mt-4 flex gap-2">
+          <form className="mt-4 flex gap-2" onSubmit={sendMessage}>
             <input
               className="h-11 min-w-0 flex-1 rounded-md border border-stone-300 px-3 text-sm"
+              name="customer-question"
+              aria-label="Customer question"
+              autoComplete="off"
               placeholder="Ask about delivery or this week's loaves"
               value={input}
               onChange={(event) => setInput(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") sendMessage();
-              }}
             />
-            <Button type="button" onClick={sendMessage} disabled={isPending}>
+            <Button type="submit" disabled={isPending}>
               {isPending ? <Loader2 className="animate-spin" size={16} /> : <Send size={16} />}
               <span className="sr-only sm:not-sr-only">Send</span>
             </Button>
-          </div>
+          </form>
           <a
             href="#order"
             className="mt-3 inline-flex text-sm font-semibold text-[#23443b] underline"
           >
-            Contact the bakery with an order note
+            Add a note to your order
           </a>
         </div>
       </div>

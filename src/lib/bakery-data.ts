@@ -1,15 +1,16 @@
-import type { DeliveryWindow, Product, WeeklyMenuItem } from "./types";
+import type { DeliveryWindow, Product, WeeklyMenu, WeeklyMenuItem } from "./types";
 
 export const bakery = {
   name: "Luna & Lorelai's Sourdough",
   domain: "landlsourdough.com",
+  orderEmail: "orders@landlsourdough.com",
   location: "Canton, GA",
   cutoffDay: "Thursday",
   cutoffHour: "8:00 PM",
   deliveryPromise:
-    "Local delivery from Canton, Georgia. No shipping or out-of-state orders in v1.",
+    "Local delivery in the Canton, Georgia area. Shipping is not currently available.",
   complianceNotes: [
-    "Confirm Georgia cottage food license and labels before launch.",
+    "Confirm Georgia cottage food program rules, training, registration, and labels before launch.",
     "Confirm Canton/Cherokee home business and occupational tax requirements.",
     "Confirm sales-tax setup with an accountant before switching Stripe live.",
   ],
@@ -25,7 +26,7 @@ export const products: Product[] = [
     ingredients: ["Organic bread flour", "filtered water", "sea salt", "starter"],
     allergens: ["Wheat"],
     priceCents: 1200,
-    imageUrl: null,
+    imageUrl: "/images/products/classic-country-loaf.webp",
     imageStyle: "from-stone-100 via-amber-100 to-orange-200",
     active: true,
   },
@@ -45,7 +46,7 @@ export const products: Product[] = [
     ],
     allergens: ["Wheat"],
     priceCents: 1400,
-    imageUrl: null,
+    imageUrl: "/images/products/rosemary-garlic-loaf.webp",
     imageStyle: "from-emerald-100 via-stone-100 to-amber-200",
     active: true,
   },
@@ -65,7 +66,7 @@ export const products: Product[] = [
     ],
     allergens: ["Wheat"],
     priceCents: 1500,
-    imageUrl: null,
+    imageUrl: "/images/products/cinnamon-swirl-sourdough.webp",
     imageStyle: "from-rose-100 via-amber-100 to-stone-100",
     active: true,
   },
@@ -78,7 +79,7 @@ export const products: Product[] = [
     ingredients: ["Starter", "flour", "olive oil", "herbs", "sea salt"],
     allergens: ["Wheat"],
     priceCents: 700,
-    imageUrl: null,
+    imageUrl: "/images/products/sourdough-starter-crackers.webp",
     imageStyle: "from-yellow-100 via-stone-100 to-lime-100",
     active: true,
   },
@@ -91,7 +92,7 @@ export const products: Product[] = [
     ingredients: ["Butter", "local honey", "sea salt"],
     allergens: ["Milk"],
     priceCents: 600,
-    imageUrl: null,
+    imageUrl: "/images/products/whipped-honey-butter.webp",
     imageStyle: "from-yellow-50 via-amber-100 to-orange-100",
     active: true,
   },
@@ -105,38 +106,98 @@ export const weeklyMenu: WeeklyMenuItem[] = [
   { productId: "honey-butter", availableQuantity: 20, soldQuantity: 7 },
 ];
 
-export const deliveryWindows: DeliveryWindow[] = [
-  {
-    id: "wed-afternoon",
-    label: "Wednesday, 3:00-6:00 PM",
-    startsAt: "2026-07-15T15:00:00-04:00",
-    endsAt: "2026-07-15T18:00:00-04:00",
-    capacity: 16,
-    reserved: 5,
-  },
-  {
-    id: "thu-morning",
-    label: "Thursday, 9:00 AM-12:00 PM",
-    startsAt: "2026-07-16T09:00:00-04:00",
-    endsAt: "2026-07-16T12:00:00-04:00",
-    capacity: 12,
-    reserved: 4,
-  },
-  {
-    id: "fri-afternoon",
-    label: "Friday, 2:00-5:00 PM",
-    startsAt: "2026-07-17T14:00:00-04:00",
-    endsAt: "2026-07-17T17:00:00-04:00",
-    capacity: 12,
-    reserved: 3,
-  },
-];
+function daysFrom(now: Date, days: number, hour: number, minute = 0) {
+  const date = new Date(now);
+  date.setDate(date.getDate() + days);
+  date.setHours(hour, minute, 0, 0);
+  return date;
+}
+
+function formatDeliveryWindowLabel(startsAt: Date, endsAt: Date) {
+  const day = new Intl.DateTimeFormat("en", {
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+    timeZone: "America/New_York",
+  }).format(startsAt);
+  const time = new Intl.DateTimeFormat("en", {
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: "America/New_York",
+  });
+
+  return `${day}, ${time.format(startsAt)}-${time.format(endsAt)}`;
+}
+
+export function getFallbackBakeDates(now = new Date()) {
+  const orderCutoffAt = daysFrom(now, 1, 20);
+  const startsAt = daysFrom(now, 2, 0);
+  const endsAt = daysFrom(now, 5, 23, 59);
+
+  return {
+    orderCutoffAt,
+    startsAt,
+    endsAt,
+  };
+}
+
+export function getFallbackDeliveryWindows(now = new Date()): DeliveryWindow[] {
+  const firstStart = daysFrom(now, 2, 15);
+  const firstEnd = daysFrom(now, 2, 18);
+  const secondStart = daysFrom(now, 3, 9);
+  const secondEnd = daysFrom(now, 3, 12);
+  const thirdStart = daysFrom(now, 4, 14);
+  const thirdEnd = daysFrom(now, 4, 17);
+
+  return [
+    {
+      id: "starter-window-1",
+      label: formatDeliveryWindowLabel(firstStart, firstEnd),
+      startsAt: firstStart.toISOString(),
+      endsAt: firstEnd.toISOString(),
+      capacity: 16,
+      reserved: 5,
+    },
+    {
+      id: "starter-window-2",
+      label: formatDeliveryWindowLabel(secondStart, secondEnd),
+      startsAt: secondStart.toISOString(),
+      endsAt: secondEnd.toISOString(),
+      capacity: 12,
+      reserved: 4,
+    },
+    {
+      id: "starter-window-3",
+      label: formatDeliveryWindowLabel(thirdStart, thirdEnd),
+      startsAt: thirdStart.toISOString(),
+      endsAt: thirdEnd.toISOString(),
+      capacity: 12,
+      reserved: 3,
+    },
+  ];
+}
+
+export function getFallbackWeeklyMenu(now = new Date()): WeeklyMenu {
+  const { orderCutoffAt, startsAt, endsAt } = getFallbackBakeDates(now);
+
+  return {
+    id: "starter-bake-drop",
+    name: "Starter Bake Drop",
+    orderCutoffAt: orderCutoffAt.toISOString(),
+    startsAt: startsAt.toISOString(),
+    endsAt: endsAt.toISOString(),
+    published: true,
+    items: getActiveMenu(),
+  };
+}
+
+export const deliveryWindows: DeliveryWindow[] = getFallbackDeliveryWindows();
 
 export const aiKnowledge = [
   `${bakery.name} is a local cottage bakery in ${bakery.location}.`,
-  "Orders are intended for local Georgia delivery only. The v1 site does not ship bread.",
+  "Orders are for local Georgia delivery only. Shipping is not currently available.",
   "The current order cutoff is set on the active weekly menu and shown before checkout.",
-  "After the posted cutoff, customers can send a last-minute request, but the bakery must confirm availability.",
+  "After the posted cutoff, customers can send a request and the bakery will confirm availability.",
   "All product allergen details must come from the product cards. Do not claim allergen-free preparation.",
   "Allowed delivery ZIP codes and delivery fee are configured by the bakery owner in admin.",
 ];

@@ -35,8 +35,8 @@ function envList(name: string, fallback: string[]) {
 }
 
 export function normalizePostalCode(value: string) {
-  const match = value.trim().match(/\d{5}/);
-  return match?.[0] ?? null;
+  const normalized = value.trim();
+  return /^\d{5}$/.test(normalized) ? normalized : null;
 }
 
 export function getDeliverySettings(): DeliverySettings {
@@ -49,7 +49,7 @@ export function getDeliverySettings(): DeliverySettings {
     ),
     serviceAreaCopy:
       process.env.DELIVERY_SERVICE_AREA_COPY ||
-      "Delivery is available in selected Canton-area ZIP codes: 30114, 30115, 30107, and 30183.",
+      "We deliver to selected Canton-area ZIP codes: 30114, 30115, 30107, and 30183.",
     center: {
       lat: envNumber("DELIVERY_CENTER_LAT", 34.2368),
       lng: envNumber("DELIVERY_CENTER_LNG", -84.4908),
@@ -70,7 +70,7 @@ export function checkDeliveryAddress(
       eligible: false,
       needsReview: false,
       miles: null,
-      message: "Delivery is only available within Georgia for launch.",
+      message: "Delivery is currently available only within Georgia.",
       feeCents: settings.deliveryFeeCents,
       postalCode,
       allowedPostalCodes,
@@ -96,8 +96,8 @@ export function checkDeliveryAddress(
     needsReview: false,
     miles: null,
     message: eligible
-      ? `${postalCode} is inside the launch delivery area.`
-      : `${postalCode} is outside the launch delivery area. ${settings.serviceAreaCopy}`,
+      ? `${postalCode} is in our local delivery area.`
+      : `${postalCode} is outside our current delivery area. ${settings.serviceAreaCopy}`,
     feeCents: settings.deliveryFeeCents,
     postalCode,
     allowedPostalCodes,

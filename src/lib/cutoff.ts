@@ -14,7 +14,7 @@ export function isAfterWeeklyCutoff(cutoffAt?: string | null, now = new Date()) 
 
 export function getCutoffMessage(cutoffAt?: string | null, now = new Date()) {
   if (isAfterWeeklyCutoff(cutoffAt, now)) {
-    return "The weekly order cutoff has passed. Send a last-minute request and the bakery will confirm what is possible.";
+    return "Online checkout is closed for this bake. Send a request and we will reply with current availability.";
   }
 
   if (!cutoffAt) return "Order by Thursday at 8:00 PM for next week's local delivery.";

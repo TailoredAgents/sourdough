@@ -59,7 +59,7 @@ export function AdminDashboard({
   );
   const [draftType, setDraftType] = useState("weekly_announcement");
   const [context, setContext] = useState(
-    "Announce this week's classic country loaf, rosemary garlic loaf, and honey butter. Mention Thursday cutoff.",
+    "Announce this week's featured bake drop. Mention the posted order cutoff and delivery ZIPs.",
   );
   const [draft, setDraft] = useState("");
   const [draftMessage, setDraftMessage] = useState<string | null>(null);
@@ -276,7 +276,10 @@ export function AdminDashboard({
           weeklyMenus={weeklyMenusState}
         />
 
-        <ProductEditor initialProducts={products} />
+        <ProductEditor
+          currentMenuProductIds={menu.map((item) => item.id)}
+          initialProducts={products}
+        />
       </main>
     </div>
   );

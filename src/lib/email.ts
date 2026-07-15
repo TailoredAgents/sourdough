@@ -42,6 +42,12 @@ function fromAddress() {
   );
 }
 
+export function getMissingResendEmailError(nodeEnv = process.env.NODE_ENV) {
+  return nodeEnv === "production"
+    ? "Email delivery is not configured. Set RESEND_API_KEY before sending production email."
+    : null;
+}
+
 async function logEmailEvent({
   template,
   to,
@@ -163,6 +169,19 @@ async function sendTemplatedEmail({
   const apiKey = process.env.RESEND_API_KEY;
 
   if (!apiKey) {
+    const missingEmailError = getMissingResendEmailError();
+    if (missingEmailError) {
+      await logEmailEvent({
+        template,
+        to,
+        orderId,
+        customerMessageId,
+        status: "failed",
+        errorMessage: missingEmailError,
+      });
+      throw new Error(missingEmailError);
+    }
+
     console.log("[email:demo]", { to, subject, text });
     await logEmailEvent({
       template,
