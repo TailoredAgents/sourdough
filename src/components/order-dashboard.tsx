@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { CheckCircle2, ClipboardList, Loader2, MapPin, Save } from "lucide-react";
+import { CheckCircle2, ClipboardList, Loader2, MapPin } from "lucide-react";
+import { getAdminOrderStatusActions } from "@/lib/admin-order-workflow";
 import type { AdminOrder, OrderStatus } from "@/lib/types";
 import { formatCurrency } from "@/lib/utils";
 import { Button } from "./button";
@@ -93,6 +94,9 @@ export function OrderDashboard({ initialOrders }: { initialOrders: AdminOrder[] 
     activeStatuses.includes(order.status),
   ).length;
   const pendingPaymentCount = orders.filter((order) => order.status === "pending_payment").length;
+  const statusActions = selectedOrder
+    ? getAdminOrderStatusActions(selectedOrder.status)
+    : [];
 
   function updateStatus(id: string, status: OrderStatus) {
     setMessage(null);
@@ -329,28 +333,41 @@ export function OrderDashboard({ initialOrders }: { initialOrders: AdminOrder[] 
               ) : null}
 
               <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-                <select
-                  className="h-11 rounded-md border border-stone-300 bg-white px-3 text-sm"
-                  value={selectedOrder.status}
-                  onChange={(event) =>
-                    updateStatus(selectedOrder.id, event.target.value as OrderStatus)
-                  }
-                  disabled={isPending}
-                >
-                  {statusOptions.map((status) => (
-                    <option key={status} value={status}>
-                      {statusLabels[status]}
-                    </option>
-                  ))}
-                </select>
-                <Button
-                  type="button"
-                  disabled={isPending}
-                  onClick={() => updateStatus(selectedOrder.id, selectedOrder.status)}
-                >
-                  {isPending ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
-                  Save status
-                </Button>
+                {statusActions.map((action) => (
+                  <Button
+                    key={action.status}
+                    type="button"
+                    variant={
+                      action.variant === "secondary"
+                        ? "secondary"
+                        : action.variant === "ghost"
+                          ? "ghost"
+                          : "primary"
+                    }
+                    disabled={isPending}
+                    onClick={() => updateStatus(selectedOrder.id, action.status)}
+                  >
+                    {isPending ? <Loader2 className="animate-spin" size={16} /> : null}
+                    {action.label}
+                  </Button>
+                ))}
+                <label className="grid gap-1 text-sm font-semibold text-stone-700">
+                  Manual status
+                  <select
+                    className="h-11 rounded-md border border-stone-300 bg-white px-3 font-normal"
+                    value={selectedOrder.status}
+                    onChange={(event) =>
+                      updateStatus(selectedOrder.id, event.target.value as OrderStatus)
+                    }
+                    disabled={isPending}
+                  >
+                    {statusOptions.map((status) => (
+                      <option key={status} value={status}>
+                        {statusLabels[status]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
                 {message ? (
                   <span
                     className={`inline-flex items-center gap-2 text-sm font-semibold ${
