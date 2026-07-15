@@ -293,83 +293,85 @@ export function WeeklyMenuEditor({
         />
       </label>
 
-      <div className="mt-5 overflow-x-auto">
-        <table className="w-full min-w-[760px] text-left text-sm">
-          <thead className="border-b border-stone-200 text-xs uppercase tracking-wide text-stone-500">
-            <tr>
-              <th className="py-3">Include</th>
-              <th className="py-3">Product</th>
-              <th className="py-3">Price</th>
-              <th className="py-3">Available</th>
-              <th className="py-3">Sold</th>
-              <th className="py-3">Featured</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-stone-100">
-            {products.map((product) => {
-              const item = form.items.find((entry) => entry.productId === product.id);
-              if (!item) return null;
+      <div className="mt-5 overflow-hidden rounded-md border border-stone-200 bg-white">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[760px] text-left text-sm">
+            <thead className="border-b border-stone-200 bg-[#fffaf2] text-xs uppercase tracking-wide text-stone-500">
+              <tr>
+                <th className="px-4 py-3">Include</th>
+                <th className="px-4 py-3">Product</th>
+                <th className="px-4 py-3">Price</th>
+                <th className="px-4 py-3">Available</th>
+                <th className="px-4 py-3">Sold</th>
+                <th className="px-4 py-3">Featured</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-stone-100">
+              {products.map((product) => {
+                const item = form.items.find((entry) => entry.productId === product.id);
+                if (!item) return null;
 
-              return (
-                <tr key={product.id}>
-                  <td className="py-3">
-                    <input
-                      type="checkbox"
-                      checked={item.included}
-                      onChange={(event) =>
-                        updateItem(product.id, { included: event.target.checked })
-                      }
-                    />
-                  </td>
-                  <td className="py-3">
-                    <p className="font-semibold text-stone-950">{product.name}</p>
-                    <p className="text-xs uppercase tracking-wide text-stone-500">
-                      {product.category}
-                    </p>
-                  </td>
-                  <td className="py-3 text-stone-700">
-                    {formatCurrency(product.priceCents)}
-                  </td>
-                  <td className="py-3">
-                    <input
-                      className="h-10 w-24 rounded-md border border-stone-300 px-3"
-                      min={0}
-                      type="number"
-                      value={item.availableQuantity}
-                      onChange={(event) =>
-                        updateItem(product.id, {
-                          availableQuantity: Number(event.target.value),
-                        })
-                      }
-                    />
-                  </td>
-                  <td className="py-3">
-                    <input
-                      className="h-10 w-24 rounded-md border border-stone-300 px-3"
-                      min={0}
-                      type="number"
-                      value={item.soldQuantity}
-                      onChange={(event) =>
-                        updateItem(product.id, {
-                          soldQuantity: Number(event.target.value),
-                        })
-                      }
-                    />
-                  </td>
-                  <td className="py-3">
-                    <input
-                      type="checkbox"
-                      checked={item.featured}
-                      onChange={(event) =>
-                        updateItem(product.id, { featured: event.target.checked })
-                      }
-                    />
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+                return (
+                  <tr key={product.id}>
+                    <td className="px-4 py-3">
+                      <input
+                        type="checkbox"
+                        checked={item.included}
+                        onChange={(event) =>
+                          updateItem(product.id, { included: event.target.checked })
+                        }
+                      />
+                    </td>
+                    <td className="px-4 py-3">
+                      <p className="font-semibold text-stone-950">{product.name}</p>
+                      <p className="text-xs uppercase tracking-wide text-stone-500">
+                        {product.category}
+                      </p>
+                    </td>
+                    <td className="px-4 py-3 text-stone-700">
+                      {formatCurrency(product.priceCents)}
+                    </td>
+                    <td className="px-4 py-3">
+                      <input
+                        className="h-10 w-24 rounded-md border border-stone-300 px-3"
+                        min={0}
+                        type="number"
+                        value={item.availableQuantity}
+                        onChange={(event) =>
+                          updateItem(product.id, {
+                            availableQuantity: Number(event.target.value),
+                          })
+                        }
+                      />
+                    </td>
+                    <td className="px-4 py-3">
+                      <input
+                        className="h-10 w-24 rounded-md border border-stone-300 px-3"
+                        min={0}
+                        type="number"
+                        value={item.soldQuantity}
+                        onChange={(event) =>
+                          updateItem(product.id, {
+                            soldQuantity: Number(event.target.value),
+                          })
+                        }
+                      />
+                    </td>
+                    <td className="px-4 py-3">
+                      <input
+                        type="checkbox"
+                        checked={item.featured}
+                        onChange={(event) =>
+                          updateItem(product.id, { featured: event.target.checked })
+                        }
+                      />
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {message ? (
