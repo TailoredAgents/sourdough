@@ -1,16 +1,22 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { CheckCircle2, ClipboardList, Loader2, MapPin } from "lucide-react";
+import { CheckCircle2, ClipboardList, Loader2, Mail, MapPin, Phone } from "lucide-react";
 import {
   getAdminPayloadError,
   hasAdminKeys,
   readAdminJsonResponse,
 } from "@/lib/admin-api";
+import {
+  buildMailtoHref,
+  buildMapSearchHref,
+  buildTelHref,
+  formatDeliveryAddress,
+} from "@/lib/admin-contact-links";
 import { getAdminOrderStatusActions } from "@/lib/admin-order-workflow";
 import type { AdminOrder, OrderStatus } from "@/lib/types";
 import { formatCurrency } from "@/lib/utils";
-import { Button } from "./button";
+import { Button, buttonClassName } from "./button";
 
 const statusLabels: Record<OrderStatus, string> = {
   draft: "Draft",
@@ -64,17 +70,6 @@ function shortId(id: string) {
   return id.slice(0, 8);
 }
 
-function formatAddress(order: AdminOrder) {
-  const address = order.deliveryAddress;
-  return [
-    address.line1,
-    address.line2,
-    `${address.city}, ${address.state} ${address.postalCode}`,
-  ]
-    .filter(Boolean)
-    .join(", ");
-}
-
 export function OrderDashboard({ initialOrders }: { initialOrders: AdminOrder[] }) {
   const firstActiveOrder = initialOrders.find((order) =>
     activeStatuses.includes(order.status),
@@ -102,6 +97,22 @@ export function OrderDashboard({ initialOrders }: { initialOrders: AdminOrder[] 
   const statusActions = selectedOrder
     ? getAdminOrderStatusActions(selectedOrder.status)
     : [];
+  const selectedOrderShortId = selectedOrder ? shortId(selectedOrder.id) : "";
+  const customerEmailHref = selectedOrder
+    ? buildMailtoHref(
+        selectedOrder.customerEmail,
+        `Order #${selectedOrderShortId} from Luna & Lorelai's Sourdough`,
+      )
+    : null;
+  const customerPhoneHref = selectedOrder
+    ? buildTelHref(selectedOrder.customerPhone)
+    : null;
+  const deliveryAddressText = selectedOrder
+    ? formatDeliveryAddress(selectedOrder.deliveryAddress)
+    : "";
+  const deliveryMapHref = selectedOrder
+    ? buildMapSearchHref(selectedOrder.deliveryAddress)
+    : null;
 
   function updateStatus(id: string, status: OrderStatus) {
     setMessage(null);
@@ -253,6 +264,32 @@ export function OrderDashboard({ initialOrders }: { initialOrders: AdminOrder[] 
                       {selectedOrder.customerPhone}
                     </p>
                   ) : null}
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {customerEmailHref ? (
+                      <a
+                        className={buttonClassName({
+                          variant: "secondary",
+                          size: "sm",
+                        })}
+                        href={customerEmailHref}
+                      >
+                        <Mail size={15} />
+                        Email
+                      </a>
+                    ) : null}
+                    {customerPhoneHref ? (
+                      <a
+                        className={buttonClassName({
+                          variant: "secondary",
+                          size: "sm",
+                        })}
+                        href={customerPhoneHref}
+                      >
+                        <Phone size={15} />
+                        Call
+                      </a>
+                    ) : null}
+                  </div>
                 </div>
                 <div className="text-right text-sm font-bold text-[#23443b]">
                   {formatCurrency(selectedOrder.totalCents)}
@@ -266,7 +303,22 @@ export function OrderDashboard({ initialOrders }: { initialOrders: AdminOrder[] 
                     <p className="font-semibold text-stone-950">
                       {selectedOrder.deliveryWindowLabel || "No delivery window"}
                     </p>
-                    <p className="mt-1">{formatAddress(selectedOrder)}</p>
+                    <p className="mt-1">{deliveryAddressText}</p>
+                    {deliveryMapHref ? (
+                      <a
+                        className={buttonClassName({
+                          variant: "ghost",
+                          size: "sm",
+                          className: "mt-2 w-fit px-0 text-[#23443b] hover:bg-transparent",
+                        })}
+                        href={deliveryMapHref}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        <MapPin size={15} />
+                        Open map
+                      </a>
+                    ) : null}
                     {selectedOrder.deliveryMiles !== null ? (
                       <p className="mt-1">{selectedOrder.deliveryMiles} miles estimated</p>
                     ) : null}

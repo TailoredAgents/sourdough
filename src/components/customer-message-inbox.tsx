@@ -7,9 +7,10 @@ import {
   hasAdminKeys,
   readAdminJsonResponse,
 } from "@/lib/admin-api";
+import { buildMailtoHref } from "@/lib/admin-contact-links";
 import { getAdminMessageStatusActions } from "@/lib/admin-message-workflow";
 import type { CustomerMessage } from "@/lib/types";
-import { Button } from "./button";
+import { Button, buttonClassName } from "./button";
 
 const statusLabels: Record<string, string> = {
   new: "New",
@@ -85,6 +86,9 @@ export function CustomerMessageInbox({
   const statusActions = selectedMessage
     ? getAdminMessageStatusActions(selectedMessage.status)
     : [];
+  const selectedMessageEmailHref = selectedMessage
+    ? buildMailtoHref(selectedMessage.customerEmail, defaultReplySubject(selectedMessage))
+    : null;
 
   function updateStatus(id: string, status: string) {
     setMessage(null);
@@ -267,6 +271,19 @@ export function CustomerMessageInbox({
                     {selectedMessage.customerEmail || "No email"} -{" "}
                     {formatDate(selectedMessage.createdAt)}
                   </p>
+                  {selectedMessageEmailHref ? (
+                    <a
+                      className={buttonClassName({
+                        variant: "secondary",
+                        size: "sm",
+                        className: "mt-3 w-fit",
+                      })}
+                      href={selectedMessageEmailHref}
+                    >
+                      <MailOpen size={15} />
+                      Email customer
+                    </a>
+                  ) : null}
                 </div>
                 <MailOpen className="text-[#23443b]" size={22} />
               </div>
