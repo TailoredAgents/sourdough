@@ -15,7 +15,7 @@ const draftSchema = z.object({
 
 export function fallbackDraft(type: string, context: string) {
   if (type === "weekly_announcement") {
-    return `This week's Luna & Lorelai's Sourdough bake is open for local delivery orders from Canton, GA.\n\n${context}\n\nQuantities are limited. Review the current weekly menu cutoff before publishing this draft.`;
+    return `This week's Luna & Lorelai's Sourdough bake is open for local delivery orders around Canton and Woodstock, GA.\n\n${context}\n\nQuantities are limited. Review the current weekly menu cutoff before publishing this draft.`;
   }
 
   return `Draft for review:\n\n${context}\n\nPlease confirm product details, delivery timing, and any allergen wording before sending.`;

@@ -2,7 +2,9 @@
 
 import { useState, useTransition } from "react";
 import {
+  AlertTriangle,
   Bot,
+  CheckCircle2,
   ClipboardList,
   Copy,
   Inbox,
@@ -15,6 +17,8 @@ import {
 } from "lucide-react";
 import {
   extractAdminDraftText,
+  getAdminDraftReviewWarnings,
+  getAdminDraftStats,
   validateAdminDraftInput,
 } from "@/lib/admin-draft";
 import {
@@ -73,6 +77,7 @@ export function AdminDashboard({
     "Announce this week's featured bake drop. Mention the posted order cutoff and delivery ZIPs.",
   );
   const [draft, setDraft] = useState("");
+  const [draftReviewed, setDraftReviewed] = useState(false);
   const [draftMessage, setDraftMessage] = useState<string | null>(null);
   const [emailTestMessage, setEmailTestMessage] = useState<string | null>(null);
   const [isDraftPending, startDraftTransition] = useTransition();
@@ -90,6 +95,8 @@ export function AdminDashboard({
   const menuCapacity = menu.reduce((sum, item) => sum + item.availableQuantity, 0);
   const soldCount = menu.reduce((sum, item) => sum + item.soldQuantity, 0);
   const remainingCount = menu.reduce((sum, item) => sum + item.remainingQuantity, 0);
+  const draftStats = getAdminDraftStats(draft);
+  const draftWarnings = getAdminDraftReviewWarnings(draft);
   const stats: { label: string; value: string; Icon: LucideIcon }[] = [
     { label: "Active paid orders", value: String(openOrderCount), Icon: ClipboardList },
     { label: "Open requests", value: String(openRequestCount), Icon: Inbox },
@@ -130,6 +137,7 @@ export function AdminDashboard({
         }
 
         setDraft(nextDraft);
+        setDraftReviewed(false);
         setDraftMessage("Draft generated for review.");
       } catch {
         setDraftMessage("Draft could not be generated. Check your connection and try again.");
@@ -139,6 +147,10 @@ export function AdminDashboard({
 
   async function copyDraft() {
     if (!draft) return;
+    if (!draftReviewed) {
+      setDraftMessage("Review and check the draft before copying.");
+      return;
+    }
     try {
       await navigator.clipboard.writeText(draft);
       setDraftMessage("Draft copied.");
@@ -363,7 +375,10 @@ export function AdminDashboard({
                 className="min-h-28 rounded-md border border-stone-300 p-3 text-sm"
                 aria-label="Draft context"
                 value={context}
-                onChange={(event) => setContext(event.target.value)}
+                onChange={(event) => {
+                  setContext(event.target.value);
+                  setDraftReviewed(false);
+                }}
                 maxLength={2000}
               />
               <Button
@@ -382,15 +397,64 @@ export function AdminDashboard({
                 className="min-h-52 rounded-md border border-stone-300 bg-[#fffaf2] p-3 text-sm leading-6"
                 aria-label="Generated draft"
                 value={draft}
-                onChange={(event) => setDraft(event.target.value)}
+                onChange={(event) => {
+                  setDraft(event.target.value);
+                  setDraftReviewed(false);
+                }}
                 placeholder="Generated draft appears here for editing."
               />
+              {draft ? (
+                <div className="grid gap-3 rounded-md border border-stone-200 bg-[#fffaf2] p-3 text-sm text-stone-700">
+                  <div className="flex flex-wrap gap-2">
+                    <span className="rounded-sm bg-white px-2 py-1 font-semibold">
+                      {draftStats.words} words
+                    </span>
+                    <span className="rounded-sm bg-white px-2 py-1 font-semibold">
+                      {draftStats.characters} characters
+                    </span>
+                    <span
+                      className={`inline-flex items-center gap-1 rounded-sm px-2 py-1 font-semibold ${
+                        draftWarnings.length
+                          ? "bg-amber-100 text-amber-900"
+                          : "bg-emerald-50 text-emerald-800"
+                      }`}
+                    >
+                      {draftWarnings.length ? (
+                        <AlertTriangle size={14} />
+                      ) : (
+                        <CheckCircle2 size={14} />
+                      )}
+                      {draftWarnings.length ? "Needs review" : "Ready to review"}
+                    </span>
+                  </div>
+                  {draftWarnings.length ? (
+                    <div className="grid gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-amber-950">
+                      {draftWarnings.map((warning) => (
+                        <p key={warning} className="inline-flex gap-2">
+                          <AlertTriangle className="mt-0.5 shrink-0" size={16} />
+                          <span>{warning}</span>
+                        </p>
+                      ))}
+                    </div>
+                  ) : null}
+                  <label className="flex items-start gap-2 font-semibold text-stone-700">
+                    <input
+                      className="mt-1"
+                      type="checkbox"
+                      checked={draftReviewed}
+                      onChange={(event) => setDraftReviewed(event.target.checked)}
+                    />
+                    I reviewed this draft for product details, delivery timing, and
+                    allergen wording.
+                  </label>
+                </div>
+              ) : null}
               <div className="flex items-center gap-3">
                 <Button
                   type="button"
                   variant="secondary"
                   onClick={copyDraft}
-                  disabled={isDraftPending || !draft}
+                  disabled={isDraftPending || !draft || !draftReviewed}
                 >
                   <Copy size={16} />
                   Copy draft

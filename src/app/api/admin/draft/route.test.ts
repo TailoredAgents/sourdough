@@ -6,6 +6,7 @@ describe("admin draft fallback", () => {
     const draft = fallbackDraft("weekly_announcement", "Classic country is featured.");
 
     expect(draft).toContain("Classic country is featured.");
+    expect(draft).toContain("Canton and Woodstock, GA");
     expect(draft).toContain("Review the current weekly menu cutoff");
     expect(draft).not.toContain("Thursday at 8:00 PM");
   });
