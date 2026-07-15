@@ -1,13 +1,32 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { CheckCircle2, Inbox, Loader2, MailOpen, Send } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Inbox,
+  Loader2,
+  MailOpen,
+  MapPin,
+  Phone,
+  Send,
+} from "lucide-react";
 import {
   getAdminPayloadError,
   hasAdminKeys,
   readAdminJsonResponse,
 } from "@/lib/admin-api";
-import { buildMailtoHref } from "@/lib/admin-contact-links";
+import {
+  buildMailtoHref,
+  buildMapSearchHref,
+  buildTelHref,
+} from "@/lib/admin-contact-links";
+import {
+  getCustomerMessageReplyWarning,
+  hasAdminMessageDetails,
+  parseAdminMessageDetails,
+  summarizeCustomerMessages,
+} from "@/lib/admin-message-details";
 import { getAdminMessageStatusActions } from "@/lib/admin-message-workflow";
 import type { CustomerMessage } from "@/lib/types";
 import { Button, buttonClassName } from "./button";
@@ -86,8 +105,18 @@ export function CustomerMessageInbox({
   const statusActions = selectedMessage
     ? getAdminMessageStatusActions(selectedMessage.status)
     : [];
+  const inboxSummary = useMemo(() => summarizeCustomerMessages(messages), [messages]);
+  const selectedDetails = selectedMessage
+    ? parseAdminMessageDetails(selectedMessage.body)
+    : null;
+  const hasSelectedDetails = hasAdminMessageDetails(selectedDetails);
+  const replyWarning = getCustomerMessageReplyWarning(selectedMessage);
   const selectedMessageEmailHref = selectedMessage
     ? buildMailtoHref(selectedMessage.customerEmail, defaultReplySubject(selectedMessage))
+    : null;
+  const selectedPhoneHref = selectedDetails ? buildTelHref(selectedDetails.phone) : null;
+  const selectedMapHref = selectedDetails
+    ? buildMapSearchHref(selectedDetails.address)
     : null;
 
   function updateStatus(id: string, status: string) {
@@ -204,6 +233,41 @@ export function CustomerMessageInbox({
         ))}
       </div>
 
+      <div className="mt-5 grid gap-3 rounded-md border border-stone-200 bg-[#fffaf2] p-4 sm:grid-cols-4">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wide text-stone-500">
+            New
+          </p>
+          <p className="mt-1 text-2xl font-bold text-stone-950">
+            {inboxSummary.new}
+          </p>
+        </div>
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wide text-stone-500">
+            Working
+          </p>
+          <p className="mt-1 text-2xl font-bold text-stone-950">
+            {inboxSummary.inProgress}
+          </p>
+        </div>
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wide text-stone-500">
+            Handled
+          </p>
+          <p className="mt-1 text-2xl font-bold text-stone-950">
+            {inboxSummary.handled}
+          </p>
+        </div>
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wide text-stone-500">
+            No email
+          </p>
+          <p className="mt-1 text-2xl font-bold text-stone-950">
+            {inboxSummary.noEmail}
+          </p>
+        </div>
+      </div>
+
       <div className="mt-5 grid gap-5 lg:grid-cols-[0.9fr_1.1fr]">
         <div className="grid max-h-[520px] content-start gap-2 overflow-y-auto pr-1">
           {filteredMessages.map((entry) => (
@@ -284,15 +348,122 @@ export function CustomerMessageInbox({
                       Email customer
                     </a>
                   ) : null}
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {selectedPhoneHref ? (
+                      <a
+                        className={buttonClassName({
+                          variant: "secondary",
+                          size: "sm",
+                        })}
+                        href={selectedPhoneHref}
+                      >
+                        <Phone size={15} />
+                        Call
+                      </a>
+                    ) : null}
+                    {selectedMapHref ? (
+                      <a
+                        className={buttonClassName({
+                          variant: "secondary",
+                          size: "sm",
+                        })}
+                        href={selectedMapHref}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        <MapPin size={15} />
+                        Map
+                      </a>
+                    ) : null}
+                  </div>
                 </div>
                 <MailOpen className="text-[#23443b]" size={22} />
               </div>
+
+              {selectedDetails && hasSelectedDetails ? (
+                <div className="mt-4 grid gap-3 rounded-md border border-stone-200 bg-white p-4 text-sm text-stone-700 sm:grid-cols-2">
+                  {selectedDetails.customerName ? (
+                    <div>
+                      <p className="font-semibold text-stone-950">Customer</p>
+                      <p className="mt-1">{selectedDetails.customerName}</p>
+                    </div>
+                  ) : null}
+                  {selectedDetails.phone ? (
+                    <div>
+                      <p className="font-semibold text-stone-950">Phone</p>
+                      <p className="mt-1">{selectedDetails.phone}</p>
+                    </div>
+                  ) : null}
+                  {selectedDetails.requestedItems.length ? (
+                    <div>
+                      <p className="font-semibold text-stone-950">Requested items</p>
+                      <ul className="mt-1 space-y-1">
+                        {selectedDetails.requestedItems.map((item) => (
+                          <li key={item}>{item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                  {selectedDetails.deliveryWindow ? (
+                    <div>
+                      <p className="font-semibold text-stone-950">Delivery window</p>
+                      <p className="mt-1">{selectedDetails.deliveryWindow}</p>
+                    </div>
+                  ) : null}
+                  {selectedDetails.address ? (
+                    <div className="sm:col-span-2">
+                      <p className="font-semibold text-stone-950">Address</p>
+                      <p className="mt-1">{selectedDetails.address}</p>
+                    </div>
+                  ) : null}
+                  {selectedDetails.deliveryInstructions ? (
+                    <div>
+                      <p className="font-semibold text-stone-950">Delivery instructions</p>
+                      <p className="mt-1">{selectedDetails.deliveryInstructions}</p>
+                    </div>
+                  ) : null}
+                  {selectedDetails.notes ? (
+                    <div>
+                      <p className="font-semibold text-stone-950">Notes</p>
+                      <p className="mt-1">{selectedDetails.notes}</p>
+                    </div>
+                  ) : null}
+                  {selectedDetails.question ? (
+                    <div className="sm:col-span-2">
+                      <p className="font-semibold text-stone-950">Question</p>
+                      <p className="mt-1">{selectedDetails.question}</p>
+                    </div>
+                  ) : null}
+                  {selectedDetails.answerShown ? (
+                    <div className="sm:col-span-2">
+                      <p className="font-semibold text-stone-950">Answer shown</p>
+                      <p className="mt-1">{selectedDetails.answerShown}</p>
+                    </div>
+                  ) : null}
+                  {selectedDetails.zip || selectedDetails.interest ? (
+                    <div className="sm:col-span-2">
+                      <p className="font-semibold text-stone-950">Signup details</p>
+                      <p className="mt-1">
+                        {[selectedDetails.zip, selectedDetails.interest]
+                          .filter(Boolean)
+                          .join(" - ")}
+                      </p>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
 
               <pre className="mt-4 max-h-[360px] overflow-auto whitespace-pre-wrap rounded-md border border-stone-200 bg-white p-4 text-sm leading-6 text-stone-800">
                 {selectedMessage.body}
               </pre>
 
               <div className="mt-4 grid gap-3 rounded-md border border-stone-200 bg-white p-4">
+                {replyWarning ? (
+                  <div className="flex gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm leading-6 text-amber-950">
+                    <AlertTriangle className="mt-1 shrink-0" size={16} />
+                    <p>{replyWarning}</p>
+                  </div>
+                ) : null}
                 <label className="grid gap-1 text-sm font-semibold text-stone-700">
                   Reply subject
                   <input
@@ -325,7 +496,12 @@ export function CustomerMessageInbox({
                 </label>
                 <Button
                   type="button"
-                  disabled={isPending || !replySubject.trim() || !replyBody.trim()}
+                  disabled={
+                    isPending ||
+                    Boolean(replyWarning) ||
+                    !replySubject.trim() ||
+                    !replyBody.trim()
+                  }
                   onClick={sendReply}
                 >
                   {isPending ? <Loader2 className="animate-spin" size={16} /> : <Send size={16} />}
