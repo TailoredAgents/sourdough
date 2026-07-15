@@ -39,6 +39,15 @@ test("sitemap exposes customer routes with freshness metadata", async ({ request
   expect(sitemap).toContain(
     "<loc>https://landlsourdough.com/sourdough-delivery-canton-ga</loc>",
   );
+  expect(sitemap).toContain(
+    "<loc>https://landlsourdough.com/sourdough-delivery-woodstock-ga</loc>",
+  );
+  expect(sitemap).toContain(
+    "<loc>https://landlsourdough.com/sourdough-delivery/30188</loc>",
+  );
+  expect(sitemap).toContain(
+    "<loc>https://landlsourdough.com/sourdough-delivery/30189</loc>",
+  );
   expect(sitemap).toContain("<loc>https://landlsourdough.com/contact</loc>");
   expect(sitemap).toMatch(/<lastmod>\d{4}-\d{2}-\d{2}T/);
 });
@@ -47,7 +56,9 @@ test("customer pages avoid internal admin wording", async ({ page }) => {
   for (const path of [
     "/",
     "/sourdough-delivery-canton-ga",
+    "/sourdough-delivery-woodstock-ga",
     "/sourdough-delivery/30114",
+    "/sourdough-delivery/30188",
     "/menu/classic-country-loaf",
     "/contact",
   ]) {
@@ -181,6 +192,24 @@ test("delivery check accepts and rejects ZIPs", async ({ request }) => {
   });
   expect(allowed.ok()).toBe(true);
   expect((await allowed.json()).eligible).toBe(true);
+
+  const woodstockAllowed = await request.post("/api/delivery/check", {
+    data: {
+      line1: "1 Main St",
+      city: "Woodstock",
+      state: "GA",
+      postalCode: "30188",
+    },
+  });
+  expect(woodstockAllowed.ok()).toBe(true);
+  const woodstockPayload = await woodstockAllowed.json();
+  expect(woodstockPayload).toEqual(
+    expect.objectContaining({
+      eligible: true,
+      postalCode: "30188",
+      allowedPostalCodes: expect.arrayContaining(["30188", "30189"]),
+    }),
+  );
 
   const rejected = await request.post("/api/delivery/check", {
     data: {
@@ -396,7 +425,7 @@ test("customer question box submits accessibly from the keyboard", async ({ page
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
-        answer: "Delivery is available in selected Canton-area ZIP codes.",
+        answer: "Delivery is available in selected local ZIP codes.",
       }),
     });
   });
@@ -406,7 +435,7 @@ test("customer question box submits accessibly from the keyboard", async ({ page
   await page.keyboard.press("Enter");
 
   await expect(
-    page.getByText("Delivery is available in selected Canton-area ZIP codes."),
+    page.getByText("Delivery is available in selected local ZIP codes."),
   ).toBeVisible();
   await page.waitForFunction(() =>
     window.dataLayer?.some((entry) => entry.event === "customer_question_submit"),
@@ -506,32 +535,71 @@ test("delivery page lets customers check ZIP before ordering", async ({ page }) 
   await expect(page.locator('input[name="postal-code"]')).toHaveValue("30114");
 });
 
+test("Woodstock delivery page lets customers check ZIP before ordering", async ({ page }) => {
+  await page.goto("/sourdough-delivery-woodstock-ga");
+  await page.waitForFunction(() =>
+    window.dataLayer?.some((entry) => entry.event === "page_view"),
+  );
+
+  await expect(
+    page.getByRole("heading", {
+      name: /Fresh sourdough delivered locally in Woodstock, GA/i,
+    }),
+  ).toBeVisible();
+  await expect(page.getByText(/Woodstock ZIPs: 30188, 30189/i)).toBeVisible();
+
+  await page.getByLabel("Delivery ZIP code").fill("30a188");
+  await expect(page.getByLabel("Delivery ZIP code")).toHaveValue("30188");
+  await page.getByRole("button", { name: "Check ZIP" }).click();
+  await expect(page.getByText(/30188 is in our local delivery area/i)).toBeVisible();
+  await expect(page.getByRole("link", { name: "Order with this ZIP" })).toBeVisible();
+  await page.waitForFunction(() =>
+    window.dataLayer?.some(
+      (entry) =>
+        entry.event === "check_delivery" &&
+        entry.source === "woodstock-delivery-page" &&
+        entry.postal_code === "30188" &&
+        entry.eligible === true,
+    ),
+  );
+
+  await page.getByRole("link", { name: "Order with this ZIP" }).click();
+  await expect(page).toHaveURL(/\?zip=30188#order/);
+  await expect(page.locator('input[name="postal-code"]')).toHaveValue("30188");
+  await expect(page.getByText(/ZIP 30188 is prefilled/i)).toBeVisible();
+});
+
 test("service-area ZIP page can prefill ZIP and select a product", async ({ page }) => {
-  await page.goto("/sourdough-delivery/30114");
+  await page.goto("/sourdough-delivery/30188");
 
   await page
-    .getByRole("link", { name: /Choose for ZIP 30114/i })
+    .getByRole("link", { name: /Choose for ZIP 30188/i })
     .first()
     .click();
 
-  await expect(page).toHaveURL(/\?zip=30114#select-/);
-  await expect(page.locator('input[name="postal-code"]')).toHaveValue("30114");
-  await expect(page.getByText(/ZIP 30114 is prefilled/i)).toBeVisible();
+  await expect(page).toHaveURL(/\?zip=30188#select-/);
+  await expect(page.locator('input[name="postal-code"]')).toHaveValue("30188");
+  await expect(page.getByText(/ZIP 30188 is prefilled/i)).toBeVisible();
   await expect(page.getByText(/1 x /)).toBeVisible();
   await expect(page.locator("#checkout-details").getByText("Your items")).toBeVisible();
 });
 
 test("service-area ZIP page links into ordering with prefilled ZIP", async ({ page }) => {
-  await page.goto("/sourdough-delivery/30114");
+  await page.goto("/sourdough-delivery/30188");
 
   await expect(
-    page.getByRole("heading", { name: /Sourdough Delivery in ZIP 30114/i }),
+    page.getByRole("heading", {
+      name: /Sourdough Delivery in ZIP 30188 \(Woodstock, GA\)/i,
+    }),
   ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: /Woodstock, GA delivery/i }),
+  ).toHaveAttribute("href", "/sourdough-delivery-woodstock-ga");
   await expect(page.getByText(/Delivery fee shown before checkout/i)).toBeVisible();
-  await expect(page.getByRole("link", { name: /Order for ZIP 30114/i }).first()).toBeVisible();
+  await expect(page.getByRole("link", { name: /Order for ZIP 30188/i }).first()).toBeVisible();
 
-  await page.getByRole("link", { name: /Order for ZIP 30114/i }).first().click();
-  await expect(page).toHaveURL(/\?zip=30114#order/);
-  await expect(page.locator('input[name="postal-code"]')).toHaveValue("30114");
-  await expect(page.getByText(/ZIP 30114 is prefilled/i)).toBeVisible();
+  await page.getByRole("link", { name: /Order for ZIP 30188/i }).first().click();
+  await expect(page).toHaveURL(/\?zip=30188#order/);
+  await expect(page.locator('input[name="postal-code"]')).toHaveValue("30188");
+  await expect(page.getByText(/ZIP 30188 is prefilled/i)).toBeVisible();
 });

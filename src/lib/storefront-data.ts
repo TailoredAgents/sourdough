@@ -8,7 +8,11 @@ import {
 } from "./bakery-data";
 import { productSlug } from "./product-slugs";
 import { getSupabaseAdminClient } from "./supabase";
-import { getDeliverySettings, type DeliverySettings } from "./delivery";
+import {
+  getDeliverySettings,
+  normalizePostalCode,
+  type DeliverySettings,
+} from "./delivery";
 import type {
   DeliveryWindow,
   MenuProduct,
@@ -85,6 +89,25 @@ function getUnavailableDeliverySettings(): DeliverySettings {
     serviceAreaCopy:
       "Delivery is temporarily unavailable while the bakery updates its service area.",
   };
+}
+
+function mergeAllowedPostalCodes(configured: string[] | null | undefined) {
+  const defaultPostalCodes = getDeliverySettings().allowedPostalCodes;
+  const merged = [...(configured || []), ...defaultPostalCodes]
+    .map((postalCode) => normalizePostalCode(postalCode))
+    .filter((postalCode): postalCode is string => Boolean(postalCode));
+
+  return Array.from(new Set(merged));
+}
+
+function getCurrentServiceAreaCopy(rowCopy: string | null | undefined) {
+  const fallback = getDeliverySettings();
+  const copy = rowCopy || fallback.serviceAreaCopy;
+  const mentionsCurrentPostalCodes = fallback.allowedPostalCodes.every((postalCode) =>
+    copy.includes(postalCode),
+  );
+
+  return mentionsCurrentPostalCodes ? copy : fallback.serviceAreaCopy;
 }
 
 function getFallbackProductImageUrl(name: string) {
@@ -399,11 +422,8 @@ export async function getDeliverySettingsData(): Promise<DeliverySettings> {
   return {
     radiusMiles: Number(row.radius_miles),
     deliveryFeeCents: row.delivery_fee_cents,
-    allowedPostalCodes: row.allowed_postal_codes?.length
-      ? row.allowed_postal_codes
-      : getDeliverySettings().allowedPostalCodes,
-    serviceAreaCopy:
-      row.service_area_copy || getDeliverySettings().serviceAreaCopy,
+    allowedPostalCodes: mergeAllowedPostalCodes(row.allowed_postal_codes),
+    serviceAreaCopy: getCurrentServiceAreaCopy(row.service_area_copy),
     center: {
       lat: Number(row.center_lat),
       lng: Number(row.center_lng),

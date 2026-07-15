@@ -8,7 +8,7 @@ export const bakery = {
   cutoffDay: "Thursday",
   cutoffHour: "8:00 PM",
   deliveryPromise:
-    "Local delivery in the Canton, Georgia area. Shipping is not currently available.",
+    "Local delivery in the Canton and Woodstock, Georgia area. Shipping is not currently available.",
   complianceNotes: [
     "Confirm Georgia cottage food program rules, training, registration, and labels before launch.",
     "Confirm Canton/Cherokee home business and occupational tax requirements.",
@@ -195,7 +195,7 @@ export const deliveryWindows: DeliveryWindow[] = getFallbackDeliveryWindows();
 
 export const aiKnowledge = [
   `${bakery.name} is a local cottage bakery in ${bakery.location}.`,
-  "Orders are for local Georgia delivery only. Shipping is not currently available.",
+  "Orders are for local Georgia delivery around Canton and Woodstock only. Shipping is not currently available.",
   "The current order cutoff is set on the active weekly menu and shown before checkout.",
   "After the posted cutoff, customers can send a request and the bakery will confirm availability.",
   "All product allergen details must come from the product cards. Do not claim allergen-free preparation.",

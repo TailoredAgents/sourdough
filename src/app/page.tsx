@@ -45,7 +45,7 @@ export default async function Home() {
   const faqs = [
     {
       question: "Where do you deliver?",
-      answer: `Local delivery is available around Canton, Georgia in selected ZIP codes: ${serviceZipCopy}. Enter your ZIP code at checkout to confirm availability and delivery fee.`,
+      answer: `Local delivery is available around Canton and Woodstock, Georgia in selected ZIP codes: ${serviceZipCopy}. Enter your ZIP code at checkout to confirm availability and delivery fee.`,
     },
     {
       question: "When should I order?",
@@ -60,7 +60,7 @@ export default async function Home() {
     {
       question: "Do you ship sourdough?",
       answer:
-        "Shipping is not currently available. Orders are for local Georgia delivery in the Canton area.",
+        "Shipping is not currently available. Orders are for local Georgia delivery in the Canton and Woodstock area.",
     },
     {
       question: "How can I ask a question before ordering?",
@@ -134,7 +134,7 @@ export default async function Home() {
           "@type": "ContactPoint",
           contactType: "customer service",
           email: bakery.orderEmail,
-          areaServed: "Canton, GA",
+          areaServed: ["Canton, GA", "Woodstock, GA"],
           availableLanguage: "English",
         },
         address: {
@@ -214,14 +214,14 @@ export default async function Home() {
           <div className="relative mx-auto flex min-h-[calc(100svh-12rem)] max-w-7xl items-center px-4 py-16 sm:min-h-[calc(100svh-10rem)] sm:px-6 lg:px-8">
             <div className="max-w-2xl text-white">
               <p className="text-sm font-bold uppercase tracking-[0.2em] text-[#f5c28b]">
-                Local sourdough delivery in Canton, GA
+                Local sourdough delivery in Canton & Woodstock, GA
               </p>
               <h1 className="mt-5 text-5xl font-black leading-[1.02] sm:text-6xl lg:text-7xl">
                 {bakery.name}
               </h1>
               <p className="mt-6 max-w-xl text-lg leading-8 text-stone-100">
                 Order naturally leavened sourdough loaves and small-batch add-ons
-                for weekly local delivery around Canton.
+                for weekly local delivery around Canton and Woodstock.
               </p>
               <div className="mt-8 flex flex-col gap-3 sm:flex-row">
                 <a
@@ -553,7 +553,7 @@ export default async function Home() {
                   <MapPin className="mt-1 shrink-0 text-[#a94334]" size={20} />
                   <div>
                     <h3 className="font-bold text-stone-950">
-                      Canton-area delivery
+                      Canton and Woodstock delivery
                     </h3>
                     <p className="mt-2 text-sm leading-6 text-stone-700">
                       Current delivery ZIP codes: {serviceZipCopy}. Enter your

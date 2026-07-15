@@ -64,7 +64,7 @@ export function buildChatFallbackAnswer(
   }
 
   if (lower.includes("shipping") || lower.includes("ship")) {
-    return "Luna & Lorelai's Sourdough offers local Georgia delivery from Canton, GA only. Shipping and out-of-state orders are not available.";
+    return "Luna & Lorelai's Sourdough offers local Georgia delivery around Canton and Woodstock only. Shipping and out-of-state orders are not available.";
   }
 
   if (lower.includes("deliver") || lower.includes("zip") || postalCode) {
@@ -75,7 +75,7 @@ export function buildChatFallbackAnswer(
         : `${postalCode} is outside the current local delivery area. Delivery is available in these ZIP codes: ${listAllowedZips(context.deliverySettings)}.`;
     }
 
-    return `Local delivery is available from Canton, GA in these ZIP codes: ${listAllowedZips(context.deliverySettings)}. Shipping and out-of-state orders are not available.`;
+    return `Local delivery is available around Canton and Woodstock in these ZIP codes: ${listAllowedZips(context.deliverySettings)}. Shipping and out-of-state orders are not available.`;
   }
 
   if (lower.includes("cutoff") || lower.includes("deadline") || lower.includes("late")) {

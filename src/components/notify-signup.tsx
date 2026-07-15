@@ -90,7 +90,7 @@ export function NotifySignup({
             </h2>
             <p className="mt-1 text-sm leading-6 text-stone-700">
               Join the notification list for new weekly menus, restocks, and
-              Canton-area delivery openings.
+              local delivery openings.
             </p>
           </div>
         </div>

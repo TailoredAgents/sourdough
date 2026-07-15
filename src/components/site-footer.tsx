@@ -28,7 +28,7 @@ export function SiteFooter() {
           </Link>
           <p className="mt-4 max-w-xl text-sm leading-6 text-stone-700">
             Weekly sourdough loaves and small-batch add-ons available by
-            preorder for local delivery around Canton, Georgia.
+            preorder for local delivery around Canton and Woodstock, Georgia.
           </p>
           <a
             href={`mailto:${bakery.orderEmail}`}
@@ -46,6 +46,9 @@ export function SiteFooter() {
           <nav className="mt-3 grid gap-2 text-sm font-semibold text-stone-700">
             <Link href="/sourdough-delivery-canton-ga">
               Sourdough Delivery in Canton, GA
+            </Link>
+            <Link href="/sourdough-delivery-woodstock-ga">
+              Sourdough Delivery in Woodstock, GA
             </Link>
             <Link href="/contact">Contact the bakery</Link>
             <Link href="/policies">Policy overview</Link>

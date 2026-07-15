@@ -118,16 +118,16 @@ create table if not exists delivery_settings (
   center_lng numeric(9,6) not null default -84.490800,
   radius_miles numeric(5,2) not null default 12,
   delivery_fee_cents integer not null default 600,
-  allowed_postal_codes text[] not null default array['30114', '30115', '30107', '30183'],
-  service_area_copy text not null default 'Delivery is available to selected local ZIP codes near Canton, GA.',
+  allowed_postal_codes text[] not null default array['30114', '30115', '30107', '30183', '30188', '30189'],
+  service_area_copy text not null default 'Delivery is available in selected ZIP codes around Canton and Woodstock: 30114, 30115, 30107, 30183, 30188, and 30189.',
   check (id)
 );
 
 alter table delivery_settings
-  add column if not exists allowed_postal_codes text[] not null default array['30114', '30115', '30107', '30183'];
+  add column if not exists allowed_postal_codes text[] not null default array['30114', '30115', '30107', '30183', '30188', '30189'];
 
 alter table delivery_settings
-  add column if not exists service_area_copy text not null default 'Delivery is available to selected local ZIP codes near Canton, GA.';
+  add column if not exists service_area_copy text not null default 'Delivery is available in selected ZIP codes around Canton and Woodstock: 30114, 30115, 30107, 30183, 30188, and 30189.';
 
 create table if not exists delivery_windows (
   id uuid primary key default gen_random_uuid(),

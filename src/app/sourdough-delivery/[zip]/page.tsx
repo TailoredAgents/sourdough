@@ -11,7 +11,9 @@ import { buildBreadcrumbList } from "@/lib/breadcrumbs";
 import { normalizePostalCode } from "@/lib/delivery";
 import {
   isAllowedServiceArea,
+  serviceAreaDeliveryPagePath,
   serviceAreaDescription,
+  serviceAreaName,
   serviceAreaPath,
   serviceAreaTitle,
 } from "@/lib/service-areas";
@@ -101,9 +103,11 @@ export default async function ServiceAreaPage({ params }: ServiceAreaPageProps) 
   const pageTitle = serviceAreaTitle(postalCode);
   const description = serviceAreaDescription(postalCode);
   const orderHref = `/?zip=${encodeURIComponent(postalCode)}#order`;
+  const deliveryPagePath = serviceAreaDeliveryPagePath(postalCode);
+  const deliveryAreaName = serviceAreaName(postalCode);
   const breadcrumbs = [
     { name: "Home", href: "/" },
-    { name: "Canton delivery", href: "/sourdough-delivery-canton-ga" },
+    { name: `${deliveryAreaName} delivery`, href: deliveryPagePath },
     { name: `ZIP ${postalCode}`, href: pagePath },
   ];
   const faqs = [
@@ -124,7 +128,7 @@ export default async function ServiceAreaPage({ params }: ServiceAreaPageProps) 
     {
       question: "Is shipping available outside the delivery area?",
       answer:
-        "Shipping is not currently available. Orders are for local Georgia delivery in the configured Canton-area ZIP codes.",
+        "Shipping is not currently available. Orders are for local Georgia delivery in the configured ZIP codes around Canton and Woodstock.",
     },
   ];
   const structuredData = {
@@ -207,7 +211,7 @@ export default async function ServiceAreaPage({ params }: ServiceAreaPageProps) 
                 ))}
               </nav>
               <p className="text-sm font-bold uppercase tracking-[0.18em] text-[#a94334]">
-                Canton-area sourdough delivery
+                {deliveryAreaName} sourdough delivery
               </p>
               <h1 className="mt-3 text-4xl font-black leading-tight text-stone-950 sm:text-5xl">
                 {pageTitle}
@@ -257,7 +261,7 @@ export default async function ServiceAreaPage({ params }: ServiceAreaPageProps) 
                   Order for ZIP {postalCode}
                 </Link>
                 <Link
-                  href="/sourdough-delivery-canton-ga"
+                  href={deliveryPagePath}
                   className="inline-flex h-12 items-center justify-center rounded-md border border-stone-300 bg-white px-5 text-base font-bold text-stone-800 transition hover:bg-stone-50"
                 >
                   View delivery details

@@ -7,7 +7,7 @@ import { bakery } from "@/lib/bakery-data";
 import { buildBreadcrumbList } from "@/lib/breadcrumbs";
 
 const contactDescription =
-  "Contact Luna & Lorelai's Sourdough for local delivery questions, order updates, ingredient questions, and Canton-area sourdough preorder help.";
+  "Contact Luna & Lorelai's Sourdough for local delivery questions, order updates, ingredient questions, and Canton or Woodstock sourdough preorder help.";
 
 export const metadata: Metadata = {
   title: "Contact",
@@ -79,7 +79,7 @@ export default function ContactPage() {
           "@id": `${siteUrl}/#bakery`,
           name: bakery.name,
           email: bakery.orderEmail,
-          areaServed: "Canton, GA",
+          areaServed: ["Canton, GA", "Woodstock, GA"],
           address: {
             "@type": "PostalAddress",
             addressLocality: "Canton",
@@ -91,7 +91,7 @@ export default function ContactPage() {
           "@type": "ContactPoint",
           contactType: "customer service",
           email: bakery.orderEmail,
-          areaServed: "Canton, GA",
+          areaServed: ["Canton, GA", "Woodstock, GA"],
           availableLanguage: "English",
         },
       },
@@ -118,8 +118,8 @@ export default function ContactPage() {
             </h1>
             <p className="mt-4 max-w-3xl text-base leading-7 text-stone-700">
               Email {bakery.name} for local delivery questions, order updates,
-              ingredient questions, and weekly preorder help around Canton,
-              Georgia.
+              ingredient questions, and weekly preorder help around Canton and
+              Woodstock, Georgia.
             </p>
             <div className="mt-6 flex flex-col gap-3 sm:flex-row">
               <a
@@ -186,6 +186,9 @@ export default function ContactPage() {
                 </Link>
                 <Link href="/sourdough-delivery-canton-ga" className="underline">
                   Check Canton delivery details
+                </Link>
+                <Link href="/sourdough-delivery-woodstock-ga" className="underline">
+                  Check Woodstock delivery details
                 </Link>
                 <Link href="/policies/allergen-cottage-food" className="underline">
                   Read allergen and cottage-food notice

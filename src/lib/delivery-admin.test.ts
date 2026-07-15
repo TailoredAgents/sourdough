@@ -9,7 +9,7 @@ const validPayload = {
     radiusMiles: 12,
     deliveryFeeCents: 600,
     allowedPostalCodes: ["30114", "30115"],
-    serviceAreaCopy: "Delivery is available in selected Canton-area ZIP codes.",
+    serviceAreaCopy: "Delivery is available in selected local ZIP codes.",
   },
   windows: [
     {

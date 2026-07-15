@@ -57,6 +57,6 @@ services:
       - key: DELIVERY_FEE_CENTS
         value: "600"
       - key: DELIVERY_ALLOWED_POSTAL_CODES
-        value: "30114,30115,30107,30183"
+        value: "30114,30115,30107,30183,30188,30189"
       - key: DELIVERY_SERVICE_AREA_COPY
-        value: "Delivery is available in selected Canton-area ZIP codes: 30114, 30115, 30107, and 30183."
+        value: "Delivery is available in selected ZIP codes around Canton and Woodstock: 30114, 30115, 30107, 30183, 30188, and 30189."

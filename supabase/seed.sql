@@ -12,8 +12,8 @@ insert into delivery_settings (
   -84.490800,
   12,
   600,
-  array['30114', '30115', '30107', '30183'],
-  'Delivery is available in selected Canton-area ZIP codes: 30114, 30115, 30107, and 30183.'
+  array['30114', '30115', '30107', '30183', '30188', '30189'],
+  'Delivery is available in selected ZIP codes around Canton and Woodstock: 30114, 30115, 30107, 30183, 30188, and 30189.'
 ) on conflict (id) do update set
   center_lat = excluded.center_lat,
   center_lng = excluded.center_lng,

@@ -34,9 +34,9 @@ describe("delivery ZIP allowlist", () => {
     const result = checkDeliveryAddress(
       {
         line1: "1 Main St",
-        city: "Woodstock",
+        city: "Atlanta",
         state: "GA",
-        postalCode: "30188",
+        postalCode: "30303",
       },
       settings,
     );

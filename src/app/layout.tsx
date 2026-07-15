@@ -21,17 +21,22 @@ export const metadata: Metadata = {
   metadataBase: new URL("https://landlsourdough.com"),
   applicationName: "Luna & Lorelai's Sourdough",
   title: {
-    default: "Luna & Lorelai's Sourdough | Local Sourdough Delivery in Canton, GA",
+    default:
+      "Luna & Lorelai's Sourdough | Local Sourdough Delivery in Canton & Woodstock, GA",
     template: "%s | Luna & Lorelai's Sourdough",
   },
   description:
-    "Order naturally leavened sourdough bread, cinnamon sourdough, crackers, and small-batch add-ons for local delivery around Canton, Georgia.",
+    "Order naturally leavened sourdough bread, cinnamon sourdough, crackers, and small-batch add-ons for local delivery around Canton and Woodstock, Georgia.",
   keywords: [
     "Canton GA sourdough",
     "sourdough delivery Canton GA",
+    "Woodstock GA sourdough",
+    "sourdough delivery Woodstock GA",
     "local sourdough bread",
     "cottage bakery Canton Georgia",
+    "cottage bakery Woodstock Georgia",
     "fresh bread delivery Canton",
+    "fresh bread delivery Woodstock",
   ],
   alternates: {
     canonical: "/",
@@ -54,9 +59,9 @@ export const metadata: Metadata = {
     telephone: false,
   },
   openGraph: {
-    title: "Luna & Lorelai's Sourdough | Canton, GA Local Delivery",
+    title: "Luna & Lorelai's Sourdough | Canton & Woodstock, GA Local Delivery",
     description:
-      "Fresh sourdough loaves and small-batch add-ons available by weekly preorder for local delivery around Canton, Georgia.",
+      "Fresh sourdough loaves and small-batch add-ons available by weekly preorder for local delivery around Canton and Woodstock, Georgia.",
     url: "https://landlsourdough.com",
     siteName: "Luna & Lorelai's Sourdough",
     images: [
@@ -72,9 +77,9 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Luna & Lorelai's Sourdough | Canton, GA",
+    title: "Luna & Lorelai's Sourdough | Canton & Woodstock, GA",
     description:
-      "Order weekly sourdough loaves and small-batch add-ons for local delivery around Canton, Georgia.",
+      "Order weekly sourdough loaves and small-batch add-ons for local delivery around Canton and Woodstock, Georgia.",
     images: ["/images/sourdough-hero-og.jpg"],
   },
   verification: {

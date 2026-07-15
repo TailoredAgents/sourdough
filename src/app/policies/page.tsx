@@ -23,7 +23,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Customer Policies | Luna & Lorelai's Sourdough",
     description:
-      "Review local delivery, allergen, cottage-food, privacy, refund, and order policies before placing a Canton-area sourdough order.",
+      "Review local delivery, allergen, cottage-food, privacy, refund, and order policies before placing a Canton or Woodstock sourdough order.",
     url: `https://${bakery.domain}/policies`,
     siteName: bakery.name,
     type: "website",

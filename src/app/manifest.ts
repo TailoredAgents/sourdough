@@ -6,7 +6,7 @@ export default function manifest(): MetadataRoute.Manifest {
     name: bakery.name,
     short_name: "L&L Sourdough",
     description:
-      "Weekly sourdough loaves and small-batch add-ons for local delivery around Canton, Georgia.",
+      "Weekly sourdough loaves and small-batch add-ons for local delivery around Canton and Woodstock, Georgia.",
     start_url: "/",
     scope: "/",
     display: "standalone",

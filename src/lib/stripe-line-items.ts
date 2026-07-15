@@ -45,7 +45,7 @@ export function buildDeliveryLineItem(
       unit_amount: feeCents,
       product_data: {
         name: "Local delivery",
-        description: "ZIP-based local delivery from Canton, GA",
+        description: "ZIP-based local delivery around Canton and Woodstock, GA",
       },
     },
   };

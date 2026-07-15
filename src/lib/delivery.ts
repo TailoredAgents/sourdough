@@ -12,7 +12,14 @@ export type DeliverySettings = {
   };
 };
 
-const defaultAllowedPostalCodes = ["30114", "30115", "30107", "30183"];
+const defaultAllowedPostalCodes = [
+  "30114",
+  "30115",
+  "30107",
+  "30183",
+  "30188",
+  "30189",
+];
 
 export type DeliveryCheckResult = {
   eligible: boolean;
@@ -49,7 +56,7 @@ export function getDeliverySettings(): DeliverySettings {
     ),
     serviceAreaCopy:
       process.env.DELIVERY_SERVICE_AREA_COPY ||
-      "We deliver to selected Canton-area ZIP codes: 30114, 30115, 30107, and 30183.",
+      "We deliver to selected ZIP codes around Canton and Woodstock: 30114, 30115, 30107, 30183, 30188, and 30189.",
     center: {
       lat: envNumber("DELIVERY_CENTER_LAT", 34.2368),
       lng: envNumber("DELIVERY_CENTER_LNG", -84.4908),

@@ -42,8 +42,8 @@ export async function generateMetadata({
   const product = await getProductForSlug(slug);
   if (!product) return {};
 
-  const title = `${product.name} in Canton, GA`;
-  const description = `${product.description} Order ${product.name.toLowerCase()} from ${bakery.name} for local delivery around Canton, Georgia.`;
+  const title = `${product.name} in Canton & Woodstock, GA`;
+  const description = `${product.description} Order ${product.name.toLowerCase()} from ${bakery.name} for local delivery around Canton and Woodstock, Georgia.`;
   const fallbackSocialImage = "/images/sourdough-hero-og.jpg";
   const socialImage = absoluteImageUrl(product.imageUrl, fallbackSocialImage);
 
@@ -106,7 +106,7 @@ export default async function ProductPage({ params }: ProductRouteProps) {
     },
     {
       question: `Where is ${product.name} available for delivery?`,
-      answer: `${product.name} is available for local delivery around Canton, Georgia in selected ZIP codes: ${deliveryZipCopy}. Enter your full delivery address at checkout to confirm eligibility and delivery fee.`,
+      answer: `${product.name} is available for local delivery around Canton and Woodstock, Georgia in selected ZIP codes: ${deliveryZipCopy}. Enter your full delivery address at checkout to confirm eligibility and delivery fee.`,
     },
     {
       question: `What allergens are listed for ${product.name}?`,
@@ -295,7 +295,8 @@ export default async function ProductPage({ params }: ProductRouteProps) {
                 Local delivery
               </h2>
               <p className="mt-3 text-sm leading-6 text-stone-700">
-                Available for local delivery around Canton, Georgia. Current ZIPs:
+                Available for local delivery around Canton and Woodstock, Georgia.
+                Current ZIPs:
                 {" "}
                 {deliverySettings.allowedPostalCodes.join(", ")}.
               </p>

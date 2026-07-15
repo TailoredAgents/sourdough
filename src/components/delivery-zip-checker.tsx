@@ -13,7 +13,13 @@ type DeliveryCheck = {
   postalCode: string | null;
 };
 
-export function DeliveryZipChecker({ source }: { source: string }) {
+export function DeliveryZipChecker({
+  source,
+  city = "Canton",
+}: {
+  source: string;
+  city?: string;
+}) {
   const [postalCode, setPostalCode] = useState("");
   const [result, setResult] = useState<DeliveryCheck | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -35,7 +41,7 @@ export function DeliveryZipChecker({ source }: { source: string }) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             line1: "",
-            city: "Canton",
+            city,
             state: "GA",
             postalCode,
           }),

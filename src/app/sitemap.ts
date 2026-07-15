@@ -39,6 +39,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       changeFrequency: "weekly",
       priority: 0.9,
     },
+    {
+      url: `${baseUrl}/sourdough-delivery-woodstock-ga`,
+      lastModified: weeklyLastModified,
+      changeFrequency: "weekly",
+      priority: 0.9,
+    },
     ...deliverySettings.allowedPostalCodes.map((postalCode) => ({
       url: `${baseUrl}${serviceAreaPath(postalCode)}`,
       lastModified: weeklyLastModified,
