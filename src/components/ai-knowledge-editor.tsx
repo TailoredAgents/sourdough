@@ -1,12 +1,16 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { Bot, CheckCircle2, Loader2, Plus, Save } from "lucide-react";
+import { AlertTriangle, Bot, CheckCircle2, Loader2, Plus, Save } from "lucide-react";
 import {
   getAdminPayloadError,
   hasAdminKeys,
   readAdminJsonResponse,
 } from "@/lib/admin-api";
+import {
+  getAiKnowledgeReviewWarnings,
+  summarizeAiKnowledgeEntries,
+} from "@/lib/admin-ai-knowledge-status";
 import { validateAiKnowledgeForm } from "@/lib/admin-form-validation";
 import type { AiKnowledgeEntry } from "@/lib/types";
 import { Button } from "./button";
@@ -55,7 +59,8 @@ export function AiKnowledgeEditor({
   const [message, setMessage] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  const approvedCount = entries.filter((entry) => entry.approved).length;
+  const summary = useMemo(() => summarizeAiKnowledgeEntries(entries), [entries]);
+  const formWarnings = getAiKnowledgeReviewWarnings(form);
 
   function selectEntry(entry: AiKnowledgeEntry) {
     setSelectedId(entry.id);
@@ -135,7 +140,7 @@ export function AiKnowledgeEditor({
         </div>
         <div className="flex flex-col gap-2 sm:flex-row">
           <div className="rounded-md border border-stone-200 bg-[#fffaf2] px-3 py-2 text-sm font-semibold text-stone-700">
-            {approvedCount} approved
+            {summary.approved} approved
           </div>
           <Button type="button" variant="secondary" onClick={newEntry} disabled={isPending}>
             <Plus size={16} />
@@ -144,42 +149,78 @@ export function AiKnowledgeEditor({
         </div>
       </div>
 
+      <div className="mt-5 grid gap-3 rounded-md border border-stone-200 bg-[#fffaf2] p-4 sm:grid-cols-3">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wide text-stone-500">
+            Approved
+          </p>
+          <p className="mt-1 text-2xl font-bold text-stone-950">{summary.approved}</p>
+        </div>
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wide text-stone-500">
+            Drafts
+          </p>
+          <p className="mt-1 text-2xl font-bold text-stone-950">{summary.drafts}</p>
+        </div>
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wide text-stone-500">
+            Needs review
+          </p>
+          <p className="mt-1 text-2xl font-bold text-stone-950">
+            {summary.needsReview}
+          </p>
+        </div>
+      </div>
+
       <div className="mt-5 grid gap-5 lg:grid-cols-[0.85fr_1.15fr]">
         <div className="grid max-h-[560px] content-start gap-2 overflow-y-auto pr-1">
-          {entries.map((entry) => (
-            <button
-              key={entry.id}
-              type="button"
-              onClick={() => selectEntry(entry)}
-              disabled={isPending}
-              className={`rounded-md border p-3 text-left transition ${
-                selectedId === entry.id
-                  ? "border-[#23443b] bg-[#f7efe3]"
-                  : "border-stone-200 bg-white hover:bg-stone-50"
-              }`}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="font-semibold text-stone-950">{entry.title}</p>
-                  <p className="mt-1 text-xs text-stone-500">
-                    Updated {formatDate(entry.updatedAt)}
-                  </p>
+          {entries.map((entry) => {
+            const warnings = getAiKnowledgeReviewWarnings(entry);
+
+            return (
+              <button
+                key={entry.id}
+                type="button"
+                onClick={() => selectEntry(entry)}
+                disabled={isPending}
+                className={`rounded-md border p-3 text-left transition ${
+                  selectedId === entry.id
+                    ? "border-[#23443b] bg-[#f7efe3]"
+                    : warnings.length
+                      ? "border-amber-300 bg-amber-50 hover:bg-amber-50"
+                      : "border-stone-200 bg-white hover:bg-stone-50"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-semibold text-stone-950">{entry.title}</p>
+                    <p className="mt-1 text-xs text-stone-500">
+                      Updated {formatDate(entry.updatedAt)}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap justify-end gap-2">
+                    {warnings.length ? (
+                      <span className="rounded-sm bg-amber-100 px-2 py-1 text-xs font-bold uppercase text-amber-900">
+                        Review
+                      </span>
+                    ) : null}
+                    <span
+                      className={`rounded-sm px-2 py-1 text-xs font-bold uppercase ${
+                        entry.approved
+                          ? "bg-emerald-50 text-emerald-800"
+                          : "bg-stone-100 text-stone-600"
+                      }`}
+                    >
+                      {entry.approved ? "Approved" : "Draft"}
+                    </span>
+                  </div>
                 </div>
-                <span
-                  className={`rounded-sm px-2 py-1 text-xs font-bold uppercase ${
-                    entry.approved
-                      ? "bg-emerald-50 text-emerald-800"
-                      : "bg-stone-100 text-stone-600"
-                  }`}
-                >
-                  {entry.approved ? "Approved" : "Draft"}
-                </span>
-              </div>
-              <p className="mt-2 line-clamp-2 text-sm leading-5 text-stone-700">
-                {entry.body}
-              </p>
-            </button>
-          ))}
+                <p className="mt-2 line-clamp-2 text-sm leading-5 text-stone-700">
+                  {entry.body}
+                </p>
+              </button>
+            );
+          })}
 
           {!entries.length ? (
             <div className="rounded-md border border-dashed border-stone-300 bg-[#fffaf2] p-5 text-sm text-stone-700">
@@ -189,6 +230,17 @@ export function AiKnowledgeEditor({
         </div>
 
         <div className="grid gap-3 rounded-md border border-stone-100 bg-[#fffaf2] p-4">
+          {formWarnings.length ? (
+            <div className="grid gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm leading-6 text-amber-950">
+              {formWarnings.map((warning) => (
+                <p key={warning} className="inline-flex gap-2">
+                  <AlertTriangle className="mt-1 shrink-0" size={16} />
+                  <span>{warning}</span>
+                </p>
+              ))}
+            </div>
+          ) : null}
+
           <label className="grid gap-1 text-sm font-semibold text-stone-700">
             Title
             <input

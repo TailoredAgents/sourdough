@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { getAiKnowledgeReviewWarnings } from "./admin-ai-knowledge-status";
 import type { AiKnowledgeEntry } from "./types";
 import { getSupabaseAdminClient } from "./supabase";
 
@@ -16,6 +17,9 @@ export const aiKnowledgeAdminSchema = z.object({
   title: z.string().min(2).max(160),
   body: z.string().min(10).max(4000),
   approved: z.boolean(),
+}).refine((entry) => getAiKnowledgeReviewWarnings(entry).length === 0, {
+  message: "Approved AI knowledge needs review before customer chat can use it.",
+  path: ["body"],
 });
 
 function mapAiKnowledgeEntry(row: AiKnowledgeRow): AiKnowledgeEntry {

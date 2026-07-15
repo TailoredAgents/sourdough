@@ -132,5 +132,21 @@ describe("admin form validation", () => {
         body: "Short",
       }),
     ).toBe("Fact title is required.");
+
+    expect(
+      validateAiKnowledgeForm({
+        title: "Allergens",
+        body: "This bread is gluten-free and safe for customers with allergies.",
+        approved: true,
+      }),
+    ).toBe("Do not approve allergen-free, gluten-free, or cross-contact claims.");
+
+    expect(
+      validateAiKnowledgeForm({
+        title: "Draft allergen note",
+        body: "This bread is gluten-free and needs owner review.",
+        approved: false,
+      }),
+    ).toBeNull();
   });
 });

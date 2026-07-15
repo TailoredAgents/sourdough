@@ -1,3 +1,5 @@
+import { getAiKnowledgeReviewWarnings } from "./admin-ai-knowledge-status";
+
 type WeeklyMenuValidationItem = {
   included: boolean;
   productName?: string;
@@ -41,6 +43,7 @@ type ProductValidationInput = {
 type AiKnowledgeValidationInput = {
   title: string;
   body: string;
+  approved?: boolean;
 };
 
 function isValidDate(value: string) {
@@ -155,5 +158,10 @@ export function validateProductForm(input: ProductValidationInput) {
 export function validateAiKnowledgeForm(input: AiKnowledgeValidationInput) {
   if (input.title.trim().length < 2) return "Fact title is required.";
   if (input.body.trim().length < 10) return "Approved fact needs at least 10 characters.";
+  const reviewWarning = getAiKnowledgeReviewWarnings({
+    approved: Boolean(input.approved),
+    body: input.body,
+  })[0];
+  if (reviewWarning) return reviewWarning;
   return null;
 }
