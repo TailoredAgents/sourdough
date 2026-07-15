@@ -2,6 +2,11 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { CheckCircle2, Loader2, Plus, Save, Trash2 } from "lucide-react";
+import {
+  getAdminPayloadError,
+  hasAdminKeys,
+  readAdminJsonResponse,
+} from "@/lib/admin-api";
 import { validateDeliveryForm } from "@/lib/admin-form-validation";
 import type { DeliverySettings } from "@/lib/delivery";
 import type { DeliveryWindow, WeeklyMenuSummary } from "@/lib/types";
@@ -26,13 +31,6 @@ type DeliveryWindowForm = {
   capacity: number;
   reserved: number;
   remove: boolean;
-};
-
-type DeliveryPayload = {
-  deliverySettings?: DeliverySettings;
-  deliveryWindows?: DeliveryWindow[];
-  weeklyMenuId?: string | null;
-  error?: string;
 };
 
 function toLocalInputValue(value: string) {
@@ -141,18 +139,27 @@ export function DeliveryEditor({
     setMessage(null);
 
     startTransition(async () => {
-      const response = await fetch(
-        `/api/admin/delivery?weeklyMenuId=${encodeURIComponent(selectedWeeklyMenuId)}`,
-      );
-      const payload = (await response.json()) as DeliveryPayload;
+      try {
+        const response = await fetch(
+          `/api/admin/delivery?weeklyMenuId=${encodeURIComponent(selectedWeeklyMenuId)}`,
+        );
+        const payload = await readAdminJsonResponse(response);
 
-      if (!response.ok || !payload.deliverySettings || !payload.deliveryWindows) {
-        setMessage(payload.error || "Delivery windows could not be loaded.");
-        return;
+        if (
+          !response.ok ||
+          !hasAdminKeys(payload, ["deliverySettings", "deliveryWindows"]) ||
+          !payload.deliverySettings ||
+          !Array.isArray(payload.deliveryWindows)
+        ) {
+          setMessage(getAdminPayloadError(payload) || "Delivery windows could not be loaded.");
+          return;
+        }
+
+        setSettings(buildSettingsForm(payload.deliverySettings as DeliverySettings));
+        setWindows((payload.deliveryWindows as DeliveryWindow[]).map(buildWindowForm));
+      } catch {
+        setMessage("Delivery windows could not be loaded. Check your connection and try again.");
       }
-
-      setSettings(buildSettingsForm(payload.deliverySettings));
-      setWindows(payload.deliveryWindows.map(buildWindowForm));
     });
   }, [selectedWeeklyMenuId]);
 
@@ -176,44 +183,55 @@ export function DeliveryEditor({
     }
 
     startTransition(async () => {
-      const response = await fetch("/api/admin/delivery", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          settings: {
-            centerLat: Number(settings.centerLat),
-            centerLng: Number(settings.centerLng),
-            radiusMiles: Number(settings.radiusMiles),
-            deliveryFeeCents,
-            allowedPostalCodes: settings.allowedPostalCodes
-              .split(",")
-              .map((item) => item.trim())
-              .filter(Boolean),
-            serviceAreaCopy: settings.serviceAreaCopy,
-          },
-          weeklyMenuId: selectedWeeklyMenuId || undefined,
-          windows: windows.map((window) => ({
-            id: window.id,
-            label: window.label,
-            startsAt: fromLocalInputValue(window.startsAt),
-            endsAt: fromLocalInputValue(window.endsAt),
-            capacity: Number(window.capacity),
-            reserved: Number(window.reserved),
-            remove: window.remove,
-          })),
-        }),
-      });
-      const payload = (await response.json()) as DeliveryPayload;
+      try {
+        const response = await fetch("/api/admin/delivery", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            settings: {
+              centerLat: Number(settings.centerLat),
+              centerLng: Number(settings.centerLng),
+              radiusMiles: Number(settings.radiusMiles),
+              deliveryFeeCents,
+              allowedPostalCodes: settings.allowedPostalCodes
+                .split(",")
+                .map((item) => item.trim())
+                .filter(Boolean),
+              serviceAreaCopy: settings.serviceAreaCopy,
+            },
+            weeklyMenuId: selectedWeeklyMenuId || undefined,
+            windows: windows.map((window) => ({
+              id: window.id,
+              label: window.label,
+              startsAt: fromLocalInputValue(window.startsAt),
+              endsAt: fromLocalInputValue(window.endsAt),
+              capacity: Number(window.capacity),
+              reserved: Number(window.reserved),
+              remove: window.remove,
+            })),
+          }),
+        });
+        const payload = await readAdminJsonResponse(response);
 
-      if (!response.ok || !payload.deliverySettings || !payload.deliveryWindows) {
-        setMessage(payload.error || "Delivery settings could not be saved.");
-        return;
+        if (
+          !response.ok ||
+          !hasAdminKeys(payload, ["deliverySettings", "deliveryWindows"]) ||
+          !payload.deliverySettings ||
+          !Array.isArray(payload.deliveryWindows)
+        ) {
+          setMessage(getAdminPayloadError(payload) || "Delivery settings could not be saved.");
+          return;
+        }
+
+        setSettings(buildSettingsForm(payload.deliverySettings as DeliverySettings));
+        setWindows((payload.deliveryWindows as DeliveryWindow[]).map(buildWindowForm));
+        if (hasAdminKeys(payload, ["weeklyMenuId"]) && typeof payload.weeklyMenuId === "string") {
+          onSelectedWeeklyMenuIdChange(payload.weeklyMenuId);
+        }
+        setMessage("Delivery settings saved.");
+      } catch {
+        setMessage("Delivery settings could not be saved. Check your connection and try again.");
       }
-
-      setSettings(buildSettingsForm(payload.deliverySettings));
-      setWindows(payload.deliveryWindows.map(buildWindowForm));
-      if (payload.weeklyMenuId) onSelectedWeeklyMenuIdChange(payload.weeklyMenuId);
-      setMessage("Delivery settings saved.");
     });
   }
 

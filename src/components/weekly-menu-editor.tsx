@@ -3,6 +3,11 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { CheckCircle2, Copy, Loader2, Save } from "lucide-react";
+import {
+  getAdminPayloadError,
+  hasAdminKeys,
+  readAdminJsonResponse,
+} from "@/lib/admin-api";
 import { validateWeeklyMenuForm } from "@/lib/admin-form-validation";
 import type { Product, WeeklyMenu, WeeklyMenuSummary } from "@/lib/types";
 import { formatCurrency } from "@/lib/utils";
@@ -133,23 +138,27 @@ export function WeeklyMenuEditor({
     setIsUnsavedClone(false);
     onSelectedWeeklyMenuIdChange(id);
     startTransition(async () => {
-      const response = await fetch(`/api/admin/weekly-menu?id=${encodeURIComponent(id)}`);
-      const payload = (await response.json()) as {
-        weeklyMenus?: WeeklyMenuSummary[];
-        selectedWeeklyMenu?: WeeklyMenu | null;
-        error?: string;
-      };
+      try {
+        const response = await fetch(`/api/admin/weekly-menu?id=${encodeURIComponent(id)}`);
+        const payload = await readAdminJsonResponse(response);
 
-      if (!response.ok || !payload.selectedWeeklyMenu) {
-        setMessage(payload.error || "Weekly menu could not be loaded.");
-        return;
-      }
+        if (
+          !response.ok ||
+          !hasAdminKeys(payload, ["selectedWeeklyMenu"]) ||
+          !payload.selectedWeeklyMenu
+        ) {
+          setMessage(getAdminPayloadError(payload) || "Weekly menu could not be loaded.");
+          return;
+        }
 
-      if (payload.weeklyMenus) {
-        setWeeklyMenus(payload.weeklyMenus);
-        onWeeklyMenusChange(payload.weeklyMenus);
+        if (hasAdminKeys(payload, ["weeklyMenus"]) && Array.isArray(payload.weeklyMenus)) {
+          setWeeklyMenus(payload.weeklyMenus as WeeklyMenuSummary[]);
+          onWeeklyMenusChange(payload.weeklyMenus as WeeklyMenuSummary[]);
+        }
+        setForm(buildForm(payload.selectedWeeklyMenu as WeeklyMenu, products));
+      } catch {
+        setMessage("Weekly menu could not be loaded. Check your connection and try again.");
       }
-      setForm(buildForm(payload.selectedWeeklyMenu, products));
     });
   }
 
@@ -174,39 +183,44 @@ export function WeeklyMenuEditor({
     }
 
     startTransition(async () => {
-      const response = await fetch("/api/admin/weekly-menu", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: form.id || undefined,
-          name: form.name,
-          orderCutoffAt: fromLocalInputValue(form.orderCutoffAt),
-          startsAt: fromLocalInputValue(form.startsAt),
-          endsAt: fromLocalInputValue(form.endsAt),
-          published: form.published,
-          items: form.items,
-        }),
-      });
-      const payload = (await response.json()) as {
-        weeklyMenus?: WeeklyMenuSummary[];
-        selectedWeeklyMenu?: WeeklyMenu | null;
-        error?: string;
-      };
+      try {
+        const response = await fetch("/api/admin/weekly-menu", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: form.id || undefined,
+            name: form.name,
+            orderCutoffAt: fromLocalInputValue(form.orderCutoffAt),
+            startsAt: fromLocalInputValue(form.startsAt),
+            endsAt: fromLocalInputValue(form.endsAt),
+            published: form.published,
+            items: form.items,
+          }),
+        });
+        const payload = await readAdminJsonResponse(response);
 
-      if (!response.ok || !payload.selectedWeeklyMenu) {
-        setMessage(payload.error || "Weekly menu could not be saved.");
-        return;
-      }
+        if (
+          !response.ok ||
+          !hasAdminKeys(payload, ["selectedWeeklyMenu"]) ||
+          !payload.selectedWeeklyMenu
+        ) {
+          setMessage(getAdminPayloadError(payload) || "Weekly menu could not be saved.");
+          return;
+        }
 
-      if (payload.weeklyMenus) {
-        setWeeklyMenus(payload.weeklyMenus);
-        onWeeklyMenusChange(payload.weeklyMenus);
+        if (hasAdminKeys(payload, ["weeklyMenus"]) && Array.isArray(payload.weeklyMenus)) {
+          setWeeklyMenus(payload.weeklyMenus as WeeklyMenuSummary[]);
+          onWeeklyMenusChange(payload.weeklyMenus as WeeklyMenuSummary[]);
+        }
+        const selectedWeeklyMenu = payload.selectedWeeklyMenu as WeeklyMenu;
+        onSelectedWeeklyMenuIdChange(selectedWeeklyMenu.id);
+        setIsUnsavedClone(false);
+        setForm(buildForm(selectedWeeklyMenu, products));
+        setMessage("Weekly menu saved.");
+        router.refresh();
+      } catch {
+        setMessage("Weekly menu could not be saved. Check your connection and try again.");
       }
-      onSelectedWeeklyMenuIdChange(payload.selectedWeeklyMenu.id);
-      setIsUnsavedClone(false);
-      setForm(buildForm(payload.selectedWeeklyMenu, products));
-      setMessage("Weekly menu saved.");
-      router.refresh();
     });
   }
 
