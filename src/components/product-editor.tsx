@@ -2,8 +2,12 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { CheckCircle2, ImagePlus, Loader2, Pencil, Plus } from "lucide-react";
+import { CheckCircle2, ImagePlus, Loader2, Pencil, Plus, RefreshCw } from "lucide-react";
 import { validateProductForm } from "@/lib/admin-form-validation";
+import {
+  extractStripeCatalogSyncItems,
+  summarizeStripeCatalogSync,
+} from "@/lib/admin-stripe-sync";
 import type { Product, ProductCategory } from "@/lib/types";
 import { joinList, splitList } from "@/lib/product-admin";
 import { formatCurrency } from "@/lib/utils";
@@ -87,6 +91,12 @@ export function ProductEditor({
   const visibleProductIds = useMemo(
     () => new Set([...currentMenuProductIds, ...locallyVisibleProductIds]),
     [currentMenuProductIds, locallyVisibleProductIds],
+  );
+  const isSuccessMessage = Boolean(
+    message &&
+      (message.startsWith("Product saved") ||
+        message.startsWith("Image uploaded") ||
+        message.startsWith("Stripe synced")),
   );
 
   function selectProduct(product: Product) {
@@ -177,6 +187,35 @@ export function ProductEditor({
     });
   }
 
+  function syncStripeCatalog() {
+    setMessage(null);
+    startTransition(async () => {
+      try {
+        const response = await fetch("/api/admin/stripe/sync-products", {
+          method: "POST",
+        });
+        const payload = (await response.json().catch(() => null)) as unknown;
+        const syncedProducts = extractStripeCatalogSyncItems(payload);
+
+        if (!response.ok || !syncedProducts) {
+          const error =
+            payload && typeof payload === "object"
+              ? (payload as { error?: unknown }).error
+              : null;
+          setMessage(
+            typeof error === "string" ? error : "Stripe catalog could not be synced.",
+          );
+          return;
+        }
+
+        setMessage(summarizeStripeCatalogSync(syncedProducts).message);
+        router.refresh();
+      } catch {
+        setMessage("Stripe catalog could not be synced. Check your connection and try again.");
+      }
+    });
+  }
+
   return (
     <section id="products" className="mt-8 scroll-mt-28 rounded-md border border-stone-200 bg-white p-5">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
@@ -187,10 +226,21 @@ export function ProductEditor({
             the weekly menu builder.
           </p>
         </div>
-        <Button type="button" variant="secondary" onClick={newProduct} disabled={isPending}>
-          <Plus size={16} />
-          New product
-        </Button>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={syncStripeCatalog}
+            disabled={isPending}
+          >
+            {isPending ? <Loader2 className="animate-spin" size={16} /> : <RefreshCw size={16} />}
+            Sync Stripe catalog
+          </Button>
+          <Button type="button" variant="secondary" onClick={newProduct} disabled={isPending}>
+            <Plus size={16} />
+            New product
+          </Button>
+        </div>
       </div>
 
       <div className="mt-5 grid gap-5 xl:grid-cols-[0.8fr_minmax(0,1.2fr)]">
@@ -427,14 +477,10 @@ export function ProductEditor({
             {message ? (
               <span
                 className={`inline-flex items-center gap-2 text-sm font-semibold ${
-                  message.startsWith("Product saved") || message.startsWith("Image uploaded")
-                    ? "text-emerald-800"
-                    : "text-[#a94334]"
+                  isSuccessMessage ? "text-emerald-800" : "text-[#a94334]"
                 }`}
               >
-                {message.startsWith("Product saved") || message.startsWith("Image uploaded") ? (
-                  <CheckCircle2 size={16} />
-                ) : null}
+                {isSuccessMessage ? <CheckCircle2 size={16} /> : null}
                 {message}
               </span>
             ) : null}
