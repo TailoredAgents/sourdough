@@ -3,6 +3,11 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { CheckCircle2, ImagePlus, Loader2, Pencil, Plus, RefreshCw } from "lucide-react";
+import {
+  getAdminPayloadError,
+  hasAdminKeys,
+  readAdminJsonResponse,
+} from "@/lib/admin-api";
 import { validateProductForm } from "@/lib/admin-form-validation";
 import {
   extractStripeCatalogSyncItems,
@@ -124,39 +129,49 @@ export function ProductEditor({
     }
 
     startTransition(async () => {
-      const response = await fetch("/api/admin/products", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formToPayload(form)),
-      });
-      const payload = (await response.json()) as {
-        products?: Product[];
-        productId?: string;
-        error?: string;
-      };
+      try {
+        const response = await fetch("/api/admin/products", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(formToPayload(form)),
+        });
+        const payload = await readAdminJsonResponse(response);
 
-      if (!response.ok || !payload.products) {
-        setMessage(payload.error || "Product could not be saved.");
-        return;
-      }
+        if (
+          !response.ok ||
+          !hasAdminKeys(payload, ["products"]) ||
+          !Array.isArray(payload.products)
+        ) {
+          setMessage(getAdminPayloadError(payload) || "Product could not be saved.");
+          return;
+        }
 
-      setProducts(payload.products);
-      const savedProduct =
-        payload.products.find((product) => product.id === payload.productId) ??
-        payload.products.find(
-          (product) => product.name.toLowerCase() === form.name.trim().toLowerCase(),
+        const nextProducts = payload.products as Product[];
+        const productId =
+          hasAdminKeys(payload, ["productId"]) && typeof payload.productId === "string"
+            ? payload.productId
+            : null;
+
+        setProducts(nextProducts);
+        const savedProduct =
+          nextProducts.find((product) => product.id === productId) ??
+          nextProducts.find(
+            (product) => product.name.toLowerCase() === form.name.trim().toLowerCase(),
+          );
+        setSelectedId(savedProduct?.id ?? nextProducts[0]?.id ?? null);
+        setForm(productToForm(savedProduct ?? nextProducts[0]));
+        if (savedProduct && form.includeInCurrentMenu && !form.id) {
+          setLocallyVisibleProductIds((current) => new Set(current).add(savedProduct.id));
+        }
+        setMessage(
+          form.includeInCurrentMenu && !form.id
+            ? "Product saved and added to this week's menu."
+            : "Product saved. Add it to the weekly menu before expecting it on the storefront.",
         );
-      setSelectedId(savedProduct?.id ?? payload.products[0]?.id ?? null);
-      setForm(productToForm(savedProduct ?? payload.products[0]));
-      if (savedProduct && form.includeInCurrentMenu && !form.id) {
-        setLocallyVisibleProductIds((current) => new Set(current).add(savedProduct.id));
+        router.refresh();
+      } catch {
+        setMessage("Product could not be saved. Check your connection and try again.");
       }
-      setMessage(
-        form.includeInCurrentMenu && !form.id
-          ? "Product saved and added to this week's menu."
-          : "Product saved. Add it to the weekly menu before expecting it on the storefront.",
-      );
-      router.refresh();
     });
   }
 
@@ -168,22 +183,27 @@ export function ProductEditor({
       formData.append("file", file);
       formData.append("productId", form.id || form.name || "new-product");
 
-      const response = await fetch("/api/admin/product-image", {
-        method: "POST",
-        body: formData,
-      });
-      const payload = (await response.json()) as {
-        imageUrl?: string;
-        error?: string;
-      };
+      try {
+        const response = await fetch("/api/admin/product-image", {
+          method: "POST",
+          body: formData,
+        });
+        const payload = await readAdminJsonResponse(response);
 
-      if (!response.ok || !payload.imageUrl) {
-        setMessage(payload.error || "Image could not be uploaded.");
-        return;
+        if (
+          !response.ok ||
+          !hasAdminKeys(payload, ["imageUrl"]) ||
+          typeof payload.imageUrl !== "string"
+        ) {
+          setMessage(getAdminPayloadError(payload) || "Image could not be uploaded.");
+          return;
+        }
+
+        updateForm("imageUrl", payload.imageUrl);
+        setMessage("Image uploaded. Save product to publish it.");
+      } catch {
+        setMessage("Image could not be uploaded. Check your connection and try again.");
       }
-
-      updateForm("imageUrl", payload.imageUrl);
-      setMessage("Image uploaded. Save product to publish it.");
     });
   }
 

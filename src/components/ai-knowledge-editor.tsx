@@ -2,6 +2,11 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { Bot, CheckCircle2, Loader2, Plus, Save } from "lucide-react";
+import {
+  getAdminPayloadError,
+  hasAdminKeys,
+  readAdminJsonResponse,
+} from "@/lib/admin-api";
 import { validateAiKnowledgeForm } from "@/lib/admin-form-validation";
 import type { AiKnowledgeEntry } from "@/lib/types";
 import { Button } from "./button";
@@ -73,36 +78,44 @@ export function AiKnowledgeEditor({
     }
 
     startTransition(async () => {
-      const response = await fetch("/api/admin/ai-knowledge", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: form.id,
-          title: form.title.trim(),
-          body: form.body.trim(),
-          approved: form.approved,
-        }),
-      });
-      const payload = (await response.json()) as {
-        entries?: AiKnowledgeEntry[];
-        error?: string;
-      };
+      try {
+        const response = await fetch("/api/admin/ai-knowledge", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: form.id,
+            title: form.title.trim(),
+            body: form.body.trim(),
+            approved: form.approved,
+          }),
+        });
+        const payload = await readAdminJsonResponse(response);
 
-      if (!response.ok || !payload.entries) {
-        setMessage(payload.error || "AI knowledge entry could not be saved.");
-        return;
+        if (
+          !response.ok ||
+          !hasAdminKeys(payload, ["entries"]) ||
+          !Array.isArray(payload.entries)
+        ) {
+          setMessage(
+            getAdminPayloadError(payload) || "AI knowledge entry could not be saved.",
+          );
+          return;
+        }
+
+        const nextEntries = payload.entries as AiKnowledgeEntry[];
+        setEntries(nextEntries);
+        const savedEntry =
+          nextEntries.find((entry) => entry.id === form.id) ??
+          nextEntries.find(
+            (entry) => entry.title.toLowerCase() === form.title.trim().toLowerCase(),
+          ) ??
+          nextEntries[0];
+        setSelectedId(savedEntry?.id ?? null);
+        setForm(entryToForm(savedEntry));
+        setMessage("AI knowledge saved.");
+      } catch {
+        setMessage("AI knowledge entry could not be saved. Check your connection and try again.");
       }
-
-      setEntries(payload.entries);
-      const savedEntry =
-        payload.entries.find((entry) => entry.id === form.id) ??
-        payload.entries.find(
-          (entry) => entry.title.toLowerCase() === form.title.trim().toLowerCase(),
-        ) ??
-        payload.entries[0];
-      setSelectedId(savedEntry?.id ?? null);
-      setForm(entryToForm(savedEntry));
-      setMessage("AI knowledge saved.");
     });
   }
 
