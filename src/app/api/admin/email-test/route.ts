@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentAdmin } from "@/lib/admin-auth";
 import { sendCustomerOrderConfirmation } from "@/lib/email";
+import { getOwnerAlertRecipients, sendOwnerAlert } from "@/lib/owner-alerts";
 
 export async function POST() {
   const admin = await getCurrentAdmin();
@@ -19,5 +20,16 @@ export async function POST() {
     deliveryWindow: "Production email test",
   });
 
-  return NextResponse.json({ ok: true, to });
+  await sendOwnerAlert({
+    type: "inquiry",
+    customerName: "Bakery team",
+    orderSummary: "Production owner alert test",
+    notes: "Testing owner notification delivery from the admin dashboard.",
+  });
+
+  return NextResponse.json({
+    ok: true,
+    to,
+    ownerAlertRecipients: getOwnerAlertRecipients(),
+  });
 }

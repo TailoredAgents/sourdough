@@ -11,11 +11,16 @@ import {
   Package,
   Truck,
   type LucideIcon,
+  MailCheck,
 } from "lucide-react";
 import {
   extractAdminDraftText,
   validateAdminDraftInput,
 } from "@/lib/admin-draft";
+import {
+  extractAdminEmailTestResult,
+  summarizeAdminEmailTest,
+} from "@/lib/admin-email-test";
 import type { DeliverySettings } from "@/lib/delivery";
 import type {
   AiKnowledgeEntry,
@@ -69,7 +74,9 @@ export function AdminDashboard({
   );
   const [draft, setDraft] = useState("");
   const [draftMessage, setDraftMessage] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
+  const [emailTestMessage, setEmailTestMessage] = useState<string | null>(null);
+  const [isDraftPending, startDraftTransition] = useTransition();
+  const [isEmailTestPending, startEmailTestTransition] = useTransition();
   const openRequestCount = customerMessages.filter(
     (message) => message.status === "new" || message.status === "in_progress",
   ).length;
@@ -107,7 +114,7 @@ export function AdminDashboard({
       return;
     }
 
-    startTransition(async () => {
+    startDraftTransition(async () => {
       try {
         const response = await fetch("/api/admin/draft", {
           method: "POST",
@@ -138,6 +145,38 @@ export function AdminDashboard({
     } catch {
       setDraftMessage("Draft could not be copied. Select the text and copy it manually.");
     }
+  }
+
+  function sendEmailTest() {
+    setEmailTestMessage(null);
+    startEmailTestTransition(async () => {
+      try {
+        const response = await fetch("/api/admin/email-test", {
+          method: "POST",
+        });
+        const payload = (await response.json().catch(() => null)) as unknown;
+        const result = extractAdminEmailTestResult(payload);
+
+        if (!response.ok || !result) {
+          const error =
+            payload && typeof payload === "object"
+              ? (payload as { error?: unknown }).error
+              : null;
+          setEmailTestMessage(
+            typeof error === "string"
+              ? error
+              : "Test email could not be sent. Check email configuration and try again.",
+          );
+          return;
+        }
+
+        setEmailTestMessage(summarizeAdminEmailTest(result));
+      } catch {
+        setEmailTestMessage(
+          "Test email could not be sent. Check your connection and try again.",
+        );
+      }
+    });
   }
 
   return (
@@ -191,7 +230,7 @@ export function AdminDashboard({
           </div>
         </nav>
 
-        <section className="mt-6 grid gap-4 lg:grid-cols-3">
+        <section className="mt-6 grid gap-4 lg:grid-cols-4">
           <div className="rounded-md border border-[#23443b]/20 bg-white p-4">
             <p className="text-sm font-bold uppercase tracking-[0.16em] text-[#23443b]">
               Work queue
@@ -221,6 +260,39 @@ export function AdminDashboard({
               Work paid orders first. Pending payment orders are not confirmed
               until Stripe marks them paid.
             </p>
+          </div>
+          <div className="rounded-md border border-stone-200 bg-white p-4">
+            <p className="text-sm font-bold uppercase tracking-[0.16em] text-[#23443b]">
+              Alert test
+            </p>
+            <p className="mt-2 text-sm leading-6 text-stone-700">
+              Send a production email and owner alert test.
+            </p>
+            <Button
+              type="button"
+              variant="secondary"
+              className="mt-3"
+              onClick={sendEmailTest}
+              disabled={isEmailTestPending}
+            >
+              {isEmailTestPending ? (
+                <Loader2 className="animate-spin" size={16} />
+              ) : (
+                <MailCheck size={16} />
+              )}
+              Send test
+            </Button>
+            {emailTestMessage ? (
+              <p
+                className={`mt-3 text-sm font-semibold ${
+                  emailTestMessage.startsWith("Test email sent")
+                    ? "text-emerald-800"
+                    : "text-[#a94334]"
+                }`}
+              >
+                {emailTestMessage}
+              </p>
+            ) : null}
           </div>
         </section>
 
@@ -280,7 +352,7 @@ export function AdminDashboard({
                 aria-label="Draft type"
                 value={draftType}
                 onChange={(event) => setDraftType(event.target.value)}
-                disabled={isPending}
+                disabled={isDraftPending}
               >
                 <option value="weekly_announcement">Weekly announcement</option>
                 <option value="product_description">Product description</option>
@@ -297,9 +369,13 @@ export function AdminDashboard({
               <Button
                 type="button"
                 onClick={generateDraft}
-                disabled={isPending || !context.trim()}
+                disabled={isDraftPending || !context.trim()}
               >
-                {isPending ? <Loader2 className="animate-spin" size={16} /> : <Bot size={16} />}
+                {isDraftPending ? (
+                  <Loader2 className="animate-spin" size={16} />
+                ) : (
+                  <Bot size={16} />
+                )}
                 Generate draft
               </Button>
               <textarea
@@ -314,7 +390,7 @@ export function AdminDashboard({
                   type="button"
                   variant="secondary"
                   onClick={copyDraft}
-                  disabled={isPending || !draft}
+                  disabled={isDraftPending || !draft}
                 >
                   <Copy size={16} />
                   Copy draft
