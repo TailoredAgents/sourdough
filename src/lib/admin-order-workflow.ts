@@ -13,12 +13,12 @@ export function getAdminOrderStatusActions(
     case "pending_payment":
       return [
         {
-          label: "Mark paid",
+          label: "Mark paid manually",
           status: "paid",
           variant: "secondary",
         },
         {
-          label: "Cancel order",
+          label: "Cancel & release inventory",
           status: "canceled",
           variant: "ghost",
         },
@@ -31,7 +31,7 @@ export function getAdminOrderStatusActions(
           variant: "primary",
         },
         {
-          label: "Cancel order",
+          label: "Cancel & release inventory",
           status: "canceled",
           variant: "ghost",
         },
@@ -44,7 +44,7 @@ export function getAdminOrderStatusActions(
           variant: "primary",
         },
         {
-          label: "Cancel order",
+          label: "Cancel & release inventory",
           status: "canceled",
           variant: "ghost",
         },
@@ -68,7 +68,7 @@ export function getAdminOrderStatusActions(
     case "canceled":
       return [
         {
-          label: "Restore to paid",
+          label: "Restore & reserve inventory",
           status: "paid",
           variant: "secondary",
         },

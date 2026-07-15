@@ -1,7 +1,15 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { CheckCircle2, ClipboardList, Loader2, Mail, MapPin, Phone } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  ClipboardList,
+  Loader2,
+  Mail,
+  MapPin,
+  Phone,
+} from "lucide-react";
 import {
   getAdminPayloadError,
   hasAdminKeys,
@@ -295,6 +303,27 @@ export function OrderDashboard({ initialOrders }: { initialOrders: AdminOrder[] 
                   {formatCurrency(selectedOrder.totalCents)}
                 </div>
               </div>
+
+              {selectedOrder.status === "pending_payment" ? (
+                <div className="mt-4 flex gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm leading-6 text-amber-950">
+                  <AlertTriangle className="mt-0.5 shrink-0" size={16} />
+                  <p>
+                    Payment is not confirmed. Work this order only after Stripe marks it
+                    paid or manual payment is verified. Canceling releases the reserved
+                    delivery spot and menu inventory.
+                  </p>
+                </div>
+              ) : null}
+
+              {selectedOrder.status === "canceled" ? (
+                <div className="mt-4 flex gap-2 rounded-md border border-stone-200 bg-white p-3 text-sm leading-6 text-stone-700">
+                  <AlertTriangle className="mt-0.5 shrink-0 text-[#a94334]" size={16} />
+                  <p>
+                    This order is canceled. Restoring it will try to reserve the delivery
+                    spot and product inventory again before marking it paid.
+                  </p>
+                </div>
+              ) : null}
 
               <div className="mt-4 grid gap-3 rounded-md border border-stone-200 bg-white p-4 text-sm text-stone-700">
                 <div className="flex gap-2">

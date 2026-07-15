@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { getAdminOrderStatusActions } from "./admin-order-workflow";
+import { getAdminOrderInventoryAdjustment } from "./order-admin";
 
 describe("admin order workflow actions", () => {
   it("surfaces the next owner action for active paid orders", () => {
@@ -10,7 +11,7 @@ describe("admin order workflow actions", () => {
         variant: "primary",
       },
       {
-        label: "Cancel order",
+        label: "Cancel & release inventory",
         status: "canceled",
         variant: "ghost",
       },
@@ -37,10 +38,25 @@ describe("admin order workflow actions", () => {
     ]);
     expect(getAdminOrderStatusActions("canceled")).toEqual([
       {
-        label: "Restore to paid",
+        label: "Restore & reserve inventory",
         status: "paid",
         variant: "secondary",
       },
     ]);
+  });
+
+  it("identifies when admin status changes must adjust inventory reservations", () => {
+    expect(getAdminOrderInventoryAdjustment("pending_payment", "canceled")).toBe(
+      "release",
+    );
+    expect(getAdminOrderInventoryAdjustment("paid", "canceled")).toBe("release");
+    expect(getAdminOrderInventoryAdjustment("baking", "canceled")).toBe("release");
+    expect(getAdminOrderInventoryAdjustment("out_for_delivery", "canceled")).toBe(
+      "release",
+    );
+    expect(getAdminOrderInventoryAdjustment("canceled", "paid")).toBe("reserve");
+    expect(getAdminOrderInventoryAdjustment("delivered", "canceled")).toBeNull();
+    expect(getAdminOrderInventoryAdjustment("paid", "baking")).toBeNull();
+    expect(getAdminOrderInventoryAdjustment("paid", "paid")).toBeNull();
   });
 });

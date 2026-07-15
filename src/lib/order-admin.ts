@@ -16,6 +16,7 @@ type OrderDeliveryWindowRow = {
 
 type OrderRow = {
   id: string;
+  delivery_window_id: string | null;
   customers: OrderCustomerRow | OrderCustomerRow[] | null;
   delivery_windows: OrderDeliveryWindowRow | OrderDeliveryWindowRow[] | null;
   status: OrderStatus;
@@ -66,6 +67,35 @@ export const orderStatusUpdateSchema = z.object({
 });
 
 export const orderStatuses = orderStatusSchema.options;
+
+const reservedOrderStatuses = new Set<OrderStatus>([
+  "pending_payment",
+  "paid",
+  "baking",
+  "out_for_delivery",
+]);
+const paidOrderStatuses = new Set<OrderStatus>([
+  "paid",
+  "baking",
+  "out_for_delivery",
+  "delivered",
+]);
+
+export type AdminOrderInventoryAdjustment = "reserve" | "release" | null;
+
+export function getAdminOrderInventoryAdjustment(
+  previousStatus: OrderStatus | null | undefined,
+  nextStatus: OrderStatus,
+): AdminOrderInventoryAdjustment {
+  if (!previousStatus || previousStatus === nextStatus) return null;
+  if (reservedOrderStatuses.has(previousStatus) && nextStatus === "canceled") {
+    return "release";
+  }
+  if (previousStatus === "canceled" && reservedOrderStatuses.has(nextStatus)) {
+    return "reserve";
+  }
+  return null;
+}
 
 function single<T>(value: T | T[] | null) {
   return Array.isArray(value) ? value[0] ?? null : value;
@@ -158,24 +188,87 @@ export async function updateAdminOrderStatus(id: string, status: OrderStatus) {
   const supabase = getSupabaseAdminClient();
   if (!supabase) throw new Error("Supabase admin client is not configured.");
 
-  const { data: existingOrder } = await supabase
+  const { data: existingOrder, error: existingOrderError } = await supabase
     .from("orders")
-    .select("status")
+    .select("status, paid_at, delivery_window_id")
     .eq("id", id)
     .maybeSingle();
 
-  const { error } = await supabase
-    .from("orders")
-    .update({
-      status,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", id);
+  if (existingOrderError) throw new Error(existingOrderError.message);
+  if (!existingOrder) throw new Error("Order could not be found.");
 
-  if (error) throw new Error(error.message);
+  const existingStatus = existingOrder.status as OrderStatus;
+  const inventoryAdjustment = getAdminOrderInventoryAdjustment(existingStatus, status);
+  const timestamp = new Date().toISOString();
+  let inventoryWasReserved = false;
+
+  if (inventoryAdjustment === "reserve") {
+    if (!existingOrder.delivery_window_id) {
+      throw new Error("Order does not have a delivery window to restore inventory.");
+    }
+
+    const { data: itemRows, error: itemError } = await supabase
+      .from("order_items")
+      .select("product_id, quantity")
+      .eq("order_id", id);
+
+    if (itemError) throw new Error(itemError.message);
+
+    const { error: reserveError } = await supabase.rpc("reserve_order_inventory", {
+      p_delivery_window_id: existingOrder.delivery_window_id,
+      p_items: ((itemRows as Array<{ product_id: string; quantity: number }>) || []).map(
+        (item) => ({
+          product_id: item.product_id,
+          quantity: item.quantity,
+        }),
+      ),
+    });
+
+    if (reserveError) throw new Error(reserveError.message);
+    inventoryWasReserved = true;
+  }
+
+  const updatePayload: {
+    status: OrderStatus;
+    updated_at: string;
+    paid_at?: string;
+  } = {
+    status,
+    updated_at: timestamp,
+  };
+
+  if (paidOrderStatuses.has(status) && !existingOrder.paid_at) {
+    updatePayload.paid_at = timestamp;
+  }
+
+  const { error } = await supabase.from("orders").update(updatePayload).eq("id", id);
+
+  if (error) {
+    if (inventoryWasReserved) {
+      await supabase.rpc("release_order_inventory", { p_order_id: id });
+    }
+    throw new Error(error.message);
+  }
+
+  if (inventoryAdjustment === "release") {
+    const { error: releaseError } = await supabase.rpc("release_order_inventory", {
+      p_order_id: id,
+    });
+    if (releaseError) {
+      await supabase
+        .from("orders")
+        .update({
+          status: existingStatus,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", id);
+      throw new Error(releaseError.message);
+    }
+  }
+
   const orders = await getAdminOrdersData();
   const updatedOrder = orders.find((order) => order.id === id);
-  if (updatedOrder && existingOrder?.status !== status && updatedOrder.customerEmail) {
+  if (updatedOrder && existingStatus !== status && updatedOrder.customerEmail) {
     try {
       await sendOrderStatusUpdate({
         to: updatedOrder.customerEmail,
