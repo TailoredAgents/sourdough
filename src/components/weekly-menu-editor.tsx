@@ -296,11 +296,11 @@ export function WeeklyMenuEditor({
         </select>
       </label>
 
-      <div className="mt-5 grid gap-3 lg:grid-cols-[1fr_180px_180px_140px]">
+      <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(220px,1fr)_minmax(230px,260px)_minmax(230px,260px)_max-content]">
         <label className="grid gap-1 text-sm font-semibold text-stone-700">
           Menu name
           <input
-            className="h-11 rounded-md border border-stone-300 px-3 font-normal"
+            className="h-11 min-w-0 rounded-md border border-stone-300 px-3 font-normal"
             value={form.name}
             onChange={(event) =>
               setForm((current) => ({ ...current, name: event.target.value }))
@@ -310,7 +310,7 @@ export function WeeklyMenuEditor({
         <label className="grid gap-1 text-sm font-semibold text-stone-700">
           Cutoff
           <input
-            className="h-11 rounded-md border border-stone-300 px-3 font-normal"
+            className="h-11 min-w-0 rounded-md border border-stone-300 px-3 font-normal"
             type="datetime-local"
             value={form.orderCutoffAt}
             onChange={(event) =>
@@ -324,7 +324,7 @@ export function WeeklyMenuEditor({
         <label className="grid gap-1 text-sm font-semibold text-stone-700">
           Starts
           <input
-            className="h-11 rounded-md border border-stone-300 px-3 font-normal"
+            className="h-11 min-w-0 rounded-md border border-stone-300 px-3 font-normal"
             type="datetime-local"
             value={form.startsAt}
             onChange={(event) =>
@@ -332,7 +332,7 @@ export function WeeklyMenuEditor({
             }
           />
         </label>
-        <label className="flex items-end gap-2 pb-3 text-sm font-semibold text-stone-700">
+        <label className="flex items-end gap-2 pb-3 text-sm font-semibold text-stone-700 md:pt-6 xl:pt-0">
           <input
             type="checkbox"
             checked={form.published}
