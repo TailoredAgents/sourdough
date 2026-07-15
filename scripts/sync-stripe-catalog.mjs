@@ -79,6 +79,31 @@ async function findReusablePriceId(stripe, stripeProductId, priceCents) {
   return matchingPrice?.id ?? null;
 }
 
+async function findCurrentSavedPriceId(stripe, product, stripeProductId) {
+  if (!product.stripe_price_id || product.stripe_price_cents !== product.price_cents) {
+    return null;
+  }
+
+  try {
+    const price = await stripe.prices.retrieve(product.stripe_price_id);
+    const priceProductId =
+      typeof price.product === "string" ? price.product : price.product?.id;
+    const matchesProduct = priceProductId === stripeProductId;
+
+    return price.currency === "usd" &&
+      price.unit_amount === product.price_cents &&
+      price.type === "one_time" &&
+      matchesProduct
+      ? price.id
+      : null;
+  } catch (error) {
+    console.warn(
+      `[stripe:catalog] saved price missing for ${product.name}: ${error.message}`,
+    );
+    return null;
+  }
+}
+
 loadEnvFile(".env.local");
 
 const stripe = new Stripe(requireEnv("STRIPE_SECRET_KEY"), {
@@ -125,11 +150,11 @@ for (const product of products) {
     });
   }
 
-  let stripePriceId = product.stripe_price_id;
-  const hasCurrentSavedPrice =
-    product.stripe_price_id && product.stripe_price_cents === product.price_cents;
+  let stripePriceId = product.active
+    ? await findCurrentSavedPriceId(stripe, product, stripeProductId)
+    : product.stripe_price_id;
 
-  if (product.active && !hasCurrentSavedPrice) {
+  if (product.active && !stripePriceId) {
     stripePriceId = await findReusablePriceId(stripe, stripeProductId, product.price_cents);
 
     if (!stripePriceId) {

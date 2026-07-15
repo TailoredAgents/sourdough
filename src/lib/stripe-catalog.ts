@@ -78,6 +78,38 @@ async function findReusablePriceId(stripeProductId: string, priceCents: number) 
   return matchingPrice?.id ?? null;
 }
 
+async function findCurrentSavedPriceId(
+  product: ProductCatalogRow,
+  stripeProductId: string,
+) {
+  const stripe = getStripe();
+  if (!stripe) throw new Error("STRIPE_SECRET_KEY is not configured.");
+  if (!product.stripe_price_id || product.stripe_price_cents !== product.price_cents) {
+    return null;
+  }
+
+  try {
+    const price = await stripe.prices.retrieve(product.stripe_price_id);
+    const priceProductId =
+      typeof price.product === "string" ? price.product : price.product?.id;
+    const matchesProduct = priceProductId === stripeProductId;
+
+    return price.currency === "usd" &&
+      price.unit_amount === product.price_cents &&
+      price.type === "one_time" &&
+      matchesProduct
+      ? price.id
+      : null;
+  } catch (error) {
+    console.warn("[stripe:catalog] saved Stripe price not found", {
+      productId: product.id,
+      stripePriceId: product.stripe_price_id,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+}
+
 export async function syncStripeProductCatalog(): Promise<StripeCatalogSyncItem[]> {
   const stripe = getStripe();
   const supabase = getSupabaseAdminClient();
@@ -120,11 +152,11 @@ export async function syncStripeProductCatalog(): Promise<StripeCatalogSyncItem[
       });
     }
 
-    let stripePriceId: string | null = product.stripe_price_id;
-    const hasCurrentSavedPrice =
-      product.stripe_price_id && product.stripe_price_cents === product.price_cents;
+    let stripePriceId: string | null = product.active
+      ? await findCurrentSavedPriceId(product, stripeProductId)
+      : product.stripe_price_id;
 
-    if (product.active && !hasCurrentSavedPrice) {
+    if (product.active && !stripePriceId) {
       stripePriceId = await findReusablePriceId(stripeProductId, product.price_cents);
 
       if (!stripePriceId) {
