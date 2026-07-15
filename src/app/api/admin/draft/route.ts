@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { adminDraftTypes } from "@/lib/admin-draft";
 import { getCurrentAdmin } from "@/lib/admin-auth";
 import { aiModel, getOpenAI } from "@/lib/openai";
 import {
@@ -8,12 +9,7 @@ import {
 } from "@/lib/storefront-data";
 
 const draftSchema = z.object({
-  type: z.enum([
-    "weekly_announcement",
-    "product_description",
-    "customer_reply",
-    "order_summary",
-  ]),
+  type: z.enum(adminDraftTypes),
   context: z.string().min(1).max(2000),
 });
 

@@ -12,6 +12,10 @@ import {
   Truck,
   type LucideIcon,
 } from "lucide-react";
+import {
+  extractAdminDraftText,
+  validateAdminDraftInput,
+} from "@/lib/admin-draft";
 import type { DeliverySettings } from "@/lib/delivery";
 import type {
   AiKnowledgeEntry,
@@ -97,22 +101,43 @@ export function AdminDashboard({
 
   function generateDraft() {
     setDraftMessage(null);
+    const validationMessage = validateAdminDraftInput({ type: draftType, context });
+    if (validationMessage) {
+      setDraftMessage(validationMessage);
+      return;
+    }
+
     startTransition(async () => {
-      const response = await fetch("/api/admin/draft", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: draftType, context }),
-      });
-      const payload = (await response.json()) as { draft: string };
-      setDraft(payload.draft);
-      setDraftMessage("Draft generated for review.");
+      try {
+        const response = await fetch("/api/admin/draft", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ type: draftType, context: context.trim() }),
+        });
+        const payload = (await response.json().catch(() => null)) as unknown;
+        const nextDraft = extractAdminDraftText(payload);
+
+        if (!response.ok || !nextDraft) {
+          setDraftMessage("Draft could not be generated. Check admin access and try again.");
+          return;
+        }
+
+        setDraft(nextDraft);
+        setDraftMessage("Draft generated for review.");
+      } catch {
+        setDraftMessage("Draft could not be generated. Check your connection and try again.");
+      }
     });
   }
 
   async function copyDraft() {
     if (!draft) return;
-    await navigator.clipboard.writeText(draft);
-    setDraftMessage("Draft copied.");
+    try {
+      await navigator.clipboard.writeText(draft);
+      setDraftMessage("Draft copied.");
+    } catch {
+      setDraftMessage("Draft could not be copied. Select the text and copy it manually.");
+    }
   }
 
   return (
@@ -252,8 +277,10 @@ export function AdminDashboard({
             <div className="mt-5 grid gap-3">
               <select
                 className="h-11 rounded-md border border-stone-300 px-3 text-sm"
+                aria-label="Draft type"
                 value={draftType}
                 onChange={(event) => setDraftType(event.target.value)}
+                disabled={isPending}
               >
                 <option value="weekly_announcement">Weekly announcement</option>
                 <option value="product_description">Product description</option>
@@ -262,15 +289,22 @@ export function AdminDashboard({
               </select>
               <textarea
                 className="min-h-28 rounded-md border border-stone-300 p-3 text-sm"
+                aria-label="Draft context"
                 value={context}
                 onChange={(event) => setContext(event.target.value)}
+                maxLength={2000}
               />
-              <Button type="button" onClick={generateDraft} disabled={isPending}>
+              <Button
+                type="button"
+                onClick={generateDraft}
+                disabled={isPending || !context.trim()}
+              >
                 {isPending ? <Loader2 className="animate-spin" size={16} /> : <Bot size={16} />}
                 Generate draft
               </Button>
               <textarea
                 className="min-h-52 rounded-md border border-stone-300 bg-[#fffaf2] p-3 text-sm leading-6"
+                aria-label="Generated draft"
                 value={draft}
                 onChange={(event) => setDraft(event.target.value)}
                 placeholder="Generated draft appears here for editing."
@@ -280,7 +314,7 @@ export function AdminDashboard({
                   type="button"
                   variant="secondary"
                   onClick={copyDraft}
-                  disabled={!draft}
+                  disabled={isPending || !draft}
                 >
                   <Copy size={16} />
                   Copy draft
