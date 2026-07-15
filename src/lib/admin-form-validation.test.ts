@@ -101,6 +101,18 @@ describe("admin form validation", () => {
         ],
       }),
     ).toBe("Wednesday afternoon cannot reserve more spots than capacity.");
+
+    expect(
+      validateDeliveryForm({
+        ...validDelivery,
+        windows: [
+          {
+            ...validDelivery.windows[0],
+            remove: true,
+          },
+        ],
+      }),
+    ).toBe("Wednesday afternoon has reserved orders and cannot be removed.");
   });
 
   it("blocks incomplete product and AI knowledge saves before API calls", () => {

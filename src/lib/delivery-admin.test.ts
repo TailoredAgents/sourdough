@@ -59,4 +59,13 @@ describe("delivery admin validation", () => {
       }).success,
     ).toBe(false);
   });
+
+  it("rejects removing windows that still have reserved orders", () => {
+    expect(
+      deliveryAdminSchema.safeParse({
+        ...validPayload,
+        windows: [{ ...validPayload.windows[0], remove: true }],
+      }).success,
+    ).toBe(false);
+  });
 });

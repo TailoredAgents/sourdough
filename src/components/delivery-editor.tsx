@@ -1,7 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
-import { CheckCircle2, Loader2, Plus, Save, Trash2 } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Loader2,
+  Plus,
+  Save,
+  Trash2,
+} from "lucide-react";
 import {
   getAdminPayloadError,
   hasAdminKeys,
@@ -94,6 +101,23 @@ function buildNewWindow(): DeliveryWindowForm {
   };
 }
 
+function getOpenDeliverySpots(window: DeliveryWindowForm) {
+  return Math.max(window.capacity - window.reserved, 0);
+}
+
+function getDeliveryWindowWarning(window: DeliveryWindowForm) {
+  if (window.reserved > window.capacity) {
+    return "Reserved spots are higher than capacity.";
+  }
+  if (window.capacity === 0) {
+    return "Capacity is 0, so customers cannot choose this window.";
+  }
+  if (getOpenDeliverySpots(window) === 0) {
+    return "This window is full.";
+  }
+  return null;
+}
+
 export function DeliveryEditor({
   initialDeliverySettings,
   initialDeliveryWindows,
@@ -115,6 +139,14 @@ export function DeliveryEditor({
 
   const activeWindows = windows.filter((window) => !window.remove);
   const deliveryFeeCents = Math.round(Number(settings.deliveryFeeDollars || 0) * 100);
+  const deliverySummary = activeWindows.reduce(
+    (current, window) => ({
+      capacity: current.capacity + window.capacity,
+      reserved: current.reserved + window.reserved,
+      open: current.open + getOpenDeliverySpots(window),
+    }),
+    { capacity: 0, reserved: 0, open: 0 },
+  );
 
   function updateWindow(clientId: string, patch: Partial<DeliveryWindowForm>) {
     setWindows((current) =>
@@ -332,100 +364,168 @@ export function DeliveryEditor({
         </Button>
       </div>
 
-      <div className="mt-4 overflow-x-auto">
-        <table className="w-full min-w-[920px] text-left text-sm">
-          <thead className="border-b border-stone-200 text-xs uppercase tracking-wide text-stone-500">
-            <tr>
-              <th className="py-3">Label</th>
-              <th className="py-3">Starts</th>
-              <th className="py-3">Ends</th>
-              <th className="py-3">Capacity</th>
-              <th className="py-3">Reserved</th>
-              <th className="py-3">Remove</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-stone-100">
-            {activeWindows.map((window) => (
-              <tr key={window.clientId}>
-                <td className="py-3 pr-3">
-                  <input
-                    className="h-10 w-full min-w-52 rounded-md border border-stone-300 px-3"
-                    aria-label={`Delivery window label for ${window.label}`}
-                    value={window.label}
-                    onChange={(event) =>
-                      updateWindow(window.clientId, { label: event.target.value })
-                    }
-                  />
-                </td>
-                <td className="py-3 pr-3">
-                  <input
-                    className="h-10 rounded-md border border-stone-300 px-3"
-                    aria-label={`${window.label} start time`}
-                    type="datetime-local"
-                    value={window.startsAt}
-                    onChange={(event) =>
-                      updateWindow(window.clientId, { startsAt: event.target.value })
-                    }
-                  />
-                </td>
-                <td className="py-3 pr-3">
-                  <input
-                    className="h-10 rounded-md border border-stone-300 px-3"
-                    aria-label={`${window.label} end time`}
-                    type="datetime-local"
-                    value={window.endsAt}
-                    onChange={(event) =>
-                      updateWindow(window.clientId, { endsAt: event.target.value })
-                    }
-                  />
-                </td>
-                <td className="py-3 pr-3">
-                  <input
-                    className="h-10 w-24 rounded-md border border-stone-300 px-3"
-                    aria-label={`${window.label} capacity`}
-                    min={0}
-                    type="number"
-                    value={window.capacity}
-                    onChange={(event) =>
-                      updateWindow(window.clientId, { capacity: Number(event.target.value) })
-                    }
-                  />
-                </td>
-                <td className="py-3 pr-3">
-                  <input
-                    className="h-10 w-24 rounded-md border border-stone-300 px-3"
-                    aria-label={`${window.label} reserved spots`}
-                    min={0}
-                    type="number"
-                    value={window.reserved}
-                    onChange={(event) =>
-                      updateWindow(window.clientId, { reserved: Number(event.target.value) })
-                    }
-                  />
-                </td>
-                <td className="py-3">
+      <div className="mt-4 grid gap-3 rounded-md border border-stone-200 bg-[#fffaf2] p-4 sm:grid-cols-4">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wide text-stone-500">
+            Windows
+          </p>
+          <p className="mt-1 text-2xl font-bold text-stone-950">
+            {activeWindows.length}
+          </p>
+        </div>
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wide text-stone-500">
+            Capacity
+          </p>
+          <p className="mt-1 text-2xl font-bold text-stone-950">
+            {deliverySummary.capacity}
+          </p>
+        </div>
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wide text-stone-500">
+            Reserved
+          </p>
+          <p className="mt-1 text-2xl font-bold text-stone-950">
+            {deliverySummary.reserved}
+          </p>
+        </div>
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wide text-stone-500">
+            Open spots
+          </p>
+          <p className="mt-1 text-2xl font-bold text-stone-950">
+            {deliverySummary.open}
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-3">
+        {activeWindows.map((window) => {
+          const warning = getDeliveryWindowWarning(window);
+          const openSpots = getOpenDeliverySpots(window);
+          const hasReservedOrders = window.reserved > 0;
+
+          return (
+            <div
+              key={window.clientId}
+              className={`rounded-md border p-4 ${
+                warning ? "border-amber-300 bg-amber-50" : "border-stone-200 bg-white"
+              }`}
+            >
+              <div className="grid gap-4 lg:grid-cols-[minmax(240px,1fr)_minmax(360px,1.25fr)_auto] lg:items-start">
+                <div className="grid gap-3">
+                  <label className="grid gap-1 text-sm font-semibold text-stone-700">
+                    Label
+                    <input
+                      className="h-10 w-full min-w-52 rounded-md border border-stone-300 px-3"
+                      aria-label={`Delivery window label for ${window.label}`}
+                      value={window.label}
+                      onChange={(event) =>
+                        updateWindow(window.clientId, { label: event.target.value })
+                      }
+                    />
+                  </label>
+                  {warning ? (
+                    <p className="inline-flex items-center gap-2 text-sm font-semibold text-amber-900">
+                      <AlertTriangle size={16} />
+                      {warning}
+                    </p>
+                  ) : null}
+                  {hasReservedOrders ? (
+                    <p className="text-sm leading-6 text-stone-700">
+                      Reserved windows cannot be removed until the related orders are
+                      canceled or moved.
+                    </p>
+                  ) : null}
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-2">
+                  <label className="grid gap-1 text-sm font-semibold text-stone-700">
+                    Starts
+                    <input
+                      className="h-10 min-w-0 rounded-md border border-stone-300 px-3 font-normal"
+                      aria-label={`${window.label} start time`}
+                      type="datetime-local"
+                      value={window.startsAt}
+                      onChange={(event) =>
+                        updateWindow(window.clientId, { startsAt: event.target.value })
+                      }
+                    />
+                  </label>
+                  <label className="grid gap-1 text-sm font-semibold text-stone-700">
+                    Ends
+                    <input
+                      className="h-10 min-w-0 rounded-md border border-stone-300 px-3 font-normal"
+                      aria-label={`${window.label} end time`}
+                      type="datetime-local"
+                      value={window.endsAt}
+                      onChange={(event) =>
+                        updateWindow(window.clientId, { endsAt: event.target.value })
+                      }
+                    />
+                  </label>
+                  <label className="grid gap-1 text-sm font-semibold text-stone-700">
+                    Capacity
+                    <input
+                      className="h-10 min-w-0 rounded-md border border-stone-300 px-3 font-normal"
+                      aria-label={`${window.label} capacity`}
+                      inputMode="numeric"
+                      min={0}
+                      step={1}
+                      type="number"
+                      value={window.capacity}
+                      onChange={(event) =>
+                        updateWindow(window.clientId, { capacity: Number(event.target.value) })
+                      }
+                    />
+                  </label>
+                  <label className="grid gap-1 text-sm font-semibold text-stone-700">
+                    Reserved
+                    <input
+                      className="h-10 min-w-0 rounded-md border border-stone-300 px-3 font-normal"
+                      aria-label={`${window.label} reserved spots`}
+                      inputMode="numeric"
+                      min={0}
+                      step={1}
+                      type="number"
+                      value={window.reserved}
+                      onChange={(event) =>
+                        updateWindow(window.clientId, { reserved: Number(event.target.value) })
+                      }
+                    />
+                  </label>
+                </div>
+
+                <div className="flex flex-row items-center justify-between gap-3 lg:flex-col lg:items-end">
+                  <div className="rounded-md border border-stone-200 bg-[#fffaf2] px-3 py-2 text-right">
+                    <p className="text-xs font-bold uppercase tracking-wide text-stone-500">
+                      Open
+                    </p>
+                    <p className="mt-1 text-xl font-bold text-[#23443b]">
+                      {openSpots}
+                    </p>
+                  </div>
                   <Button
                     type="button"
                     variant="ghost"
                     size="sm"
                     onClick={() => removeWindow(window.clientId)}
-                    disabled={isPending}
+                    disabled={isPending || hasReservedOrders}
                     aria-label={`Remove ${window.label}`}
                   >
                     <Trash2 size={16} />
                   </Button>
-                </td>
-              </tr>
-            ))}
-            {!activeWindows.length ? (
-              <tr>
-                <td className="py-6 text-sm text-stone-600" colSpan={6}>
-                  No active delivery windows. Add one before opening checkout.
-                </td>
-              </tr>
-            ) : null}
-          </tbody>
-        </table>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+
+        {!activeWindows.length ? (
+          <div className="rounded-md border border-dashed border-stone-300 bg-[#fffaf2] p-5 text-sm text-stone-700">
+            No active delivery windows. Add one before opening checkout.
+          </div>
+        ) : null}
       </div>
 
       {message ? (

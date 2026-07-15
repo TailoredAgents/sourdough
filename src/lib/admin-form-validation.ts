@@ -126,6 +126,13 @@ export function validateDeliveryForm(input: DeliveryValidationInput) {
     }
   }
 
+  const reservedRemovedWindow = input.windows.find(
+    (entry) => entry.remove && entry.reserved > 0,
+  );
+  if (reservedRemovedWindow) {
+    return `${reservedRemovedWindow.label || "Delivery window"} has reserved orders and cannot be removed.`;
+  }
+
   return null;
 }
 

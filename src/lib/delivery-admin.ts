@@ -21,6 +21,10 @@ const deliveryWindowAdminSchema = z
   .refine((window) => window.reserved <= window.capacity, {
     message: "Reserved spots cannot be higher than capacity.",
     path: ["reserved"],
+  })
+  .refine((window) => !window.remove || window.reserved === 0, {
+    message: "Delivery windows with reserved orders cannot be removed.",
+    path: ["remove"],
   });
 
 export const deliveryAdminSchema = z.object({
