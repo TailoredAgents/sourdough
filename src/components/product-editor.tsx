@@ -2,13 +2,26 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { CheckCircle2, ImagePlus, Loader2, Pencil, Plus, RefreshCw } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  ImagePlus,
+  Loader2,
+  Pencil,
+  Plus,
+  RefreshCw,
+} from "lucide-react";
 import {
   getAdminPayloadError,
   hasAdminKeys,
   readAdminJsonResponse,
 } from "@/lib/admin-api";
 import { validateProductForm } from "@/lib/admin-form-validation";
+import {
+  getAdminProductStripeStatus,
+  getAdminProductWarnings,
+  summarizeAdminProducts,
+} from "@/lib/admin-product-status";
 import {
   extractStripeCatalogSyncItems,
   summarizeStripeCatalogSync,
@@ -97,6 +110,13 @@ export function ProductEditor({
     () => new Set([...currentMenuProductIds, ...locallyVisibleProductIds]),
     [currentMenuProductIds, locallyVisibleProductIds],
   );
+  const productSummary = useMemo(
+    () => summarizeAdminProducts(products, visibleProductIds),
+    [products, visibleProductIds],
+  );
+  const selectedProductWarnings = selectedProduct
+    ? getAdminProductWarnings(selectedProduct, visibleProductIds.has(selectedProduct.id))
+    : [];
   const isSuccessMessage = Boolean(
     message &&
       (message.startsWith("Product saved") ||
@@ -229,6 +249,15 @@ export function ProductEditor({
         }
 
         setMessage(summarizeStripeCatalogSync(syncedProducts).message);
+        const productResponse = await fetch("/api/admin/products");
+        const productPayload = await readAdminJsonResponse(productResponse);
+        if (
+          productResponse.ok &&
+          hasAdminKeys(productPayload, ["products"]) &&
+          Array.isArray(productPayload.products)
+        ) {
+          setProducts(productPayload.products as Product[]);
+        }
         router.refresh();
       } catch {
         setMessage("Stripe catalog could not be synced. Check your connection and try again.");
@@ -263,57 +292,137 @@ export function ProductEditor({
         </div>
       </div>
 
+      <div className="mt-5 grid gap-3 rounded-md border border-stone-200 bg-[#fffaf2] p-4 sm:grid-cols-4">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wide text-stone-500">
+            Active
+          </p>
+          <p className="mt-1 text-2xl font-bold text-stone-950">
+            {productSummary.active}
+          </p>
+        </div>
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wide text-stone-500">
+            This week
+          </p>
+          <p className="mt-1 text-2xl font-bold text-stone-950">
+            {productSummary.inCurrentMenu}
+          </p>
+        </div>
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wide text-stone-500">
+            Need sync
+          </p>
+          <p className="mt-1 text-2xl font-bold text-stone-950">
+            {productSummary.needsStripeSync}
+          </p>
+        </div>
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wide text-stone-500">
+            Missing photos
+          </p>
+          <p className="mt-1 text-2xl font-bold text-stone-950">
+            {productSummary.missingPhotos}
+          </p>
+        </div>
+      </div>
+
       <div className="mt-5 grid gap-5 xl:grid-cols-[0.8fr_minmax(0,1.2fr)]">
         <div className="grid max-h-[620px] content-start gap-2 overflow-y-auto pr-1">
-          {products.map((product) => (
-            <button
-              key={product.id}
-              type="button"
-              onClick={() => selectProduct(product)}
-              disabled={isPending}
-              className={`rounded-md border p-3 text-left transition ${
-                selectedId === product.id
-                  ? "border-[#23443b] bg-[#f7efe3]"
-                  : "border-stone-200 bg-white hover:bg-stone-50"
-              }`}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="font-semibold text-stone-950">{product.name}</p>
-                  <p className="mt-1 text-xs uppercase tracking-wide text-stone-500">
-                    {product.category}
-                  </p>
+          {products.map((product) => {
+            const stripeStatus = getAdminProductStripeStatus(product);
+            const productWarnings = getAdminProductWarnings(
+              product,
+              visibleProductIds.has(product.id),
+            );
+
+            return (
+              <button
+                key={product.id}
+                type="button"
+                onClick={() => selectProduct(product)}
+                disabled={isPending}
+                className={`rounded-md border p-3 text-left transition ${
+                  selectedId === product.id
+                    ? "border-[#23443b] bg-[#f7efe3]"
+                    : productWarnings.length
+                      ? "border-amber-300 bg-amber-50 hover:bg-amber-50"
+                      : "border-stone-200 bg-white hover:bg-stone-50"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-semibold text-stone-950">{product.name}</p>
+                    <p className="mt-1 text-xs uppercase tracking-wide text-stone-500">
+                      {product.category}
+                    </p>
+                  </div>
+                  <span className="text-sm font-bold text-[#23443b]">
+                    {formatCurrency(product.priceCents)}
+                  </span>
                 </div>
-                <span className="text-sm font-bold text-[#23443b]">
-                  {formatCurrency(product.priceCents)}
-                </span>
-              </div>
-              <p className="mt-2 line-clamp-2 text-sm leading-5 text-stone-700">
-                {product.description}
-              </p>
-              <span
-                className={`mt-3 inline-flex rounded-sm px-2 py-1 text-xs font-bold uppercase ${
-                  product.active
-                    ? "bg-emerald-50 text-emerald-800"
-                    : "bg-stone-100 text-stone-500"
-                }`}
-              >
-                {product.active ? "Active" : "Hidden"}
-              </span>
-              <span
-                className={`ml-2 mt-3 inline-flex rounded-sm px-2 py-1 text-xs font-bold uppercase ${
-                  visibleProductIds.has(product.id)
-                    ? "bg-sky-50 text-sky-800"
-                    : "bg-amber-50 text-amber-800"
-                }`}
-              >
-                {visibleProductIds.has(product.id) ? "Public this week" : "Not in weekly menu"}
-              </span>
-            </button>
-          ))}
+                <p className="mt-2 line-clamp-2 text-sm leading-5 text-stone-700">
+                  {product.description}
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <span
+                    className={`inline-flex rounded-sm px-2 py-1 text-xs font-bold uppercase ${
+                      product.active
+                        ? "bg-emerald-50 text-emerald-800"
+                        : "bg-stone-100 text-stone-500"
+                    }`}
+                  >
+                    {product.active ? "Active" : "Hidden"}
+                  </span>
+                  <span
+                    className={`inline-flex rounded-sm px-2 py-1 text-xs font-bold uppercase ${
+                      visibleProductIds.has(product.id)
+                        ? "bg-sky-50 text-sky-800"
+                        : "bg-amber-50 text-amber-800"
+                    }`}
+                  >
+                    {visibleProductIds.has(product.id)
+                      ? "Public this week"
+                      : "Not in weekly menu"}
+                  </span>
+                  <span
+                    className={`inline-flex rounded-sm px-2 py-1 text-xs font-bold uppercase ${
+                      stripeStatus.tone === "ready"
+                        ? "bg-emerald-50 text-emerald-800"
+                        : stripeStatus.tone === "warning"
+                          ? "bg-amber-100 text-amber-900"
+                          : "bg-stone-100 text-stone-500"
+                    }`}
+                  >
+                    {stripeStatus.label}
+                  </span>
+                  <span
+                    className={`inline-flex rounded-sm px-2 py-1 text-xs font-bold uppercase ${
+                      product.imageUrl
+                        ? "bg-emerald-50 text-emerald-800"
+                        : "bg-amber-100 text-amber-900"
+                    }`}
+                  >
+                    {product.imageUrl ? "Photo ready" : "Needs photo"}
+                  </span>
+                </div>
+              </button>
+            );
+          })}
         </div>
 
         <div className="grid min-w-0 gap-4 rounded-md border border-stone-100 bg-[#fffaf2] p-4">
+          {selectedProductWarnings.length ? (
+            <div className="grid gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm leading-6 text-amber-950">
+              {selectedProductWarnings.map((warning) => (
+                <p key={warning} className="inline-flex gap-2">
+                  <AlertTriangle className="mt-1 shrink-0" size={16} />
+                  <span>{warning}</span>
+                </p>
+              ))}
+            </div>
+          ) : null}
+
           <div className="grid min-w-0 gap-3 xl:grid-cols-[180px_minmax(0,1fr)]">
             <div
               className={`min-h-36 rounded-md border border-stone-200 bg-cover bg-center bg-no-repeat ${
