@@ -97,9 +97,13 @@ create table if not exists weekly_menu_items (
   available_quantity integer not null check (available_quantity >= 0),
   sold_quantity integer not null default 0 check (sold_quantity >= 0),
   featured boolean not null default false,
+  unavailable boolean not null default false,
   check (sold_quantity <= available_quantity),
   unique (weekly_menu_id, product_id)
 );
+
+alter table weekly_menu_items
+  add column if not exists unavailable boolean not null default false;
 
 do $$
 begin

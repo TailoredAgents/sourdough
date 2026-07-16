@@ -44,6 +44,7 @@ type WeeklyMenuItemRow = {
   available_quantity: number;
   sold_quantity: number;
   featured: boolean;
+  unavailable: boolean | null;
   products: ProductRow | ProductRow[] | null;
 };
 
@@ -154,10 +155,12 @@ function mapMenuItem(row: WeeklyMenuItemRow): MenuProduct | null {
     availableQuantity: row.available_quantity,
     soldQuantity: row.sold_quantity,
     featured: row.featured,
-    unavailable: isWeeklyMenuItemUnavailable({
-      availableQuantity: row.available_quantity,
-      soldQuantity: row.sold_quantity,
-    }),
+    unavailable:
+      Boolean(row.unavailable) ||
+      isWeeklyMenuItemUnavailable({
+        availableQuantity: row.available_quantity,
+        soldQuantity: row.sold_quantity,
+      }),
     remainingQuantity: Math.max(row.available_quantity - row.sold_quantity, 0),
   };
 }
@@ -222,7 +225,7 @@ async function getMenuItemsData(weeklyMenuId: string): Promise<MenuProduct[]> {
   const { data, error } = await supabase
     .from("weekly_menu_items")
     .select(
-      "product_id, available_quantity, sold_quantity, featured, products(id, name, category, description, ingredients, allergens, price_cents, stripe_product_id, stripe_price_id, stripe_price_cents, stripe_synced_at, image_url, image_style, active)",
+      "product_id, available_quantity, sold_quantity, featured, unavailable, products(id, name, category, description, ingredients, allergens, price_cents, stripe_product_id, stripe_price_id, stripe_price_cents, stripe_synced_at, image_url, image_style, active)",
     )
     .eq("weekly_menu_id", weeklyMenuId);
 

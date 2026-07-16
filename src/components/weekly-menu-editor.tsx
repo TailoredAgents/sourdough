@@ -55,7 +55,9 @@ function buildForm(weeklyMenu: WeeklyMenu, products: Product[]): WeeklyMenuForm 
     published: weeklyMenu.published,
     items: products.map((product) => {
       const existing = weeklyMenu.items.find((item) => item.productId === product.id);
-      const unavailable = existing ? isWeeklyMenuItemUnavailable(existing) : false;
+      const unavailable = existing
+        ? Boolean(existing.unavailable) || isWeeklyMenuItemUnavailable(existing)
+        : false;
       return {
         productId: product.id,
         included: Boolean(existing),
@@ -450,10 +452,6 @@ export function WeeklyMenuEditor({
                           onChange={(event) =>
                             updateItem(product.id, {
                               unavailable: event.target.checked,
-                              availableQuantity: event.target.checked
-                                ? 0
-                                : item.availableQuantity,
-                              soldQuantity: event.target.checked ? 0 : item.soldQuantity,
                               featured: event.target.checked ? false : item.featured,
                             })
                           }

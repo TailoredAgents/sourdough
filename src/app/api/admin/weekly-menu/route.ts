@@ -123,9 +123,10 @@ export async function POST(request: Request) {
       includedItems.map((item) => ({
         weekly_menu_id: weeklyMenuId,
         product_id: item.productId,
-        available_quantity: item.unavailable ? 0 : item.availableQuantity,
-        sold_quantity: item.unavailable ? 0 : item.soldQuantity,
+        available_quantity: item.availableQuantity,
+        sold_quantity: item.soldQuantity,
         featured: item.unavailable ? false : item.featured,
+        unavailable: item.unavailable,
       })),
       { onConflict: "weekly_menu_id,product_id" },
     );
