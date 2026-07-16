@@ -247,10 +247,16 @@ export function WeeklyMenuEditor({
           onWeeklyMenusChange(payload.weeklyMenus as WeeklyMenuSummary[]);
         }
         const selectedWeeklyMenu = payload.selectedWeeklyMenu as WeeklyMenu;
+        const unavailableCount = selectedWeeklyMenu.items.filter((item) => item.unavailable)
+          .length;
         onSelectedWeeklyMenuIdChange(selectedWeeklyMenu.id);
         setIsUnsavedClone(false);
         setForm(buildForm(selectedWeeklyMenu, products));
-        setMessage("Weekly menu saved.");
+        setMessage(
+          unavailableCount
+            ? `Weekly menu saved. ${unavailableCount} item${unavailableCount === 1 ? "" : "s"} unavailable.`
+            : "Weekly menu saved.",
+        );
         router.refresh();
       } catch {
         setMessage("Weekly menu could not be saved. Check your connection and try again.");
@@ -537,10 +543,12 @@ export function WeeklyMenuEditor({
       {message ? (
         <p
           className={`mt-4 inline-flex items-center gap-2 text-sm font-semibold ${
-            message === "Weekly menu saved." ? "text-emerald-800" : "text-[#a94334]"
+            message.startsWith("Weekly menu saved.")
+              ? "text-emerald-800"
+              : "text-[#a94334]"
           }`}
         >
-          {message === "Weekly menu saved." ? <CheckCircle2 size={16} /> : null}
+          {message.startsWith("Weekly menu saved.") ? <CheckCircle2 size={16} /> : null}
           {message}
         </p>
       ) : null}
