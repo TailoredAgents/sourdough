@@ -11,10 +11,15 @@ const weeklyMenuItemAdminSchema = z
     availableQuantity: z.number().int().min(0).max(1000),
     soldQuantity: z.number().int().min(0).max(1000),
     featured: z.boolean(),
+    unavailable: z.boolean().optional().default(false),
   })
   .refine((item) => item.soldQuantity <= item.availableQuantity, {
     message: "Sold quantity cannot be higher than available quantity.",
     path: ["soldQuantity"],
+  })
+  .refine((item) => !item.included || item.unavailable || item.availableQuantity > 0, {
+    message: "Included products need sellable inventory or must be marked unavailable.",
+    path: ["availableQuantity"],
   });
 
 export const weeklyMenuAdminSchema = z

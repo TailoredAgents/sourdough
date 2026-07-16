@@ -1,4 +1,5 @@
 import type { DeliveryWindow, Product, WeeklyMenu, WeeklyMenuItem } from "./types";
+import { isWeeklyMenuItemUnavailable } from "./menu-availability";
 
 export const bakery = {
   name: "Luna & Lorelai's Sourdough",
@@ -213,6 +214,7 @@ export function getMenuProduct(productId: string) {
   return {
     ...product,
     ...item,
+    unavailable: isWeeklyMenuItemUnavailable(item),
     remainingQuantity: Math.max(item.availableQuantity - item.soldQuantity, 0),
   };
 }

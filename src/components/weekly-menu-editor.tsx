@@ -9,6 +9,7 @@ import {
   readAdminJsonResponse,
 } from "@/lib/admin-api";
 import { validateWeeklyMenuForm } from "@/lib/admin-form-validation";
+import { isWeeklyMenuItemUnavailable } from "@/lib/menu-availability";
 import type { Product, WeeklyMenu, WeeklyMenuSummary } from "@/lib/types";
 import { formatCurrency } from "@/lib/utils";
 import { Button } from "./button";
@@ -19,6 +20,7 @@ type MenuItemForm = {
   availableQuantity: number;
   soldQuantity: number;
   featured: boolean;
+  unavailable: boolean;
 };
 
 type WeeklyMenuForm = {
@@ -53,12 +55,14 @@ function buildForm(weeklyMenu: WeeklyMenu, products: Product[]): WeeklyMenuForm 
     published: weeklyMenu.published,
     items: products.map((product) => {
       const existing = weeklyMenu.items.find((item) => item.productId === product.id);
+      const unavailable = existing ? isWeeklyMenuItemUnavailable(existing) : false;
       return {
         productId: product.id,
         included: Boolean(existing),
         availableQuantity: existing?.availableQuantity ?? 0,
         soldQuantity: existing?.soldQuantity ?? 0,
-        featured: existing?.featured ?? false,
+        featured: unavailable ? false : existing?.featured ?? false,
+        unavailable,
       };
     }),
   };
@@ -70,6 +74,7 @@ function getRemainingQuantity(item: MenuItemForm) {
 
 function getInventoryWarning(item: MenuItemForm, productName: string) {
   if (!item.included) return null;
+  if (item.unavailable) return null;
   if (item.soldQuantity > item.availableQuantity) {
     return `${productName} has more sold than available.`;
   }
@@ -116,12 +121,13 @@ export function WeeklyMenuEditor({
   const includedItems = form.items.filter((item) => item.included);
   const summary = includedItems.reduce(
     (current, item) => ({
-      available: current.available + item.availableQuantity,
-      sold: current.sold + item.soldQuantity,
-      remaining: current.remaining + getRemainingQuantity(item),
-      featured: current.featured + (item.featured ? 1 : 0),
+      available: current.available + (item.unavailable ? 0 : item.availableQuantity),
+      sold: current.sold + (item.unavailable ? 0 : item.soldQuantity),
+      remaining: current.remaining + (item.unavailable ? 0 : getRemainingQuantity(item)),
+      featured: current.featured + (!item.unavailable && item.featured ? 1 : 0),
+      unavailable: current.unavailable + (item.unavailable ? 1 : 0),
     }),
-    { available: 0, sold: 0, remaining: 0, featured: 0 },
+    { available: 0, sold: 0, remaining: 0, featured: 0, unavailable: 0 },
   );
   const includedItemCount = includedItems.length;
 
@@ -356,7 +362,7 @@ export function WeeklyMenuEditor({
         />
       </label>
 
-      <div className="mt-5 grid gap-3 rounded-md border border-stone-200 bg-[#fffaf2] p-4 sm:grid-cols-4">
+      <div className="mt-5 grid gap-3 rounded-md border border-stone-200 bg-[#fffaf2] p-4 sm:grid-cols-5">
         <div>
           <p className="text-xs font-bold uppercase tracking-wide text-stone-500">
             Included
@@ -382,6 +388,12 @@ export function WeeklyMenuEditor({
             Featured
           </p>
           <p className="mt-1 text-2xl font-bold text-stone-950">{summary.featured}</p>
+        </div>
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wide text-stone-500">
+            Unavailable
+          </p>
+          <p className="mt-1 text-2xl font-bold text-stone-950">{summary.unavailable}</p>
         </div>
       </div>
 
@@ -423,6 +435,7 @@ export function WeeklyMenuEditor({
                             updateItem(product.id, {
                               included: event.target.checked,
                               featured: event.target.checked ? item.featured : false,
+                              unavailable: event.target.checked ? item.unavailable : false,
                             })
                           }
                         />
@@ -431,9 +444,28 @@ export function WeeklyMenuEditor({
                       <label className="inline-flex items-center gap-2 text-sm font-semibold text-stone-700">
                         <input
                           type="checkbox"
+                          aria-label={`Mark ${product.name} currently unavailable`}
+                          checked={item.unavailable}
+                          disabled={!item.included}
+                          onChange={(event) =>
+                            updateItem(product.id, {
+                              unavailable: event.target.checked,
+                              availableQuantity: event.target.checked
+                                ? 0
+                                : item.availableQuantity,
+                              soldQuantity: event.target.checked ? 0 : item.soldQuantity,
+                              featured: event.target.checked ? false : item.featured,
+                            })
+                          }
+                        />
+                        Unavailable
+                      </label>
+                      <label className="inline-flex items-center gap-2 text-sm font-semibold text-stone-700">
+                        <input
+                          type="checkbox"
                           aria-label={`Feature ${product.name} on weekly menu`}
                           checked={item.featured}
-                          disabled={!item.included}
+                          disabled={!item.included || item.unavailable}
                           onChange={(event) =>
                             updateItem(product.id, { featured: event.target.checked })
                           }
@@ -456,7 +488,7 @@ export function WeeklyMenuEditor({
                     <input
                       className="h-10 min-w-0 rounded-md border border-stone-300 bg-white px-3 font-normal disabled:bg-stone-100"
                       aria-label={`${product.name} available quantity`}
-                      disabled={!item.included}
+                      disabled={!item.included || item.unavailable}
                       inputMode="numeric"
                       min={0}
                       step={1}
@@ -474,7 +506,7 @@ export function WeeklyMenuEditor({
                     <input
                       className="h-10 min-w-0 rounded-md border border-stone-300 bg-white px-3 font-normal disabled:bg-stone-100"
                       aria-label={`${product.name} sold quantity`}
-                      disabled={!item.included}
+                      disabled={!item.included || item.unavailable}
                       inputMode="numeric"
                       min={0}
                       step={1}
@@ -490,7 +522,11 @@ export function WeeklyMenuEditor({
                   <div className="grid gap-1 text-sm font-semibold text-stone-700">
                     Left
                     <div className="flex h-10 items-center rounded-md border border-stone-200 bg-[#fffaf2] px-3 font-bold text-[#23443b]">
-                      {item.included ? remainingQuantity : "-"}
+                      {item.included
+                        ? item.unavailable
+                          ? "Unavailable"
+                          : remainingQuantity
+                        : "-"}
                     </div>
                   </div>
                 </div>

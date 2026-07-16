@@ -38,6 +38,35 @@ describe("weekly menu admin validation", () => {
     ).toBe(false);
   });
 
+  it("requires zero-inventory included items to be marked unavailable", () => {
+    expect(
+      weeklyMenuAdminSchema.safeParse({
+        ...validMenu,
+        items: [
+          {
+            ...validMenu.items[0],
+            availableQuantity: 0,
+            soldQuantity: 0,
+          },
+        ],
+      }).success,
+    ).toBe(false);
+
+    expect(
+      weeklyMenuAdminSchema.safeParse({
+        ...validMenu,
+        items: [
+          {
+            ...validMenu.items[0],
+            availableQuantity: 0,
+            soldQuantity: 0,
+            unavailable: true,
+          },
+        ],
+      }).success,
+    ).toBe(true);
+  });
+
   it("rejects cutoff dates after the menu starts", () => {
     expect(
       weeklyMenuAdminSchema.safeParse({

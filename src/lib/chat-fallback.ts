@@ -1,5 +1,6 @@
 import { getCutoffMessage } from "./cutoff";
 import type { DeliverySettings } from "./delivery";
+import { canOrderMenuProduct } from "./menu-availability";
 import type { MenuProduct, WeeklyMenu } from "./types";
 
 export type ChatFallbackContext = {
@@ -19,7 +20,7 @@ function findPostalCode(message: string) {
 }
 
 function menuSummary(menu: MenuProduct[]) {
-  const availableItems = menu.filter((item) => item.remainingQuantity > 0);
+  const availableItems = menu.filter((item) => canOrderMenuProduct(item));
   if (!availableItems.length) {
     return "The current bake drop is sold out or not available for checkout right now.";
   }

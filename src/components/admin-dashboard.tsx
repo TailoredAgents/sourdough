@@ -26,6 +26,10 @@ import {
   summarizeAdminEmailTest,
 } from "@/lib/admin-email-test";
 import type { DeliverySettings } from "@/lib/delivery";
+import {
+  canOrderMenuProduct,
+  getMenuProductAvailabilityLabel,
+} from "@/lib/menu-availability";
 import type {
   AiKnowledgeEntry,
   CustomerMessage,
@@ -92,9 +96,18 @@ export function AdminDashboard({
   const pendingPaymentCount = orders.filter((order) => order.status === "pending_payment").length;
   const paidOrderCount = orders.filter((order) => order.status === "paid").length;
   const approvedKnowledgeCount = aiKnowledgeEntries.filter((entry) => entry.approved).length;
-  const menuCapacity = menu.reduce((sum, item) => sum + item.availableQuantity, 0);
-  const soldCount = menu.reduce((sum, item) => sum + item.soldQuantity, 0);
-  const remainingCount = menu.reduce((sum, item) => sum + item.remainingQuantity, 0);
+  const menuCapacity = menu.reduce(
+    (sum, item) => sum + (item.unavailable ? 0 : item.availableQuantity),
+    0,
+  );
+  const soldCount = menu.reduce(
+    (sum, item) => sum + (item.unavailable ? 0 : item.soldQuantity),
+    0,
+  );
+  const remainingCount = menu.reduce(
+    (sum, item) => sum + (item.unavailable ? 0 : item.remainingQuantity),
+    0,
+  );
   const draftStats = getAdminDraftStats(draft);
   const draftWarnings = getAdminDraftReviewWarnings(draft);
   const stats: { label: string; value: string; Icon: LucideIcon }[] = [
@@ -336,11 +349,23 @@ export function AdminDashboard({
                       <td className="py-3 font-semibold text-stone-950">{item.name}</td>
                       <td className="py-3 text-stone-700">{item.category}</td>
                       <td className="py-3 text-stone-700">{formatCurrency(item.priceCents)}</td>
-                      <td className="py-3 text-stone-700">{item.soldQuantity}</td>
-                      <td className="py-3 text-stone-700">{item.availableQuantity}</td>
+                      <td className="py-3 text-stone-700">
+                        {item.unavailable ? "-" : item.soldQuantity}
+                      </td>
+                      <td className="py-3 text-stone-700">
+                        {item.unavailable ? "-" : item.availableQuantity}
+                      </td>
                       <td className="py-3">
-                        <span className="rounded-sm bg-emerald-50 px-2 py-1 text-xs font-bold uppercase text-emerald-800">
-                          Active
+                        <span
+                          className={`rounded-sm px-2 py-1 text-xs font-bold uppercase ${
+                            canOrderMenuProduct(item)
+                              ? "bg-emerald-50 text-emerald-800"
+                              : "bg-stone-100 text-stone-600"
+                          }`}
+                        >
+                          {canOrderMenuProduct(item)
+                            ? "Active"
+                            : getMenuProductAvailabilityLabel(item)}
                         </span>
                       </td>
                     </tr>

@@ -79,6 +79,37 @@ describe("admin form validation", () => {
         ],
       }),
     ).toBe("Classic Country Loaf cannot have more sold than available.");
+
+    expect(
+      validateWeeklyMenuForm({
+        ...validWeeklyMenu,
+        items: [
+          {
+            included: true,
+            productName: "Classic Country Loaf",
+            availableQuantity: 0,
+            soldQuantity: 0,
+          },
+        ],
+      }),
+    ).toBe("Classic Country Loaf needs sellable inventory or must be marked unavailable.");
+  });
+
+  it("allows included products to be intentionally marked unavailable", () => {
+    expect(
+      validateWeeklyMenuForm({
+        ...validWeeklyMenu,
+        items: [
+          {
+            included: true,
+            productName: "Classic Country Loaf",
+            availableQuantity: 0,
+            soldQuantity: 0,
+            unavailable: true,
+          },
+        ],
+      }),
+    ).toBeNull();
   });
 
   it("blocks delivery settings that would break customer checkout", () => {

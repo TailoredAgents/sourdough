@@ -3,6 +3,7 @@ import { z } from "zod";
 import { buildChatFallbackAnswer } from "@/lib/chat-fallback";
 import { createCustomerQuestionMessage } from "@/lib/customer-messages";
 import { getCutoffMessage } from "@/lib/cutoff";
+import { getMenuProductAvailabilityLabel } from "@/lib/menu-availability";
 import { aiModel, getOpenAI } from "@/lib/openai";
 import { checkRateLimit } from "@/lib/rate-limit";
 import {
@@ -90,7 +91,7 @@ export async function POST(request: Request) {
     const menuContext = menu
       .map(
         (item) =>
-          `${item.name}: ${item.description} Price ${item.priceCents / 100}. Ingredients: ${item.ingredients.join(", ")}. Allergens: ${item.allergens.join(", ")}. Remaining: ${item.remainingQuantity}.`,
+          `${item.name}: ${item.description} Price ${item.priceCents / 100}. Ingredients: ${item.ingredients.join(", ")}. Allergens: ${item.allergens.join(", ")}. Availability: ${getMenuProductAvailabilityLabel(item)}.`,
       )
       .join("\n");
     const deliveryContext = `Allowed delivery ZIP codes: ${deliverySettings.allowedPostalCodes.join(", ")}. Delivery fee: ${deliverySettings.deliveryFeeCents / 100}. Service area copy: ${deliverySettings.serviceAreaCopy}`;

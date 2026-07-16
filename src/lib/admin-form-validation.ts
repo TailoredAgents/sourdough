@@ -5,6 +5,7 @@ type WeeklyMenuValidationItem = {
   productName?: string;
   availableQuantity: number;
   soldQuantity: number;
+  unavailable?: boolean;
 };
 
 type WeeklyMenuValidationInput = {
@@ -85,6 +86,9 @@ export function validateWeeklyMenuForm(input: WeeklyMenuValidationInput) {
     }
     if (!isWholeNumberInRange(item.soldQuantity, 0, 1000)) {
       return `${itemName} needs a sold quantity between 0 and 1000.`;
+    }
+    if (!item.unavailable && item.availableQuantity === 0) {
+      return `${itemName} needs sellable inventory or must be marked unavailable.`;
     }
     if (item.soldQuantity > item.availableQuantity) {
       return `${itemName} cannot have more sold than available.`;

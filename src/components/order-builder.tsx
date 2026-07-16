@@ -13,11 +13,16 @@ import {
   ShoppingBag,
 } from "lucide-react";
 import { trackEvent } from "@/lib/analytics";
+import {
+  canOrderMenuProduct,
+  getMenuProductAvailabilityLabel,
+} from "@/lib/menu-availability";
 import { getProductGuidance } from "@/lib/product-guidance";
 import { productPath } from "@/lib/product-slugs";
 import type { DeliveryAddress, DeliveryWindow, MenuProduct } from "@/lib/types";
 import { formatCurrency } from "@/lib/utils";
 import { Button } from "./button";
+import { ProductUnavailableOverlay } from "./product-unavailable-overlay";
 
 type DeliveryCheck = {
   eligible: boolean;
@@ -126,7 +131,7 @@ export function OrderBuilder({
         window.location.hash.replace("#select-", ""),
       );
       const product = menu.find((item) => item.id === productId);
-      if (!product || product.remainingQuantity <= 0) return;
+      if (!product || !canOrderMenuProduct(product)) return;
 
       handledSelectionHashRef.current = window.location.hash;
       if ((quantitiesRef.current[productId] || 0) > 0) return;
@@ -410,11 +415,14 @@ export function OrderBuilder({
                         sizes="140px"
                         className="object-cover"
                       />
+                      {item.unavailable ? <ProductUnavailableOverlay /> : null}
                     </div>
                   ) : (
                     <div
-                      className={`min-h-32 rounded-md bg-gradient-to-br ${item.imageStyle}`}
-                    />
+                      className={`relative min-h-32 overflow-hidden rounded-md bg-gradient-to-br ${item.imageStyle}`}
+                    >
+                      {item.unavailable ? <ProductUnavailableOverlay /> : null}
+                    </div>
                   )}
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
@@ -439,9 +447,7 @@ export function OrderBuilder({
                       Allergens: {item.allergens.join(", ")}
                     </p>
                     <p className="mt-1 text-sm font-semibold text-[#23443b]">
-                      {item.remainingQuantity > 0
-                        ? `${item.remainingQuantity} left this week`
-                        : "Sold out this week"}
+                      {getMenuProductAvailabilityLabel(item)}
                     </p>
                   </div>
                   <div className="flex min-w-0 items-center justify-between gap-3 sm:flex-col sm:items-end">
@@ -463,7 +469,7 @@ export function OrderBuilder({
                         type="button"
                         aria-label={`Add ${item.name}`}
                         className="flex size-10 items-center justify-center text-stone-700 hover:bg-stone-100 disabled:cursor-not-allowed disabled:text-stone-300"
-                        disabled={quantity >= item.remainingQuantity}
+                        disabled={!canOrderMenuProduct(item) || quantity >= item.remainingQuantity}
                         onClick={() => updateQuantity(item.id, 1, item.remainingQuantity)}
                       >
                         <Plus size={16} />

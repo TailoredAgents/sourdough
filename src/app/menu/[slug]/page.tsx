@@ -4,11 +4,16 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AlertTriangle, ArrowLeft, CheckCircle2, ShoppingBag, Truck } from "lucide-react";
 import { NotifySignup } from "@/components/notify-signup";
+import { ProductUnavailableOverlay } from "@/components/product-unavailable-overlay";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { bakery } from "@/lib/bakery-data";
 import { buildBreadcrumbList } from "@/lib/breadcrumbs";
 import { isAfterWeeklyCutoff } from "@/lib/cutoff";
+import {
+  canOrderMenuProduct,
+  getMenuProductAvailabilityLabel,
+} from "@/lib/menu-availability";
 import { getProductGuidance } from "@/lib/product-guidance";
 import { productPath, productSlug, findMenuProductBySlug } from "@/lib/product-slugs";
 import {
@@ -88,6 +93,8 @@ export default async function ProductPage({ params }: ProductRouteProps) {
   const siteUrl = `https://${bakery.domain}`;
   const orderHref = `/#select-${product.id}`;
   const afterCutoff = isAfterWeeklyCutoff(weeklyMenu?.orderCutoffAt);
+  const canOrder = canOrderMenuProduct(product);
+  const availabilityLabel = getMenuProductAvailabilityLabel(product);
   const productAction = afterCutoff ? "Request this item" : "Choose this item";
   const guidance = getProductGuidance(product);
   const deliveryZipCopy = deliverySettings.allowedPostalCodes.join(", ");
@@ -100,8 +107,10 @@ export default async function ProductPage({ params }: ProductRouteProps) {
     {
       question: `How do I order ${product.name}?`,
       answer:
-        product.remainingQuantity > 0
+        canOrder
           ? `Use the order button on this page to add ${product.name} from the weekly menu, then confirm your ZIP code, delivery address, delivery window, and checkout details.`
+          : product.unavailable
+            ? `${product.name} is currently unavailable this week. Check the weekly menu or ask a question before choosing another item.`
           : `${product.name} is sold out this week. Join the bake alert list to hear when future menus open.`,
     },
     {
@@ -136,9 +145,11 @@ export default async function ProductPage({ params }: ProductRouteProps) {
           price: (product.priceCents / 100).toFixed(2),
           priceCurrency: "USD",
           availability:
-            product.remainingQuantity > 0
+            canOrder
               ? "https://schema.org/InStock"
-              : "https://schema.org/SoldOut",
+              : product.unavailable
+                ? "https://schema.org/OutOfStock"
+                : "https://schema.org/SoldOut",
           url: `${siteUrl}${productPath(product)}`,
           areaServed: deliverySettings.allowedPostalCodes.join(", "),
         },
@@ -183,6 +194,7 @@ export default async function ProductPage({ params }: ProductRouteProps) {
               ) : (
                 <div className={`absolute inset-0 bg-gradient-to-br ${product.imageStyle}`} />
               )}
+              {product.unavailable ? <ProductUnavailableOverlay /> : null}
             </div>
 
             <div className="flex flex-col justify-center">
@@ -229,14 +241,12 @@ export default async function ProductPage({ params }: ProductRouteProps) {
                   {formatCurrency(product.priceCents)}
                 </span>
                 <span className="rounded-sm bg-white px-3 py-2 text-sm font-bold text-[#a94334]">
-                  {product.remainingQuantity > 0
-                    ? `${product.remainingQuantity} left this week`
-                    : "Sold out this week"}
+                  {availabilityLabel}
                 </span>
               </div>
 
               <div className="mt-7 flex flex-col gap-3 sm:flex-row">
-                {product.remainingQuantity > 0 ? (
+                {canOrder ? (
                   <Link
                     href={orderHref}
                     data-analytics-event="choose_item_click"
@@ -249,7 +259,10 @@ export default async function ProductPage({ params }: ProductRouteProps) {
                     {productAction}
                   </Link>
                 ) : (
-                  <NotifySignup compact source={`sold-out-top-${productSlug(product)}`} />
+                  <NotifySignup
+                    compact
+                    source={`${product.unavailable ? "unavailable" : "sold-out"}-top-${productSlug(product)}`}
+                  />
                 )}
                 <Link
                   href="/#questions"
@@ -366,22 +379,26 @@ export default async function ProductPage({ params }: ProductRouteProps) {
                 Ready to order?
               </p>
               <h2 className="mt-3 text-3xl font-bold">
-                {product.remainingQuantity > 0
+                {canOrder
                   ? afterCutoff
                     ? `Request ${product.name} for this week's bake`
                     : `Add ${product.name} to this week's delivery order`
+                  : product.unavailable
+                    ? `${product.name} is currently unavailable`
                   : `${product.name} is sold out this week`}
               </h2>
               <p className="mt-3 text-sm leading-6 text-stone-100">
-                {product.remainingQuantity > 0
+                {canOrder
                   ? afterCutoff
                     ? "Return to the weekly order form with this item in view, then confirm your ZIP code, delivery window, and request details."
                     : "Return to the weekly order form with this item in view, then confirm your ZIP code, delivery window, and checkout details."
+                  : product.unavailable
+                    ? "Check the weekly menu for available items, or ask a question before choosing another item."
                   : "Join the bake alert list to hear when future menus open, or ask a question before choosing another item."}
               </p>
             </div>
             <div className="grid gap-3 sm:grid-cols-[auto_auto] lg:justify-end">
-              {product.remainingQuantity > 0 ? (
+              {canOrder ? (
                 <Link
                   href={orderHref}
                   data-analytics-event="choose_item_click"
@@ -394,7 +411,10 @@ export default async function ProductPage({ params }: ProductRouteProps) {
                   {productAction}
                 </Link>
               ) : (
-                <NotifySignup compact source={`sold-out-${productSlug(product)}`} />
+                <NotifySignup
+                  compact
+                  source={`${product.unavailable ? "unavailable" : "sold-out"}-${productSlug(product)}`}
+                />
               )}
               <Link
                 href="/#questions"

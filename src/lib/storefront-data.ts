@@ -13,6 +13,7 @@ import {
   normalizePostalCode,
   type DeliverySettings,
 } from "./delivery";
+import { isWeeklyMenuItemUnavailable } from "./menu-availability";
 import type {
   DeliveryWindow,
   MenuProduct,
@@ -153,6 +154,10 @@ function mapMenuItem(row: WeeklyMenuItemRow): MenuProduct | null {
     availableQuantity: row.available_quantity,
     soldQuantity: row.sold_quantity,
     featured: row.featured,
+    unavailable: isWeeklyMenuItemUnavailable({
+      availableQuantity: row.available_quantity,
+      soldQuantity: row.sold_quantity,
+    }),
     remainingQuantity: Math.max(row.available_quantity - row.sold_quantity, 0),
   };
 }

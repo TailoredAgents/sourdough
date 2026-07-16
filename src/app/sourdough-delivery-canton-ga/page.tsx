@@ -10,11 +10,16 @@ import {
 } from "lucide-react";
 import { DeliveryZipChecker } from "@/components/delivery-zip-checker";
 import { NotifySignup } from "@/components/notify-signup";
+import { ProductUnavailableOverlay } from "@/components/product-unavailable-overlay";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { bakery } from "@/lib/bakery-data";
 import { buildBreadcrumbList } from "@/lib/breadcrumbs";
 import { getCutoffMessage } from "@/lib/cutoff";
+import {
+  canOrderMenuProduct,
+  getMenuProductAvailabilityLabel,
+} from "@/lib/menu-availability";
 import { getProductGuidance } from "@/lib/product-guidance";
 import { productPath } from "@/lib/product-slugs";
 import { serviceAreaPath } from "@/lib/service-areas";
@@ -268,7 +273,7 @@ export default async function CantonDeliveryPage() {
                       data-analytics-product-id={item.id}
                       data-analytics-product-name={item.name}
                       data-analytics-section="canton_delivery_menu_image"
-                      className="relative block h-44 bg-stone-100"
+                      className="relative block h-44 overflow-hidden bg-stone-100"
                     >
                       <Image
                         src={item.imageUrl}
@@ -277,8 +282,21 @@ export default async function CantonDeliveryPage() {
                         sizes="(min-width: 768px) 25vw, 100vw"
                         className="object-cover"
                       />
+                      {item.unavailable ? <ProductUnavailableOverlay /> : null}
                     </Link>
-                  ) : null}
+                  ) : (
+                    <Link
+                      href={productPath(item)}
+                      data-analytics-event="product_detail_click"
+                      data-analytics-product-id={item.id}
+                      data-analytics-product-name={item.name}
+                      data-analytics-section="canton_delivery_menu_image"
+                      aria-label={`View ${item.name} details`}
+                      className={`relative block h-44 overflow-hidden bg-gradient-to-br ${item.imageStyle}`}
+                    >
+                      {item.unavailable ? <ProductUnavailableOverlay /> : null}
+                    </Link>
+                  )}
                   <div className="p-5">
                     <div className="flex items-start justify-between gap-3">
                       <Link
@@ -303,10 +321,10 @@ export default async function CantonDeliveryPage() {
                       {guidance.bestFor}
                     </p>
                     <p className="mt-3 text-sm font-bold text-[#a94334]">
-                      {item.remainingQuantity} left this week
+                      {getMenuProductAvailabilityLabel(item)}
                     </p>
                     <div className="mt-4 flex flex-wrap items-center gap-3">
-                      {item.remainingQuantity > 0 ? (
+                      {canOrderMenuProduct(item) ? (
                         <Link
                           href={`/#select-${item.id}`}
                           data-analytics-event="choose_item_click"
@@ -319,7 +337,7 @@ export default async function CantonDeliveryPage() {
                         </Link>
                       ) : (
                         <span className="inline-flex h-10 items-center justify-center rounded-md bg-stone-200 px-4 text-sm font-bold text-stone-600">
-                          Sold out
+                          {item.unavailable ? "Currently unavailable" : "Sold out"}
                         </span>
                       )}
                       <Link

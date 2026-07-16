@@ -13,6 +13,7 @@ import {
   createPendingCheckoutOrder,
   releasePendingOrder,
 } from "@/lib/order-records";
+import { canOrderMenuProduct } from "@/lib/menu-availability";
 import {
   getDeliverySettingsData,
   getDeliveryWindowData,
@@ -174,6 +175,12 @@ export async function POST(request: Request) {
     if (!menuProduct) {
       return NextResponse.json(
         { error: "One of the selected products is no longer available." },
+        { status: 400 },
+      );
+    }
+    if (!canOrderMenuProduct(menuProduct)) {
+      return NextResponse.json(
+        { error: `${menuProduct.name} is currently unavailable.` },
         { status: 400 },
       );
     }

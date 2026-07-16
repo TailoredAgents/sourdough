@@ -22,6 +22,7 @@ export type WeeklyMenuItem = {
   availableQuantity: number;
   soldQuantity: number;
   featured?: boolean;
+  unavailable?: boolean;
 };
 
 export type WeeklyMenu = {

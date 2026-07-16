@@ -11,10 +11,15 @@ import { CustomerChat } from "@/components/customer-chat";
 import { DeliveryZipChecker } from "@/components/delivery-zip-checker";
 import { NotifySignup } from "@/components/notify-signup";
 import { OrderBuilder } from "@/components/order-builder";
+import { ProductUnavailableOverlay } from "@/components/product-unavailable-overlay";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { bakery } from "@/lib/bakery-data";
 import { getCutoffMessage, isAfterWeeklyCutoff } from "@/lib/cutoff";
+import {
+  canOrderMenuProduct,
+  getMenuProductAvailabilityLabel,
+} from "@/lib/menu-availability";
 import { getProductGuidance } from "@/lib/product-guidance";
 import { productPath } from "@/lib/product-slugs";
 import { getStorefrontData } from "@/lib/storefront-data";
@@ -99,11 +104,9 @@ export default async function Home() {
       detailsHref: productPath(item),
       price: formatCurrency(item.priceCents),
       remainingQuantity: item.remainingQuantity,
+      canOrder: canOrderMenuProduct(item),
       bestFor: guidance.bestFor,
-      status:
-        item.remainingQuantity > 0
-          ? `${item.remainingQuantity} left this week`
-          : "Sold out this week",
+      status: getMenuProductAvailabilityLabel(item),
     };
   });
   const structuredData = {
@@ -158,9 +161,11 @@ export default async function Home() {
           price: (item.priceCents / 100).toFixed(2),
           priceCurrency: "USD",
           availability:
-            item.remainingQuantity > 0
+            canOrderMenuProduct(item)
               ? "https://schema.org/InStock"
-              : "https://schema.org/SoldOut",
+              : item.unavailable
+                ? "https://schema.org/OutOfStock"
+                : "https://schema.org/SoldOut",
         })),
       },
       {
@@ -180,9 +185,11 @@ export default async function Home() {
               price: (item.priceCents / 100).toFixed(2),
               priceCurrency: "USD",
               availability:
-                item.remainingQuantity > 0
+                canOrderMenuProduct(item)
                   ? "https://schema.org/InStock"
-                  : "https://schema.org/SoldOut",
+                  : item.unavailable
+                    ? "https://schema.org/OutOfStock"
+                    : "https://schema.org/SoldOut",
               url: `${siteUrl}${productPath(item)}`,
             },
           },
@@ -300,7 +307,7 @@ export default async function Home() {
                             data-analytics-product-id={item.id}
                             data-analytics-product-name={item.name}
                             data-analytics-section="menu_card_image"
-                            className="relative block h-44 bg-stone-100"
+                            className="relative block h-44 overflow-hidden bg-stone-100"
                           >
                             <Image
                               src={item.imageUrl}
@@ -309,6 +316,7 @@ export default async function Home() {
                               sizes="(min-width: 1024px) 33vw, (min-width: 768px) 50vw, 100vw"
                               className="object-cover"
                             />
+                            {item.unavailable ? <ProductUnavailableOverlay /> : null}
                           </Link>
                         ) : (
                           <Link
@@ -318,8 +326,10 @@ export default async function Home() {
                             data-analytics-product-name={item.name}
                             data-analytics-section="menu_card_image"
                             aria-label={`View ${item.name} details`}
-                            className={`block h-44 bg-gradient-to-br ${item.imageStyle}`}
-                          />
+                            className={`relative block h-44 overflow-hidden bg-gradient-to-br ${item.imageStyle}`}
+                          >
+                            {item.unavailable ? <ProductUnavailableOverlay /> : null}
+                          </Link>
                         )}
                         <div className="p-5">
                           <div className="flex items-start justify-between gap-4">
@@ -349,10 +359,10 @@ export default async function Home() {
                               Allergens: {item.allergens.join(", ")}
                             </span>
                             <span className="font-bold text-[#a94334]">
-                              {item.remainingQuantity} left
+                              {getMenuProductAvailabilityLabel(item)}
                             </span>
                           </div>
-                          {item.remainingQuantity > 0 ? (
+                          {canOrderMenuProduct(item) ? (
                             <a
                               href={`#select-${item.id}`}
                               data-analytics-event="choose_item_click"
@@ -365,7 +375,7 @@ export default async function Home() {
                             </a>
                           ) : (
                             <span className="mt-4 inline-flex h-10 items-center justify-center rounded-md bg-stone-200 px-4 text-sm font-bold text-stone-600">
-                              Sold out this week
+                              {item.unavailable ? "Currently unavailable" : "Sold out this week"}
                             </span>
                           )}
                           <Link
@@ -429,7 +439,7 @@ export default async function Home() {
                               {item.status}
                             </p>
                           </div>
-                          {item.remainingQuantity > 0 ? (
+                          {item.canOrder ? (
                             <a
                               href={item.href}
                               data-analytics-event="choose_item_click"
@@ -442,7 +452,7 @@ export default async function Home() {
                             </a>
                           ) : (
                             <span className="inline-flex h-10 items-center justify-center rounded-md bg-stone-200 px-4 text-sm font-bold text-stone-600">
-                              Sold out
+                              {item.status}
                             </span>
                           )}
                         </div>

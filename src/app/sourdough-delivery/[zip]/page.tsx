@@ -4,11 +4,16 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { CheckCircle2, MapPin, ShoppingBag, Truck } from "lucide-react";
 import { NotifySignup } from "@/components/notify-signup";
+import { ProductUnavailableOverlay } from "@/components/product-unavailable-overlay";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { bakery } from "@/lib/bakery-data";
 import { buildBreadcrumbList } from "@/lib/breadcrumbs";
 import { normalizePostalCode } from "@/lib/delivery";
+import {
+  canOrderMenuProduct,
+  getMenuProductAvailabilityLabel,
+} from "@/lib/menu-availability";
 import {
   isAllowedServiceArea,
   serviceAreaDeliveryPagePath,
@@ -305,7 +310,7 @@ export default async function ServiceAreaPage({ params }: ServiceAreaPageProps) 
                         data-analytics-product-id={item.id}
                         data-analytics-product-name={item.name}
                         data-analytics-section="service_area_menu_image"
-                        className="relative block h-36 bg-stone-100"
+                        className="relative block h-36 overflow-hidden bg-stone-100"
                       >
                         <Image
                           src={item.imageUrl}
@@ -314,8 +319,21 @@ export default async function ServiceAreaPage({ params }: ServiceAreaPageProps) 
                           sizes="(min-width: 768px) 25vw, 100vw"
                           className="object-cover"
                         />
+                        {item.unavailable ? <ProductUnavailableOverlay /> : null}
                       </Link>
-                    ) : null}
+                    ) : (
+                      <Link
+                        href={productPath(item)}
+                        data-analytics-event="product_detail_click"
+                        data-analytics-product-id={item.id}
+                        data-analytics-product-name={item.name}
+                        data-analytics-section="service_area_menu_image"
+                        aria-label={`View ${item.name} details`}
+                        className={`relative block h-36 overflow-hidden bg-gradient-to-br ${item.imageStyle}`}
+                      >
+                        {item.unavailable ? <ProductUnavailableOverlay /> : null}
+                      </Link>
+                    )}
                     <div className="p-4">
                       <div className="flex items-start justify-between gap-3">
                         <Link
@@ -336,12 +354,10 @@ export default async function ServiceAreaPage({ params }: ServiceAreaPageProps) 
                         {guidance.bestFor}
                       </p>
                       <p className="mt-3 text-sm font-bold text-[#a94334]">
-                        {item.remainingQuantity > 0
-                          ? `${item.remainingQuantity} left this week`
-                          : "Sold out this week"}
+                        {getMenuProductAvailabilityLabel(item)}
                       </p>
                       <div className="mt-4 flex flex-wrap items-center gap-3">
-                        {item.remainingQuantity > 0 ? (
+                        {canOrderMenuProduct(item) ? (
                           <Link
                             href={chooseHref}
                             data-analytics-event="choose_item_click"
@@ -354,7 +370,7 @@ export default async function ServiceAreaPage({ params }: ServiceAreaPageProps) 
                           </Link>
                         ) : (
                           <span className="inline-flex h-10 items-center justify-center rounded-md bg-stone-200 px-4 text-sm font-bold text-stone-600">
-                            Sold out
+                            {item.unavailable ? "Currently unavailable" : "Sold out"}
                           </span>
                         )}
                         <Link
