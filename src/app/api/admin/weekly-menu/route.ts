@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { getCurrentAdmin } from "@/lib/admin-auth";
 import { getSupabaseAdminClient } from "@/lib/supabase";
 import {
@@ -7,6 +8,15 @@ import {
   getWeeklyMenusData,
 } from "@/lib/storefront-data";
 import { weeklyMenuAdminSchema } from "@/lib/weekly-menu-admin";
+
+function revalidateStorefrontMenuRoutes() {
+  revalidatePath("/");
+  revalidatePath("/sourdough-delivery-canton-ga");
+  revalidatePath("/sourdough-delivery-woodstock-ga");
+  revalidatePath("/menu/[slug]", "page");
+  revalidatePath("/sourdough-delivery/[zip]", "page");
+  revalidatePath("/sitemap.xml");
+}
 
 async function getWeeklyMenuAdminPayload(selectedId?: string | null) {
   const [weeklyMenus, activeWeeklyMenu] = await Promise.all([
@@ -136,6 +146,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
   }
+
+  revalidateStorefrontMenuRoutes();
 
   return NextResponse.json(await getWeeklyMenuAdminPayload(weeklyMenuId));
 }

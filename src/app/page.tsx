@@ -26,6 +26,8 @@ import { getStorefrontData } from "@/lib/storefront-data";
 import { absoluteImageUrl } from "@/lib/url";
 import { formatCurrency } from "@/lib/utils";
 
+export const dynamic = "force-dynamic";
+
 export default async function Home() {
   const { menu, deliveryWindows, weeklyMenu, deliverySettings } = await getStorefrontData();
   const afterCutoff = isAfterWeeklyCutoff(weeklyMenu?.orderCutoffAt);

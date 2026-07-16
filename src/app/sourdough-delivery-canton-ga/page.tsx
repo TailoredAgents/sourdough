@@ -29,6 +29,8 @@ import { formatCurrency } from "@/lib/utils";
 const pagePath = "/sourdough-delivery-canton-ga";
 const pageUrl = `https://${bakery.domain}${pagePath}`;
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "Sourdough Delivery in Canton, GA",
   description:

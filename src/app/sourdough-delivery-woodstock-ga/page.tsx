@@ -4,11 +4,16 @@ import Link from "next/link";
 import { CheckCircle2, MapPin, ShoppingBag, Truck } from "lucide-react";
 import { DeliveryZipChecker } from "@/components/delivery-zip-checker";
 import { NotifySignup } from "@/components/notify-signup";
+import { ProductUnavailableOverlay } from "@/components/product-unavailable-overlay";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { bakery } from "@/lib/bakery-data";
 import { buildBreadcrumbList } from "@/lib/breadcrumbs";
 import { getCutoffMessage } from "@/lib/cutoff";
+import {
+  canOrderMenuProduct,
+  getMenuProductAvailabilityLabel,
+} from "@/lib/menu-availability";
 import { getProductGuidance } from "@/lib/product-guidance";
 import { productPath } from "@/lib/product-slugs";
 import { serviceAreaPath } from "@/lib/service-areas";
@@ -18,6 +23,8 @@ import { formatCurrency } from "@/lib/utils";
 const pagePath = "/sourdough-delivery-woodstock-ga";
 const pageUrl = `https://${bakery.domain}${pagePath}`;
 const woodstockZipSet = new Set(["30188", "30189"]);
+
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "Sourdough Delivery in Woodstock, GA",
@@ -263,7 +270,7 @@ export default async function WoodstockDeliveryPage() {
                         data-analytics-product-id={item.id}
                         data-analytics-product-name={item.name}
                         data-analytics-section="woodstock_delivery_menu_image"
-                        className="relative block h-44 bg-stone-100"
+                        className="relative block h-44 overflow-hidden bg-stone-100"
                       >
                         <Image
                           src={item.imageUrl}
@@ -272,8 +279,21 @@ export default async function WoodstockDeliveryPage() {
                           sizes="(min-width: 768px) 25vw, 100vw"
                           className="object-cover"
                         />
+                        {item.unavailable ? <ProductUnavailableOverlay /> : null}
                       </Link>
-                    ) : null}
+                    ) : (
+                      <Link
+                        href={productPath(item)}
+                        data-analytics-event="product_detail_click"
+                        data-analytics-product-id={item.id}
+                        data-analytics-product-name={item.name}
+                        data-analytics-section="woodstock_delivery_menu_image"
+                        aria-label={`View ${item.name} details`}
+                        className={`relative block h-44 overflow-hidden bg-gradient-to-br ${item.imageStyle}`}
+                      >
+                        {item.unavailable ? <ProductUnavailableOverlay /> : null}
+                      </Link>
+                    )}
                     <div className="p-5">
                       <div className="flex items-start justify-between gap-3">
                         <Link
@@ -297,17 +317,26 @@ export default async function WoodstockDeliveryPage() {
                         <span className="font-semibold text-stone-950">Best for:</span>{" "}
                         {guidance.bestFor}
                       </p>
+                      <p className="mt-3 text-sm font-bold text-[#a94334]">
+                        {getMenuProductAvailabilityLabel(item)}
+                      </p>
                       <div className="mt-4 flex flex-wrap items-center gap-3">
-                        <Link
-                          href={`/#select-${item.id}`}
-                          data-analytics-event="choose_item_click"
-                          data-analytics-product-id={item.id}
-                          data-analytics-product-name={item.name}
-                          data-analytics-section="woodstock_delivery_menu"
-                          className="inline-flex h-10 items-center justify-center rounded-md bg-[#23443b] px-4 text-sm font-bold text-white transition hover:bg-[#1b352e]"
-                        >
-                          Choose this item
-                        </Link>
+                        {canOrderMenuProduct(item) ? (
+                          <Link
+                            href={`/#select-${item.id}`}
+                            data-analytics-event="choose_item_click"
+                            data-analytics-product-id={item.id}
+                            data-analytics-product-name={item.name}
+                            data-analytics-section="woodstock_delivery_menu"
+                            className="inline-flex h-10 items-center justify-center rounded-md bg-[#23443b] px-4 text-sm font-bold text-white transition hover:bg-[#1b352e]"
+                          >
+                            Choose this item
+                          </Link>
+                        ) : (
+                          <span className="inline-flex h-10 items-center justify-center rounded-md bg-stone-200 px-4 text-sm font-bold text-stone-600">
+                            {item.unavailable ? "Currently unavailable" : "Sold out"}
+                          </span>
+                        )}
                         <Link
                           href={productPath(item)}
                           data-analytics-event="product_detail_click"

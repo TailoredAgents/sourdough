@@ -24,6 +24,8 @@ import {
 import { absoluteImageUrl } from "@/lib/url";
 import { formatCurrency } from "@/lib/utils";
 
+export const dynamic = "force-dynamic";
+
 type ProductRouteProps = {
   params: Promise<{
     slug: string;

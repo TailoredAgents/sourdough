@@ -36,6 +36,8 @@ type ServiceAreaPageProps = {
   }>;
 };
 
+export const dynamic = "force-dynamic";
+
 async function getServiceArea(zip: string) {
   const postalCode = normalizePostalCode(zip);
   const deliverySettings = await getDeliverySettingsData();
