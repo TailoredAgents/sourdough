@@ -142,6 +142,70 @@ export function WeeklyMenuEditor({
     }));
   }
 
+  function updateItemUnavailable(product: Product, unavailable: boolean) {
+    const currentItem = form.items.find((item) => item.productId === product.id);
+    if (!currentItem) return;
+
+    updateItem(product.id, {
+      unavailable,
+      featured: unavailable ? false : currentItem.featured,
+    });
+
+    if (!form.id) {
+      setMessage("Save the weekly menu before changing item availability.");
+      return;
+    }
+
+    setMessage(null);
+    startTransition(async () => {
+      try {
+        const response = await fetch("/api/admin/weekly-menu", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            weeklyMenuId: form.id,
+            productId: product.id,
+            unavailable,
+          }),
+        });
+        const payload = await readAdminJsonResponse(response);
+
+        if (
+          !response.ok ||
+          !hasAdminKeys(payload, ["selectedWeeklyMenu"]) ||
+          !payload.selectedWeeklyMenu
+        ) {
+          updateItem(product.id, {
+            unavailable: currentItem.unavailable,
+            featured: currentItem.featured,
+          });
+          setMessage(getAdminPayloadError(payload) || "Item availability could not be saved.");
+          return;
+        }
+
+        if (hasAdminKeys(payload, ["weeklyMenus"]) && Array.isArray(payload.weeklyMenus)) {
+          setWeeklyMenus(payload.weeklyMenus as WeeklyMenuSummary[]);
+          onWeeklyMenusChange(payload.weeklyMenus as WeeklyMenuSummary[]);
+        }
+
+        const selectedWeeklyMenu = payload.selectedWeeklyMenu as WeeklyMenu;
+        setForm(buildForm(selectedWeeklyMenu, products));
+        setMessage(
+          unavailable
+            ? `${product.name} marked currently unavailable.`
+            : `${product.name} marked available.`,
+        );
+        router.refresh();
+      } catch {
+        updateItem(product.id, {
+          unavailable: currentItem.unavailable,
+          featured: currentItem.featured,
+        });
+        setMessage("Item availability could not be saved. Check your connection and try again.");
+      }
+    });
+  }
+
   function cloneAsNewMenu() {
     setMessage("Cloned current menu. Adjust dates, then save to create it.");
     setIsUnsavedClone(true);
@@ -456,10 +520,7 @@ export function WeeklyMenuEditor({
                           checked={item.unavailable}
                           disabled={!item.included}
                           onChange={(event) =>
-                            updateItem(product.id, {
-                              unavailable: event.target.checked,
-                              featured: event.target.checked ? false : item.featured,
-                            })
+                            updateItemUnavailable(product, event.target.checked)
                           }
                         />
                         Unavailable
@@ -543,12 +604,14 @@ export function WeeklyMenuEditor({
       {message ? (
         <p
           className={`mt-4 inline-flex items-center gap-2 text-sm font-semibold ${
-            message.startsWith("Weekly menu saved.")
+            message.startsWith("Weekly menu saved.") || message.includes(" marked ")
               ? "text-emerald-800"
               : "text-[#a94334]"
           }`}
         >
-          {message.startsWith("Weekly menu saved.") ? <CheckCircle2 size={16} /> : null}
+          {message.startsWith("Weekly menu saved.") || message.includes(" marked ") ? (
+            <CheckCircle2 size={16} />
+          ) : null}
           {message}
         </p>
       ) : null}

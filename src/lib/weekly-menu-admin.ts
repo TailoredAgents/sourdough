@@ -42,3 +42,9 @@ export const weeklyMenuAdminSchema = z
   });
 
 export type WeeklyMenuAdminInput = z.infer<typeof weeklyMenuAdminSchema>;
+
+export const weeklyMenuItemAvailabilityAdminSchema = z.object({
+  weeklyMenuId: z.string().uuid(),
+  productId: z.string().uuid(),
+  unavailable: z.boolean(),
+});

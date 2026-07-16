@@ -7,7 +7,10 @@ import {
   getWeeklyMenuData,
   getWeeklyMenusData,
 } from "@/lib/storefront-data";
-import { weeklyMenuAdminSchema } from "@/lib/weekly-menu-admin";
+import {
+  weeklyMenuAdminSchema,
+  weeklyMenuItemAvailabilityAdminSchema,
+} from "@/lib/weekly-menu-admin";
 
 function revalidateStorefrontMenuRoutes() {
   revalidatePath("/");
@@ -146,6 +149,59 @@ export async function POST(request: Request) {
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
+  }
+
+  revalidateStorefrontMenuRoutes();
+
+  return NextResponse.json(await getWeeklyMenuAdminPayload(weeklyMenuId));
+}
+
+export async function PATCH(request: Request) {
+  const admin = await getCurrentAdmin();
+  if (!admin) {
+    return NextResponse.json(
+      { error: "Admin authorization is required." },
+      { status: 401 },
+    );
+  }
+
+  const parsed = weeklyMenuItemAvailabilityAdminSchema.safeParse(await request.json());
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: parsed.error.issues[0]?.message || "Invalid weekly menu item." },
+      { status: 400 },
+    );
+  }
+
+  const supabase = getSupabaseAdminClient();
+  if (!supabase) {
+    return NextResponse.json(
+      { error: "Supabase admin client is not configured." },
+      { status: 500 },
+    );
+  }
+
+  const { weeklyMenuId, productId, unavailable } = parsed.data;
+  const { data, error } = await supabase
+    .from("weekly_menu_items")
+    .update({
+      unavailable,
+      ...(unavailable ? { featured: false } : {}),
+    })
+    .eq("weekly_menu_id", weeklyMenuId)
+    .eq("product_id", productId)
+    .select("id")
+    .maybeSingle();
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 400 });
+  }
+
+  if (!data) {
+    return NextResponse.json(
+      { error: "This product is not included in the selected weekly menu." },
+      { status: 404 },
+    );
   }
 
   revalidateStorefrontMenuRoutes();

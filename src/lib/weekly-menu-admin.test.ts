@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { weeklyMenuAdminSchema } from "./weekly-menu-admin";
+import {
+  weeklyMenuAdminSchema,
+  weeklyMenuItemAvailabilityAdminSchema,
+} from "./weekly-menu-admin";
 
 const validMenu = {
   name: "Future Bake Drop",
@@ -72,6 +75,24 @@ describe("weekly menu admin validation", () => {
       weeklyMenuAdminSchema.safeParse({
         ...validMenu,
         orderCutoffAt: "2026-07-14T20:00:00.000Z",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("validates item availability toggle payloads", () => {
+    expect(
+      weeklyMenuItemAvailabilityAdminSchema.safeParse({
+        weeklyMenuId: "00000000-0000-4000-8000-000000000100",
+        productId: "00000000-0000-4000-8000-000000000001",
+        unavailable: true,
+      }).success,
+    ).toBe(true);
+
+    expect(
+      weeklyMenuItemAvailabilityAdminSchema.safeParse({
+        weeklyMenuId: "not-a-menu-id",
+        productId: "00000000-0000-4000-8000-000000000001",
+        unavailable: true,
       }).success,
     ).toBe(false);
   });
