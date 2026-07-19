@@ -234,6 +234,9 @@ export default async function WoodstockDeliveryPage() {
                 Check your Woodstock ZIP, then continue into the weekly order
                 form with the ZIP already filled in.
               </p>
+              <p className="mt-4 text-sm leading-6 text-stone-700">
+                {deliverySettings.serviceAreaCopy}
+              </p>
               <div className="mt-6">
                 <DeliveryZipChecker source="woodstock-delivery-page" city="Woodstock" />
               </div>

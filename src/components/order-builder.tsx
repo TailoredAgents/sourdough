@@ -380,7 +380,7 @@ export function OrderBuilder({
       id="order"
       className={`scroll-mt-32 bg-white py-16 sm:py-20 ${selectedCount ? "pb-32 lg:pb-20" : ""}`}
     >
-      <div className="mx-auto grid max-w-7xl gap-8 px-4 sm:px-6 lg:grid-cols-[1.1fr_0.9fr] lg:px-8">
+      <div className="mx-auto grid w-full max-w-7xl min-w-0 gap-8 px-4 sm:px-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)] lg:px-8">
         <div className="min-w-0">
           <p className="text-sm font-bold uppercase tracking-[0.18em] text-[#a94334]">
             Start your order
@@ -490,7 +490,7 @@ export function OrderBuilder({
 
         <aside
           id="checkout-details"
-          className="h-fit min-w-0 scroll-mt-32 rounded-md border border-stone-200 bg-[#f7efe3] p-5 shadow-sm lg:sticky lg:top-20"
+          className="h-fit w-full min-w-0 max-w-full scroll-mt-32 rounded-md border border-stone-200 bg-[#f7efe3] p-5 shadow-sm lg:sticky lg:top-20"
         >
           <div className="flex items-start justify-between gap-4">
             <div>
@@ -511,11 +511,11 @@ export function OrderBuilder({
             </div>
           ) : null}
 
-          <div className="mt-5 grid gap-3">
-            <label className="grid gap-1 text-xs font-bold uppercase tracking-wide text-stone-600">
+          <div className="mt-5 grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3">
+            <label className="grid min-w-0 gap-1 text-xs font-bold uppercase tracking-wide text-stone-600">
               Name
               <input
-                className="h-11 min-w-0 rounded-md border border-stone-300 px-3 text-sm font-normal normal-case tracking-normal text-stone-950"
+                className="h-11 w-full min-w-0 rounded-md border border-stone-300 px-3 text-sm font-normal normal-case tracking-normal text-stone-950"
                 name="name"
                 autoComplete="name"
                 placeholder="Your name"
@@ -526,10 +526,10 @@ export function OrderBuilder({
                 }
               />
             </label>
-            <label className="grid gap-1 text-xs font-bold uppercase tracking-wide text-stone-600">
+            <label className="grid min-w-0 gap-1 text-xs font-bold uppercase tracking-wide text-stone-600">
               Email
               <input
-                className="h-11 min-w-0 rounded-md border border-stone-300 px-3 text-sm font-normal normal-case tracking-normal text-stone-950"
+                className="h-11 w-full min-w-0 rounded-md border border-stone-300 px-3 text-sm font-normal normal-case tracking-normal text-stone-950"
                 name="email"
                 autoComplete="email"
                 inputMode="email"
@@ -549,10 +549,10 @@ export function OrderBuilder({
                 </span>
               ) : null}
             </label>
-            <label className="grid gap-1 text-xs font-bold uppercase tracking-wide text-stone-600">
+            <label className="grid min-w-0 gap-1 text-xs font-bold uppercase tracking-wide text-stone-600">
               Phone
               <input
-                className="h-11 min-w-0 rounded-md border border-stone-300 px-3 text-sm font-normal normal-case tracking-normal text-stone-950"
+                className="h-11 w-full min-w-0 rounded-md border border-stone-300 px-3 text-sm font-normal normal-case tracking-normal text-stone-950"
                 name="tel"
                 type="tel"
                 autoComplete="tel"
@@ -573,10 +573,10 @@ export function OrderBuilder({
                 </span>
               ) : null}
             </label>
-            <label className="grid gap-1 text-xs font-bold uppercase tracking-wide text-stone-600">
+            <label className="grid min-w-0 gap-1 text-xs font-bold uppercase tracking-wide text-stone-600">
               Delivery address
               <input
-                className="h-11 min-w-0 rounded-md border border-stone-300 px-3 text-sm font-normal normal-case tracking-normal text-stone-950"
+                className="h-11 w-full min-w-0 rounded-md border border-stone-300 px-3 text-sm font-normal normal-case tracking-normal text-stone-950"
                 name="address-line1"
                 autoComplete="address-line1"
                 placeholder="Street address"
@@ -591,7 +591,7 @@ export function OrderBuilder({
               <label className="grid min-w-0 gap-1 text-xs font-bold uppercase tracking-wide text-stone-600">
                 City
                 <input
-                  className="h-11 min-w-0 rounded-md border border-stone-300 px-3 text-sm font-normal normal-case tracking-normal text-stone-950"
+                  className="h-11 w-full min-w-0 rounded-md border border-stone-300 px-3 text-sm font-normal normal-case tracking-normal text-stone-950"
                   name="address-level2"
                   autoComplete="address-level2"
                   placeholder="City"
@@ -605,7 +605,7 @@ export function OrderBuilder({
               <label className="grid min-w-0 gap-1 text-xs font-bold uppercase tracking-wide text-stone-600">
                 State
                 <input
-                  className="h-11 min-w-0 rounded-md border border-stone-300 px-3 text-sm font-normal normal-case tracking-normal text-stone-950"
+                  className="h-11 w-full min-w-0 rounded-md border border-stone-300 px-3 text-sm font-normal normal-case tracking-normal text-stone-950"
                   name="address-level1"
                   autoComplete="address-level1"
                   placeholder="GA"
@@ -619,7 +619,7 @@ export function OrderBuilder({
               <label className="grid min-w-0 gap-1 text-xs font-bold uppercase tracking-wide text-stone-600">
                 ZIP
                 <input
-                  className="h-11 min-w-0 rounded-md border border-stone-300 px-3 text-sm font-normal normal-case tracking-normal text-stone-950"
+                  className="h-11 w-full min-w-0 rounded-md border border-stone-300 px-3 text-sm font-normal normal-case tracking-normal text-stone-950"
                   name="postal-code"
                   autoComplete="postal-code"
                   inputMode="numeric"
@@ -705,7 +705,7 @@ export function OrderBuilder({
             <label className="grid gap-1 text-xs font-bold uppercase tracking-wide text-stone-600">
               Delivery window
               <select
-                className="h-11 rounded-md border border-stone-300 px-3 text-sm font-normal normal-case tracking-normal text-stone-950"
+                className="h-11 w-full min-w-0 rounded-md border border-stone-300 px-3 text-sm font-normal normal-case tracking-normal text-stone-950"
                 value={deliveryWindowId}
                 onChange={(event) => setDeliveryWindowId(event.target.value)}
                 disabled={!availableDeliveryWindows.length}
@@ -733,10 +733,10 @@ export function OrderBuilder({
                 use the question box for timing questions before the next menu.
               </div>
             ) : null}
-            <label className="grid gap-1 text-xs font-bold uppercase tracking-wide text-stone-600">
+            <label className="grid min-w-0 gap-1 text-xs font-bold uppercase tracking-wide text-stone-600">
               Delivery instructions
               <textarea
-                className="min-h-20 min-w-0 rounded-md border border-stone-300 p-3 text-sm font-normal normal-case tracking-normal text-stone-950"
+                className="min-h-20 w-full min-w-0 rounded-md border border-stone-300 p-3 text-sm font-normal normal-case tracking-normal text-stone-950"
                 name="delivery-instructions"
                 autoComplete="off"
                 placeholder="Gate code, porch notes, or best drop-off spot"
@@ -744,10 +744,10 @@ export function OrderBuilder({
                 onChange={(event) => setDeliveryInstructions(event.target.value)}
               />
             </label>
-            <label className="grid gap-1 text-xs font-bold uppercase tracking-wide text-stone-600">
+            <label className="grid min-w-0 gap-1 text-xs font-bold uppercase tracking-wide text-stone-600">
               Order notes
               <textarea
-                className="min-h-24 min-w-0 rounded-md border border-stone-300 p-3 text-sm font-normal normal-case tracking-normal text-stone-950"
+                className="min-h-24 w-full min-w-0 rounded-md border border-stone-300 p-3 text-sm font-normal normal-case tracking-normal text-stone-950"
                 name="order-notes"
                 autoComplete="off"
                 placeholder="Anything we should know about this order"

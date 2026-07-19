@@ -229,6 +229,9 @@ export default async function CantonDeliveryPage() {
                 a delivery window, and complete secure checkout while quantities
                 remain available.
               </p>
+              <p className="mt-4 text-sm leading-6 text-stone-700">
+                {deliverySettings.serviceAreaCopy}
+              </p>
               <div className="mt-6 rounded-md border border-stone-200 bg-white p-5">
                 <CheckCircle2 className="text-[#23443b]" size={22} />
                 <h3 className="mt-3 font-bold text-stone-950">

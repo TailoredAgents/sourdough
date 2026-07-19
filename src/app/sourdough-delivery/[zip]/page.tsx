@@ -227,6 +227,9 @@ export default async function ServiceAreaPage({ params }: ServiceAreaPageProps) 
                 {description} Check the weekly menu, confirm delivery, and
                 reserve an available delivery window while quantities remain.
               </p>
+              <p className="mt-4 max-w-2xl text-sm leading-6 text-stone-700">
+                {deliverySettings.serviceAreaCopy}
+              </p>
               <div className="mt-6 grid gap-3 sm:grid-cols-3">
                 <div className="rounded-md border border-stone-200 bg-[#fffaf2] p-4">
                   <MapPin className="text-[#a94334]" size={20} />
