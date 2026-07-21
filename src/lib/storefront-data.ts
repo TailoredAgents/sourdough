@@ -8,6 +8,7 @@ import {
 } from "./bakery-data";
 import { productSlug } from "./product-slugs";
 import { getSupabaseAdminClient } from "./supabase";
+import { ensureRollingWeeklyMenus } from "./rolling-weeks";
 import {
   getDeliverySettings,
   normalizePostalCode,
@@ -16,6 +17,7 @@ import {
 import { isWeeklyMenuItemUnavailable } from "./menu-availability";
 import type {
   DeliveryWindow,
+  OrderingWeek,
   MenuProduct,
   Product,
   WeeklyMenu,
@@ -55,6 +57,7 @@ type WeeklyMenuRow = {
   starts_at: string;
   ends_at: string;
   published: boolean;
+  auto_generated?: boolean | null;
 };
 
 type WeeklyMenuItemCountRow = {
@@ -63,6 +66,7 @@ type WeeklyMenuItemCountRow = {
 
 type DeliveryWindowRow = {
   id: string;
+  weekly_menu_id?: string;
   label: string;
   starts_at: string;
   ends_at: string;
@@ -168,6 +172,7 @@ function mapMenuItem(row: WeeklyMenuItemRow): MenuProduct | null {
 function mapDeliveryWindow(row: DeliveryWindowRow): DeliveryWindow {
   return {
     id: row.id,
+    weeklyMenuId: row.weekly_menu_id,
     label: row.label,
     startsAt: row.starts_at,
     endsAt: row.ends_at,
@@ -199,6 +204,21 @@ function mapWeeklyMenuSummary(
 async function getPublishedMenuRow() {
   const supabase = getSupabaseAdminClient();
   if (!supabase) return null;
+
+  const menuIds = await ensureRollingWeeklyMenus();
+  if (menuIds.length) {
+    const { data, error } = await supabase
+      .from("weekly_menus")
+      .select("id, name, order_cutoff_at, starts_at, ends_at, published")
+      .eq("id", menuIds[0])
+      .maybeSingle();
+
+    if (error) {
+      console.error("[supabase] rolling weekly menu lookup failed", error.message);
+    } else if (data) {
+      return (data as WeeklyMenuRow | null) ?? null;
+    }
+  }
 
   const now = new Date().toISOString();
   const { data, error } = await supabase
@@ -251,6 +271,7 @@ export async function getWeeklyMenusData(): Promise<WeeklyMenuSummary[]> {
   const supabase = getSupabaseAdminClient();
   if (!supabase) return [];
 
+  await ensureRollingWeeklyMenus();
   const recentSince = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
   const { data, error } = await supabase
     .from("weekly_menus")
@@ -341,8 +362,8 @@ export async function getActiveWeeklyMenuData(): Promise<WeeklyMenu | null> {
   };
 }
 
-export async function getMenuProductData(productId: string) {
-  const menu = await getActiveMenuData();
+export async function getMenuProductData(productId: string, weeklyMenuId?: string) {
+  const menu = weeklyMenuId ? await getMenuItemsData(weeklyMenuId) : await getActiveMenuData();
   return (
     menu.find((item) => item.id === productId) ??
     (canUseLocalFallback() ? getFallbackMenuProduct(productId) : null)
@@ -377,7 +398,7 @@ export async function getDeliveryWindowsForMenuData(
 
   const { data, error } = await supabase
     .from("delivery_windows")
-    .select("id, label, starts_at, ends_at, capacity, reserved")
+    .select("id, weekly_menu_id, label, starts_at, ends_at, capacity, reserved")
     .eq("weekly_menu_id", weeklyMenuId)
     .order("starts_at", { ascending: true });
 
@@ -403,6 +424,14 @@ export async function getDeliveryWindowData(deliveryWindowId: string) {
         )
       : undefined)
   );
+}
+
+export async function getDeliveryWindowForMenuData(
+  deliveryWindowId: string,
+  weeklyMenuId: string,
+) {
+  const windows = await getDeliveryWindowsForMenuData(weeklyMenuId);
+  return windows.find((deliveryWindow) => deliveryWindow.id === deliveryWindowId);
 }
 
 export async function getDeliverySettingsData(): Promise<DeliverySettings> {
@@ -458,20 +487,61 @@ export async function getApprovedAiKnowledgeData(): Promise<string[]> {
   return entries.length ? entries : fallbackAiKnowledge;
 }
 
+export async function getOrderingWeeksData(): Promise<OrderingWeek[]> {
+  const supabase = getSupabaseAdminClient();
+  if (!supabase) {
+    const weeklyMenu = getFallbackWeeklyMenu();
+    return [
+      {
+        weeklyMenu,
+        menu: weeklyMenu.items,
+        deliveryWindows: getFallbackDeliveryWindows(),
+      },
+    ];
+  }
+
+  const menuIds = await ensureRollingWeeklyMenus();
+  if (!menuIds.length) {
+    const weeklyMenu = await getActiveWeeklyMenuData();
+    if (!weeklyMenu) return [];
+    return [
+      {
+        weeklyMenu,
+        menu: weeklyMenu.items,
+        deliveryWindows: await getDeliveryWindowsForMenuData(weeklyMenu.id),
+      },
+    ];
+  }
+
+  const weeks = await Promise.all(
+    menuIds.map(async (id) => {
+      const weeklyMenu = await getWeeklyMenuData(id);
+      if (!weeklyMenu) return null;
+      return {
+        weeklyMenu,
+        menu: weeklyMenu.items,
+        deliveryWindows: await getDeliveryWindowsForMenuData(id),
+      };
+    }),
+  );
+
+  return weeks.filter((week): week is OrderingWeek => Boolean(week));
+}
+
 export async function getStorefrontData() {
-  const [menu, weeklyMenu, deliveryWindows, aiKnowledge, products, deliverySettings] = await Promise.all([
-    getActiveMenuData(),
-    getActiveWeeklyMenuData(),
-    getDeliveryWindowsData(),
+  const [orderingWeeks, aiKnowledge, products, deliverySettings] = await Promise.all([
+    getOrderingWeeksData(),
     getApprovedAiKnowledgeData(),
     getProductsData(),
     getDeliverySettingsData(),
   ]);
+  const selectedWeek = orderingWeeks[0] ?? null;
 
   return {
-    menu,
-    weeklyMenu,
-    deliveryWindows,
+    menu: selectedWeek?.menu ?? [],
+    weeklyMenu: selectedWeek?.weeklyMenu ?? null,
+    deliveryWindows: selectedWeek?.deliveryWindows ?? [],
+    orderingWeeks,
     aiKnowledge,
     products,
     deliverySettings,

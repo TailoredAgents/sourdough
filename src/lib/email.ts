@@ -3,7 +3,9 @@ import { getSupabaseAdminClient } from "./supabase";
 
 type EmailTemplate =
   | "customer_order_confirmation"
+  | "customer_approval_request_received"
   | "owner_new_order"
+  | "owner_approval_request"
   | "owner_short_alert"
   | "last_minute_request"
   | "order_status_update"
@@ -111,6 +113,17 @@ function renderCustomerConfirmation({
   };
 }
 
+function renderCustomerApprovalRequestReceived({
+  customerName,
+  orderSummary,
+  deliveryWindow,
+}: BaseEmail) {
+  return {
+    subject: "We received your Luna & Lorelai's Sourdough approval request",
+    text: `Hi ${customerName},\n\nPayment was received for your same-week approval request. Grace will review it and either accept it, move it to next week if you allowed that, or refund it if it cannot be filled.\n\nRequested order:\n${orderSummary}\n\nRequested delivery window: ${deliveryWindow}\n\nPlease reply to this email if your delivery details need a correction.\n\nLuna & Lorelai's Sourdough`,
+  };
+}
+
 function renderOwnerNewOrder({
   customerName,
   customerEmail,
@@ -123,6 +136,21 @@ function renderOwnerNewOrder({
   return {
     subject: `New sourdough order from ${customerName}`,
     text: `New paid order received.\n\nCustomer: ${customerName}\nEmail: ${customerEmail}\nPhone: ${customerPhone}\n\nOrder:\n${orderSummary}\n\nDelivery window: ${deliveryWindow}\nAddress: ${address}\nNotes: ${notes || "None"}`,
+  };
+}
+
+function renderOwnerApprovalRequest({
+  customerName,
+  customerEmail,
+  customerPhone,
+  orderSummary,
+  deliveryWindow,
+  address,
+  notes,
+}: OwnerEmail) {
+  return {
+    subject: `Approval needed for ${customerName}'s sourdough order`,
+    text: `Paid same-week approval request received.\n\nCustomer: ${customerName}\nEmail: ${customerEmail}\nPhone: ${customerPhone}\n\nRequested order:\n${orderSummary}\n\nRequested delivery window: ${deliveryWindow}\nAddress: ${address}\nNotes: ${notes || "None"}\n\nOpen the admin order dashboard to accept, move to next week, or deny and refund.`,
   };
 }
 
@@ -270,12 +298,30 @@ export async function sendCustomerOrderConfirmation(input: BaseEmail) {
   });
 }
 
+export async function sendCustomerApprovalRequestReceived(input: BaseEmail) {
+  return sendTemplatedEmail({
+    template: "customer_approval_request_received",
+    to: input.to,
+    orderId: input.orderId,
+    ...renderCustomerApprovalRequestReceived(input),
+  });
+}
+
 export async function sendOwnerNewOrderNotification(input: OwnerEmail) {
   return sendTemplatedEmail({
     template: "owner_new_order",
     to: input.to,
     orderId: input.orderId,
     ...renderOwnerNewOrder(input),
+  });
+}
+
+export async function sendOwnerApprovalRequestNotification(input: OwnerEmail) {
+  return sendTemplatedEmail({
+    template: "owner_approval_request",
+    to: input.to,
+    orderId: input.orderId,
+    ...renderOwnerApprovalRequest(input),
   });
 }
 

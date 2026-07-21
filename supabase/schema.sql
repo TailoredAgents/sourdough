@@ -12,6 +12,8 @@ begin
   create type order_status as enum (
     'draft',
     'pending_payment',
+    'pending_approval_payment',
+    'pending_approval',
     'paid',
     'baking',
     'out_for_delivery',
@@ -21,6 +23,9 @@ begin
 exception
   when duplicate_object then null;
 end $$;
+
+alter type order_status add value if not exists 'pending_approval_payment' after 'pending_payment';
+alter type order_status add value if not exists 'pending_approval' after 'pending_approval_payment';
 
 create table if not exists products (
   id uuid primary key default gen_random_uuid(),
@@ -87,8 +92,20 @@ create table if not exists weekly_menus (
   starts_at timestamptz not null,
   ends_at timestamptz not null,
   published boolean not null default false,
+  auto_generated boolean not null default false,
+  generation_key text unique,
+  source_weekly_menu_id uuid references weekly_menus(id) on delete set null,
   created_at timestamptz not null default now()
 );
+
+alter table weekly_menus
+  add column if not exists auto_generated boolean not null default false;
+
+alter table weekly_menus
+  add column if not exists generation_key text unique;
+
+alter table weekly_menus
+  add column if not exists source_weekly_menu_id uuid references weekly_menus(id) on delete set null;
 
 create table if not exists weekly_menu_items (
   id uuid primary key default gen_random_uuid(),
@@ -177,6 +194,13 @@ create table if not exists orders (
   delivery_instructions text,
   delivery_check jsonb,
   notes text,
+  next_week_ok boolean,
+  approval_mode text,
+  approved_at timestamptz,
+  denied_at timestamptz,
+  refunded_at timestamptz,
+  stripe_refund_id text,
+  admin_decision_note text,
   paid_at timestamptz,
   checkout_cancel_token text unique,
   created_at timestamptz not null default now(),
@@ -191,6 +215,27 @@ alter table orders
 
 alter table orders
   add column if not exists checkout_cancel_token text unique;
+
+alter table orders
+  add column if not exists next_week_ok boolean;
+
+alter table orders
+  add column if not exists approval_mode text;
+
+alter table orders
+  add column if not exists approved_at timestamptz;
+
+alter table orders
+  add column if not exists denied_at timestamptz;
+
+alter table orders
+  add column if not exists refunded_at timestamptz;
+
+alter table orders
+  add column if not exists stripe_refund_id text;
+
+alter table orders
+  add column if not exists admin_decision_note text;
 
 create table if not exists order_items (
   id uuid primary key default gen_random_uuid(),

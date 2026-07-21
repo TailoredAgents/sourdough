@@ -12,11 +12,17 @@ describe("customer order status copy", () => {
     expect(getCustomerOrderStatusLabel("out_for_delivery")).toBe(
       "Out for delivery",
     );
+    expect(getCustomerOrderStatusLabel("pending_approval")).toBe(
+      "Awaiting bakery approval",
+    );
   });
 
   it("explains webhook timing for pending payment orders", () => {
     expect(getCustomerOrderStatusMessage("pending_payment")).toContain(
       "Stripe is confirming payment",
+    );
+    expect(getCustomerOrderStatusMessage("pending_approval")).toContain(
+      "reviewing your same-week request",
     );
   });
 });

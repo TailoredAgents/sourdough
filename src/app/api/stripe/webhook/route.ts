@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import {
+  sendCustomerApprovalRequestReceived,
   sendCustomerOrderConfirmation,
+  sendOwnerApprovalRequestNotification,
   sendOwnerNewOrderNotification,
 } from "@/lib/email";
 import {
@@ -42,17 +44,27 @@ export async function POST(request: Request) {
       const paidOrder = await markCheckoutSessionPaid(session.id);
 
       if (paidOrder?.customerEmail) {
-        await sendCustomerOrderConfirmation({
-          to: paidOrder.customerEmail,
-          customerName: paidOrder.customerName,
-          orderSummary: paidOrder.orderSummary,
-          deliveryWindow: paidOrder.deliveryWindow,
-          orderId: paidOrder.orderId,
-        });
+        if (paidOrder.status === "pending_approval") {
+          await sendCustomerApprovalRequestReceived({
+            to: paidOrder.customerEmail,
+            customerName: paidOrder.customerName,
+            orderSummary: paidOrder.orderSummary,
+            deliveryWindow: paidOrder.deliveryWindow,
+            orderId: paidOrder.orderId,
+          });
+        } else {
+          await sendCustomerOrderConfirmation({
+            to: paidOrder.customerEmail,
+            customerName: paidOrder.customerName,
+            orderSummary: paidOrder.orderSummary,
+            deliveryWindow: paidOrder.deliveryWindow,
+            orderId: paidOrder.orderId,
+          });
+        }
       }
 
       if (paidOrder && process.env.BAKERY_EMAIL) {
-        await sendOwnerNewOrderNotification({
+        const ownerNotification = {
           to: process.env.BAKERY_EMAIL,
           customerName: paidOrder.customerName,
           customerEmail: paidOrder.customerEmail,
@@ -62,14 +74,22 @@ export async function POST(request: Request) {
           orderId: paidOrder.orderId,
           address: paidOrder.deliveryAddress,
           notes: paidOrder.notes || "",
-        });
+        };
+        if (paidOrder.status === "pending_approval") {
+          await sendOwnerApprovalRequestNotification(ownerNotification);
+        } else {
+          await sendOwnerNewOrderNotification(ownerNotification);
+        }
       }
       if (paidOrder) {
         await sendOwnerAlert({
           type: "order",
           customerName: paidOrder.customerName,
           orderSummary: paidOrder.orderSummary,
-          notes: paidOrder.notes || null,
+          notes:
+            paidOrder.status === "pending_approval"
+              ? `Paid same-week approval request. ${paidOrder.notes || ""}`.trim()
+              : paidOrder.notes || null,
           orderId: paidOrder.orderId,
         });
       }

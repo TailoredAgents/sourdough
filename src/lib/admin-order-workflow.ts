@@ -23,6 +23,16 @@ export function getAdminOrderStatusActions(
           variant: "ghost",
         },
       ];
+    case "pending_approval_payment":
+      return [
+        {
+          label: "Cancel unpaid request",
+          status: "canceled",
+          variant: "ghost",
+        },
+      ];
+    case "pending_approval":
+      return [];
     case "paid":
       return [
         {

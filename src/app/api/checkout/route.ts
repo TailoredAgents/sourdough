@@ -1,11 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { isAfterWeeklyCutoff } from "@/lib/cutoff";
-import { createLastMinuteCustomerMessage } from "@/lib/customer-messages";
 import { checkDeliveryAddress, type DeliveryCheckResult } from "@/lib/delivery";
 import {
   sendCustomerOrderConfirmation,
-  sendLastMinuteRequestNotification,
 } from "@/lib/email";
 import {
   attachStripeSessionToOrder,
@@ -16,8 +14,8 @@ import {
 import { canOrderMenuProduct } from "@/lib/menu-availability";
 import {
   getDeliverySettingsData,
-  getDeliveryWindowData,
-  getActiveWeeklyMenuData,
+  getDeliveryWindowForMenuData,
+  getWeeklyMenuData,
   getMenuProductData,
 } from "@/lib/storefront-data";
 import { checkRateLimit } from "@/lib/rate-limit";
@@ -30,6 +28,7 @@ function hasMinimumPhoneDigits(value: string) {
 }
 
 export const checkoutSchema = z.object({
+  weeklyMenuId: z.string().uuid(),
   cart: z
     .array(
       z.object({
@@ -57,6 +56,7 @@ export const checkoutSchema = z.object({
   deliveryWindowId: z.string().min(1),
   deliveryInstructions: z.string().max(1000).optional().default(""),
   notes: z.string().max(1000).optional().default(""),
+  nextWeekOk: z.boolean().optional(),
   acknowledgedTerms: z.literal(true),
 });
 
@@ -124,17 +124,27 @@ export async function POST(request: Request) {
     );
   }
 
-  const weeklyMenu = await getActiveWeeklyMenuData();
+  const weeklyMenu = await getWeeklyMenuData(checkout.weeklyMenuId);
   const afterCutoff = isAfterWeeklyCutoff(weeklyMenu?.orderCutoffAt);
 
-  if (!weeklyMenu) {
+  if (!weeklyMenu?.published) {
     return NextResponse.json(
       { error: "Ordering is not open yet. Please check back for the next bake drop." },
       { status: 400 },
     );
   }
 
-  const deliveryWindow = await getDeliveryWindowData(checkout.deliveryWindowId);
+  if (afterCutoff && typeof checkout.nextWeekOk !== "boolean") {
+    return NextResponse.json(
+      { error: "Please answer whether next week works if this week is unavailable." },
+      { status: 400 },
+    );
+  }
+
+  const deliveryWindow = await getDeliveryWindowForMenuData(
+    checkout.deliveryWindowId,
+    weeklyMenu.id,
+  );
 
   if (!deliveryWindow) {
     return NextResponse.json(
@@ -171,7 +181,7 @@ export async function POST(request: Request) {
 
   const items = [];
   for (const cartItem of checkout.cart) {
-    const menuProduct = await getMenuProductData(cartItem.productId);
+    const menuProduct = await getMenuProductData(cartItem.productId, weeklyMenu.id);
     if (!menuProduct) {
       return NextResponse.json(
         { error: "One of the selected products is no longer available." },
@@ -194,32 +204,6 @@ export async function POST(request: Request) {
   }
 
   const orderSummary = buildOrderSummary(items);
-
-  if (afterCutoff) {
-    const lastMinuteMessage = await createLastMinuteCustomerMessage({
-      checkout,
-      deliveryWindowLabel: deliveryWindow.label,
-      items,
-    });
-
-    if (process.env.BAKERY_EMAIL) {
-      await sendLastMinuteRequestNotification({
-        to: process.env.BAKERY_EMAIL,
-        customerName: checkout.customer.name,
-        customerEmail: checkout.customer.email,
-        customerPhone: checkout.customer.phone,
-        orderSummary,
-        deliveryWindow: getLastMinuteNotificationDeliveryWindow(deliveryWindow),
-        address: `${checkout.address.line1}, ${checkout.address.city}, ${checkout.address.state} ${checkout.address.postalCode}`,
-        notes: checkout.notes,
-        customerMessageId: lastMinuteMessage?.id,
-      });
-    }
-    return NextResponse.json({
-      url: `${getSiteUrl()}/order/success?request_id=${lastMinuteMessage?.id || "saved"}`,
-      message: "Last-minute request sent.",
-    });
-  }
 
   const stripe = getStripe();
   if (!stripe) {
@@ -245,10 +229,12 @@ export async function POST(request: Request) {
   let pendingOrder;
   try {
     pendingOrder = await createPendingCheckoutOrder({
+      approvalMode: afterCutoff ? "after_cutoff" : "standard",
       checkout,
       deliveryCheck,
       deliveryWindowId: deliveryWindow.id,
       items,
+      reserveInventory: !afterCutoff,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Order could not be reserved.";
@@ -269,6 +255,9 @@ export async function POST(request: Request) {
       ],
       metadata: {
         order_id: pendingOrder.id,
+        weekly_menu_id: weeklyMenu.id,
+        approval_mode: pendingOrder.approvalMode,
+        next_week_ok: afterCutoff ? String(Boolean(checkout.nextWeekOk)) : "",
         customer_name: checkout.customer.name,
         customer_phone: checkout.customer.phone,
         delivery_window_id: deliveryWindow.id,

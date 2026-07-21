@@ -21,6 +21,7 @@ const baseDeliveryCheck: DeliveryCheckResult = {
 };
 
 const baseCheckoutPayload = {
+  weeklyMenuId: "11111111-1111-4111-8111-111111111111",
   cart: [{ productId: "classic-country-loaf", quantity: 1 }],
   customer: {
     name: "Test Customer",

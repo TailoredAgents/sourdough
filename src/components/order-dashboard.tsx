@@ -29,6 +29,8 @@ import { Button, buttonClassName } from "./button";
 const statusLabels: Record<OrderStatus, string> = {
   draft: "Draft",
   pending_payment: "Pending payment",
+  pending_approval_payment: "Approval payment",
+  pending_approval: "Needs approval",
   paid: "Paid",
   baking: "Baking",
   out_for_delivery: "Out for delivery",
@@ -45,12 +47,22 @@ const statusOptions: OrderStatus[] = [
   "canceled",
 ];
 
-const activeStatuses: OrderStatus[] = ["paid", "baking", "out_for_delivery"];
+const activeStatuses: OrderStatus[] = [
+  "pending_approval",
+  "paid",
+  "baking",
+  "out_for_delivery",
+];
 
-const filterOptions: Array<OrderStatus | "all" | "active"> = [
+type OrderFilter = OrderStatus | "all" | "active" | "needs_approval";
+
+const filterOptions: OrderFilter[] = [
+  "needs_approval",
   "active",
   "all",
   "pending_payment",
+  "pending_approval_payment",
+  "pending_approval",
   "paid",
   "baking",
   "out_for_delivery",
@@ -58,7 +70,8 @@ const filterOptions: Array<OrderStatus | "all" | "active"> = [
   "canceled",
 ];
 
-function matchesOrderFilter(order: AdminOrder, filter: OrderStatus | "all" | "active") {
+function matchesOrderFilter(order: AdminOrder, filter: OrderFilter) {
+  if (filter === "needs_approval") return order.status === "pending_approval";
   if (filter === "active") return activeStatuses.includes(order.status);
   if (filter === "all") return true;
   return order.status === filter;
@@ -79,16 +92,20 @@ function shortId(id: string) {
 }
 
 export function OrderDashboard({ initialOrders }: { initialOrders: AdminOrder[] }) {
+  const firstApprovalOrder = initialOrders.find(
+    (order) => order.status === "pending_approval",
+  );
   const firstActiveOrder = initialOrders.find((order) =>
     activeStatuses.includes(order.status),
   );
   const [orders, setOrders] = useState<AdminOrder[]>(initialOrders);
   const [selectedId, setSelectedId] = useState<string | null>(
-    firstActiveOrder?.id ?? initialOrders[0]?.id ?? null,
+    firstApprovalOrder?.id ?? firstActiveOrder?.id ?? initialOrders[0]?.id ?? null,
   );
-  const [filter, setFilter] = useState<OrderStatus | "all" | "active">(
-    firstActiveOrder ? "active" : "all",
+  const [filter, setFilter] = useState<OrderFilter>(
+    firstApprovalOrder ? "needs_approval" : firstActiveOrder ? "active" : "all",
   );
+  const [moveWindowIds, setMoveWindowIds] = useState<Record<string, string>>({});
   const [message, setMessage] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -102,6 +119,7 @@ export function OrderDashboard({ initialOrders }: { initialOrders: AdminOrder[] 
     activeStatuses.includes(order.status),
   ).length;
   const pendingPaymentCount = orders.filter((order) => order.status === "pending_payment").length;
+  const approvalCount = orders.filter((order) => order.status === "pending_approval").length;
   const statusActions = selectedOrder
     ? getAdminOrderStatusActions(selectedOrder.status)
     : [];
@@ -152,7 +170,41 @@ export function OrderDashboard({ initialOrders }: { initialOrders: AdminOrder[] 
     });
   }
 
-  function selectFilter(nextFilter: OrderStatus | "all" | "active") {
+  function runApprovalAction(
+    id: string,
+    action: "accept_request" | "deny_refund" | "move_to_next_week",
+    targetDeliveryWindowId?: string,
+  ) {
+    setMessage(null);
+    startTransition(async () => {
+      try {
+        const response = await fetch("/api/admin/orders", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id, action, targetDeliveryWindowId }),
+        });
+        const payload = await readAdminJsonResponse(response);
+
+        if (
+          !response.ok ||
+          !hasAdminKeys(payload, ["orders"]) ||
+          !Array.isArray(payload.orders)
+        ) {
+          setMessage(getAdminPayloadError(payload) || "Approval request could not be updated.");
+          return;
+        }
+
+        setOrders(payload.orders as AdminOrder[]);
+        setSelectedId(id);
+        setFilter(action === "deny_refund" ? "canceled" : "active");
+        setMessage("Order updated.");
+      } catch {
+        setMessage("Approval request could not be updated. Check your connection and try again.");
+      }
+    });
+  }
+
+  function selectFilter(nextFilter: OrderFilter) {
     setFilter(nextFilter);
     setSelectedId(orders.find((order) => matchesOrderFilter(order, nextFilter))?.id ?? null);
     setMessage(null);
@@ -167,11 +219,11 @@ export function OrderDashboard({ initialOrders }: { initialOrders: AdminOrder[] 
             <h2 className="text-xl font-bold text-stone-950">Order dashboard</h2>
           </div>
           <p className="mt-1 text-sm leading-6 text-stone-700">
-            Track paid orders through baking, delivery, and completion.
+            Review approval requests and track paid orders through baking, delivery, and completion.
           </p>
         </div>
         <div className="rounded-md border border-stone-200 bg-[#fffaf2] px-3 py-2 text-sm font-semibold text-stone-700">
-          {openOrdersCount} active orders - {pendingPaymentCount} unpaid
+          {approvalCount} need approval - {openOrdersCount} active - {pendingPaymentCount} unpaid
         </div>
       </div>
 
@@ -191,7 +243,9 @@ export function OrderDashboard({ initialOrders }: { initialOrders: AdminOrder[] 
               ? "Active"
               : status === "all"
                 ? "All"
-                : statusLabels[status]}
+                : status === "needs_approval"
+                  ? "Needs approval"
+                  : statusLabels[status]}
           </button>
         ))}
       </div>
@@ -223,7 +277,9 @@ export function OrderDashboard({ initialOrders }: { initialOrders: AdminOrder[] 
                 </div>
                 <span
                   className={`rounded-sm px-2 py-1 text-xs font-bold uppercase ${
-                    activeStatuses.includes(order.status)
+                    order.status === "pending_approval"
+                      ? "bg-[#a94334] text-white"
+                      : activeStatuses.includes(order.status)
                       ? "bg-emerald-50 text-emerald-800"
                       : order.status === "canceled"
                         ? "bg-stone-100 text-stone-600"
@@ -235,7 +291,10 @@ export function OrderDashboard({ initialOrders }: { initialOrders: AdminOrder[] 
               </div>
               <div className="mt-3 flex items-center justify-between gap-3 text-sm text-stone-700">
                 <span>
-                  {order.status === "pending_payment"
+                  {order.status === "pending_approval"
+                    ? "Decision needed"
+                    : order.status === "pending_payment" ||
+                        order.status === "pending_approval_payment"
                     ? "Not paid yet"
                     : `${order.items.length} items`}
                 </span>
@@ -304,14 +363,105 @@ export function OrderDashboard({ initialOrders }: { initialOrders: AdminOrder[] 
                 </div>
               </div>
 
-              {selectedOrder.status === "pending_payment" ? (
+              {selectedOrder.status === "pending_payment" ||
+              selectedOrder.status === "pending_approval_payment" ? (
                 <div className="mt-4 flex gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm leading-6 text-amber-950">
                   <AlertTriangle className="mt-0.5 shrink-0" size={16} />
                   <p>
                     Payment is not confirmed. Work this order only after Stripe marks it
-                    paid or manual payment is verified. Canceling releases the reserved
-                    delivery spot and menu inventory.
+                    paid or manual payment is verified.
+                    {selectedOrder.status === "pending_payment"
+                      ? " Canceling releases the reserved delivery spot and menu inventory."
+                      : " This request has not reserved inventory yet."}
                   </p>
+                </div>
+              ) : null}
+
+              {selectedOrder.status === "pending_approval" ? (
+                <div className="mt-4 grid gap-3 rounded-md border border-[#a94334]/30 bg-white p-4 text-sm leading-6 text-stone-700">
+                  <div className="flex gap-2">
+                    <AlertTriangle className="mt-0.5 shrink-0 text-[#a94334]" size={16} />
+                    <div>
+                      <p className="font-semibold text-stone-950">
+                        Paid same-week request needs a decision
+                      </p>
+                      <p className="mt-1">
+                        Accepting reserves this week&apos;s inventory and delivery spot.
+                        Denying refunds the Stripe payment. Moving to next week is only
+                        available if the customer said next week works.
+                      </p>
+                      <p className="mt-1 font-semibold text-stone-950">
+                        Next week works: {selectedOrder.nextWeekOk ? "Yes" : "No"}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                    <Button
+                      type="button"
+                      disabled={isPending}
+                      onClick={() => runApprovalAction(selectedOrder.id, "accept_request")}
+                    >
+                      {isPending ? <Loader2 className="animate-spin" size={16} /> : null}
+                      Accept request
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      disabled={isPending}
+                      onClick={() => runApprovalAction(selectedOrder.id, "deny_refund")}
+                    >
+                      {isPending ? <Loader2 className="animate-spin" size={16} /> : null}
+                      Deny & refund
+                    </Button>
+                  </div>
+                  {selectedOrder.nextWeekOk ? (
+                    <div className="grid gap-2 border-t border-stone-200 pt-3">
+                      <label className="grid gap-1 font-semibold text-stone-700">
+                        Move to next week
+                        <select
+                          className="h-11 rounded-md border border-stone-300 bg-white px-3 font-normal"
+                          value={
+                            moveWindowIds[selectedOrder.id] ||
+                            selectedOrder.moveWindows[0]?.id ||
+                            ""
+                          }
+                          onChange={(event) =>
+                            setMoveWindowIds((current) => ({
+                              ...current,
+                              [selectedOrder.id]: event.target.value,
+                            }))
+                          }
+                          disabled={isPending || !selectedOrder.moveWindows.length}
+                        >
+                          {!selectedOrder.moveWindows.length ? (
+                            <option value="">No next-week windows available</option>
+                          ) : null}
+                          {selectedOrder.moveWindows.map((window) => (
+                            <option key={window.id} value={window.id}>
+                              {window.weeklyMenuName} - {window.label} (
+                              {window.capacity - window.reserved} spots left)
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        disabled={isPending || !selectedOrder.moveWindows.length}
+                        onClick={() =>
+                          runApprovalAction(
+                            selectedOrder.id,
+                            "move_to_next_week",
+                            moveWindowIds[selectedOrder.id] ||
+                              selectedOrder.moveWindows[0]?.id,
+                          )
+                        }
+                      >
+                        {isPending ? <Loader2 className="animate-spin" size={16} /> : null}
+                        Move to next week
+                      </Button>
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
 
@@ -442,23 +592,26 @@ export function OrderDashboard({ initialOrders }: { initialOrders: AdminOrder[] 
                     {action.label}
                   </Button>
                 ))}
-                <label className="grid gap-1 text-sm font-semibold text-stone-700">
-                  Manual status
-                  <select
-                    className="h-11 rounded-md border border-stone-300 bg-white px-3 font-normal"
-                    value={selectedOrder.status}
-                    onChange={(event) =>
-                      updateStatus(selectedOrder.id, event.target.value as OrderStatus)
-                    }
-                    disabled={isPending}
-                  >
-                    {statusOptions.map((status) => (
-                      <option key={status} value={status}>
-                        {statusLabels[status]}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                {selectedOrder.status === "pending_approval" ||
+                selectedOrder.status === "pending_approval_payment" ? null : (
+                  <label className="grid gap-1 text-sm font-semibold text-stone-700">
+                    Manual status
+                    <select
+                      className="h-11 rounded-md border border-stone-300 bg-white px-3 font-normal"
+                      value={selectedOrder.status}
+                      onChange={(event) =>
+                        updateStatus(selectedOrder.id, event.target.value as OrderStatus)
+                      }
+                      disabled={isPending}
+                    >
+                      {statusOptions.map((status) => (
+                        <option key={status} value={status}>
+                          {statusLabels[status]}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
                 {message ? (
                   <span
                     className={`inline-flex items-center gap-2 text-sm font-semibold ${

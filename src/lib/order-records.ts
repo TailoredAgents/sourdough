@@ -12,6 +12,8 @@ type CreatePendingOrderInput = {
   deliveryCheck: DeliveryCheckResult;
   deliveryWindowId: string;
   items: CheckoutOrderItem[];
+  approvalMode?: "standard" | "after_cutoff";
+  reserveInventory?: boolean;
 };
 
 export type PendingOrder = {
@@ -22,10 +24,12 @@ export type PendingOrder = {
   totalCents: number;
   orderSummary: string;
   checkoutCancelToken: string;
+  approvalMode: "standard" | "after_cutoff";
 };
 
 export type PaidOrderSummary = {
   orderId: string;
+  status: OrderStatus;
   customerName: string;
   customerEmail: string;
   customerPhone: string;
@@ -73,10 +77,12 @@ function formatAddress(address: DeliveryAddress) {
 }
 
 export async function createPendingCheckoutOrder({
+  approvalMode = "standard",
   checkout,
   deliveryCheck,
   deliveryWindowId,
   items,
+  reserveInventory = true,
 }: CreatePendingOrderInput): Promise<PendingOrder> {
   const supabase = getSupabaseAdminClient();
   if (!supabase) {
@@ -135,7 +141,10 @@ export async function createPendingCheckoutOrder({
     .insert({
       customer_id: customerId,
       delivery_window_id: deliveryWindowId,
-      status: "pending_payment",
+      status:
+        approvalMode === "after_cutoff"
+          ? "pending_approval_payment"
+          : "pending_payment",
       subtotal_cents: subtotalCents,
       delivery_fee_cents: deliveryFeeCents,
       total_cents: totalCents,
@@ -148,6 +157,9 @@ export async function createPendingCheckoutOrder({
       delivery_instructions: checkout.deliveryInstructions || null,
       delivery_check: deliveryCheck,
       notes: checkout.notes || null,
+      next_week_ok:
+        approvalMode === "after_cutoff" ? Boolean(checkout.nextWeekOk) : null,
+      approval_mode: approvalMode,
       checkout_cancel_token: checkoutCancelToken,
     })
     .select("id")
@@ -170,17 +182,19 @@ export async function createPendingCheckoutOrder({
     throw new Error(itemsError.message);
   }
 
-  const { error: reservationError } = await supabase.rpc("reserve_order_inventory", {
-    p_delivery_window_id: deliveryWindowId,
-    p_items: items.map((item) => ({
-      product_id: item.id,
-      quantity: item.quantity,
-    })),
-  });
+  if (reserveInventory) {
+    const { error: reservationError } = await supabase.rpc("reserve_order_inventory", {
+      p_delivery_window_id: deliveryWindowId,
+      p_items: items.map((item) => ({
+        product_id: item.id,
+        quantity: item.quantity,
+      })),
+    });
 
-  if (reservationError) {
-    await supabase.from("orders").delete().eq("id", orderId);
-    throw new Error(reservationError.message);
+    if (reservationError) {
+      await supabase.from("orders").delete().eq("id", orderId);
+      throw new Error(reservationError.message);
+    }
   }
 
   return {
@@ -191,6 +205,7 @@ export async function createPendingCheckoutOrder({
     totalCents,
     orderSummary: buildOrderSummary(items),
     checkoutCancelToken,
+    approvalMode,
   };
 }
 
@@ -210,6 +225,17 @@ export async function releasePendingOrder(orderId: string) {
   const supabase = getSupabaseAdminClient();
   if (!supabase) throw new Error("Supabase admin client is not configured.");
 
+  const { data: existingOrder, error: lookupError } = await supabase
+    .from("orders")
+    .select("id, status")
+    .eq("id", orderId)
+    .in("status", ["pending_payment", "pending_approval_payment"])
+    .maybeSingle();
+
+  if (lookupError) throw new Error(lookupError.message);
+  if (!existingOrder) return null;
+
+  const previousStatus = existingOrder.status as OrderStatus;
   const { data: updatedOrders, error } = await supabase
     .from("orders")
     .update({
@@ -217,16 +243,20 @@ export async function releasePendingOrder(orderId: string) {
       updated_at: new Date().toISOString(),
     })
     .eq("id", orderId)
-    .eq("status", "pending_payment")
+    .in("status", ["pending_payment", "pending_approval_payment"])
     .select("id");
 
   if (error) throw new Error(error.message);
-  if (!updatedOrders?.[0]) return null;
+  const updatedOrder = updatedOrders?.[0];
+  if (!updatedOrder) return null;
 
-  const { error: releaseError } = await supabase.rpc("release_order_inventory", {
-    p_order_id: orderId,
-  });
-  if (releaseError) throw new Error(releaseError.message);
+  if (previousStatus === "pending_payment") {
+    const { error: releaseError } = await supabase.rpc("release_order_inventory", {
+      p_order_id: orderId,
+    });
+    if (releaseError) throw new Error(releaseError.message);
+  }
+
   return orderId;
 }
 
@@ -239,7 +269,7 @@ export async function cancelPendingOrderByToken(orderId: string, token: string) 
     .select("id")
     .eq("id", orderId)
     .eq("checkout_cancel_token", token)
-    .eq("status", "pending_payment")
+    .in("status", ["pending_payment", "pending_approval_payment"])
     .maybeSingle();
 
   if (lookupError) throw new Error(lookupError.message);
@@ -266,7 +296,24 @@ export async function markCheckoutSessionPaid(
     .select("id, customer_id, delivery_window_id, delivery_address, notes");
 
   if (error) throw new Error(error.message);
-  const order = updatedOrders?.[0];
+  let order = updatedOrders?.[0];
+  let paidStatus: OrderStatus = "paid";
+  if (!order) {
+    const { data: approvalOrders, error: approvalError } = await supabase
+      .from("orders")
+      .update({
+        status: "pending_approval",
+        paid_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("stripe_checkout_session_id", sessionId)
+      .eq("status", "pending_approval_payment")
+      .select("id, customer_id, delivery_window_id, delivery_address, notes");
+
+    if (approvalError) throw new Error(approvalError.message);
+    order = approvalOrders?.[0];
+    paidStatus = "pending_approval";
+  }
   if (!order) return null;
 
   const [{ data: customer }, { data: deliveryWindow }, { data: orderItems }] =
@@ -304,6 +351,7 @@ export async function markCheckoutSessionPaid(
     deliveryWindow: String(deliveryWindow?.label || "Selected window"),
     deliveryAddress: formatAddress(order.delivery_address as DeliveryAddress),
     notes: (order.notes as string | null) ?? null,
+    status: paidStatus,
   };
 }
 
@@ -311,14 +359,25 @@ export async function cancelExpiredCheckoutSession(sessionId: string) {
   const supabase = getSupabaseAdminClient();
   if (!supabase) throw new Error("Supabase admin client is not configured.");
 
+  const { data: existingOrder, error: lookupError } = await supabase
+    .from("orders")
+    .select("id, status")
+    .eq("stripe_checkout_session_id", sessionId)
+    .in("status", ["pending_payment", "pending_approval_payment"])
+    .maybeSingle();
+
+  if (lookupError) throw new Error(lookupError.message);
+  if (!existingOrder) return null;
+
+  const previousStatus = existingOrder.status as OrderStatus;
   const { data: updatedOrders, error } = await supabase
     .from("orders")
     .update({
       status: "canceled",
       updated_at: new Date().toISOString(),
     })
-    .eq("stripe_checkout_session_id", sessionId)
-    .eq("status", "pending_payment")
+    .eq("id", existingOrder.id)
+    .in("status", ["pending_payment", "pending_approval_payment"])
     .select("id");
 
   if (error) throw new Error(error.message);
@@ -326,10 +385,12 @@ export async function cancelExpiredCheckoutSession(sessionId: string) {
   const orderId = updatedOrders?.[0]?.id as string | undefined;
   if (!orderId) return null;
 
-  const { error: releaseError } = await supabase.rpc("release_order_inventory", {
-    p_order_id: orderId,
-  });
-  if (releaseError) throw new Error(releaseError.message);
+  if (previousStatus === "pending_payment") {
+    const { error: releaseError } = await supabase.rpc("release_order_inventory", {
+      p_order_id: orderId,
+    });
+    if (releaseError) throw new Error(releaseError.message);
+  }
 
   return orderId;
 }

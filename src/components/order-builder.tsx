@@ -14,12 +14,21 @@ import {
 } from "lucide-react";
 import { trackEvent } from "@/lib/analytics";
 import {
+  getCutoffMessage,
+  isAfterWeeklyCutoff,
+} from "@/lib/cutoff";
+import {
   canOrderMenuProduct,
   getMenuProductAvailabilityLabel,
 } from "@/lib/menu-availability";
 import { getProductGuidance } from "@/lib/product-guidance";
 import { productPath } from "@/lib/product-slugs";
-import type { DeliveryAddress, DeliveryWindow, MenuProduct } from "@/lib/types";
+import type {
+  DeliveryAddress,
+  DeliveryWindow,
+  MenuProduct,
+  OrderingWeek,
+} from "@/lib/types";
 import { formatCurrency } from "@/lib/utils";
 import { Button } from "./button";
 import { ProductUnavailableOverlay } from "./product-unavailable-overlay";
@@ -40,6 +49,9 @@ type CheckoutStartResponse = {
   message?: string;
 };
 
+const EMPTY_MENU: MenuProduct[] = [];
+const EMPTY_DELIVERY_WINDOWS: DeliveryWindow[] = [];
+
 function isValidEmail(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 }
@@ -55,14 +67,16 @@ function normalizeStateInput(value: string) {
 }
 
 export function OrderBuilder({
-  deliveryWindows,
-  afterCutoff,
-  menu,
+  weeks,
 }: {
-  deliveryWindows: DeliveryWindow[];
-  afterCutoff: boolean;
-  menu: MenuProduct[];
+  weeks: OrderingWeek[];
 }) {
+  const [selectedWeekId, setSelectedWeekId] = useState(weeks[0]?.weeklyMenu.id || "");
+  const selectedWeek =
+    weeks.find((week) => week.weeklyMenu.id === selectedWeekId) ?? weeks[0] ?? null;
+  const menu = selectedWeek?.menu ?? EMPTY_MENU;
+  const deliveryWindows = selectedWeek?.deliveryWindows ?? EMPTY_DELIVERY_WINDOWS;
+  const afterCutoff = isAfterWeeklyCutoff(selectedWeek?.weeklyMenu.orderCutoffAt);
   const availableDeliveryWindows = deliveryWindows.filter(
     (window) => window.reserved < window.capacity,
   );
@@ -82,6 +96,7 @@ export function OrderBuilder({
   const [deliveryWindowId, setDeliveryWindowId] = useState(
     availableDeliveryWindows[0]?.id || "",
   );
+  const [nextWeekOk, setNextWeekOk] = useState<boolean | null>(null);
   const [deliveryInstructions, setDeliveryInstructions] = useState("");
   const [notes, setNotes] = useState("");
   const [acknowledgedTerms, setAcknowledgedTerms] = useState(false);
@@ -198,6 +213,10 @@ export function OrderBuilder({
   const hasEligibleDelivery = Boolean(deliveryCheck?.eligible);
   const checkoutSteps = [
     {
+      done: Boolean(selectedWeek),
+      label: selectedWeek ? "Delivery week selected" : "Choose delivery week",
+    },
+    {
       done: hasItems,
       label: hasItems ? "Items selected" : "Choose at least one item",
     },
@@ -231,7 +250,54 @@ export function OrderBuilder({
         ? "Ingredients, allergens, and terms reviewed"
         : "Review ingredients, allergens, and terms",
     },
+    ...(afterCutoff
+      ? [
+          {
+            done: nextWeekOk !== null,
+            label:
+              nextWeekOk === null
+                ? "Answer next-week fallback question"
+                : "Next-week fallback answered",
+          },
+        ]
+      : []),
   ];
+
+  function formatWeekLabel(week: OrderingWeek) {
+    const startsAt = new Date(week.weeklyMenu.startsAt);
+    const endsAt = new Date(week.weeklyMenu.endsAt);
+    const formatter = new Intl.DateTimeFormat("en", {
+      month: "short",
+      day: "numeric",
+    });
+    return `${formatter.format(startsAt)}-${formatter.format(endsAt)}`;
+  }
+
+  function selectWeek(weeklyMenuId: string) {
+    const nextWeek =
+      weeks.find((week) => week.weeklyMenu.id === weeklyMenuId) ?? weeks[0] ?? null;
+    const nextMenu = nextWeek?.menu ?? EMPTY_MENU;
+    const nextDeliveryWindows =
+      nextWeek?.deliveryWindows.filter((window) => window.reserved < window.capacity) ??
+      EMPTY_DELIVERY_WINDOWS;
+
+    setSelectedWeekId(weeklyMenuId);
+    setDeliveryWindowId(nextDeliveryWindows[0]?.id || "");
+    setNextWeekOk(null);
+    setQuantities((current) => {
+      const next: Record<string, number> = {};
+      for (const item of nextMenu) {
+        if (!canOrderMenuProduct(item)) continue;
+        const currentQuantity = current[item.id] || 0;
+        const clamped = Math.min(currentQuantity, item.remainingQuantity);
+        if (clamped > 0) next[item.id] = clamped;
+      }
+      return next;
+    });
+    setDeliveryCheck(null);
+    setDeliveryCheckNeedsRefresh(false);
+    setMessage(null);
+  }
 
   function updateQuantity(productId: string, delta: number, max: number) {
     const product = menu.find((item) => item.id === productId);
@@ -323,12 +389,14 @@ export function OrderBuilder({
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            weeklyMenuId: selectedWeek?.weeklyMenu.id,
             cart,
             customer,
             address,
             deliveryWindowId,
             deliveryInstructions,
             notes,
+            nextWeekOk: afterCutoff ? nextWeekOk : undefined,
             acknowledgedTerms,
           }),
         });
@@ -367,12 +435,14 @@ export function OrderBuilder({
 
   const canSubmitOrderDetails =
     hasItems &&
+    Boolean(selectedWeek) &&
     hasValidContact &&
     hasAddress &&
     hasDeliveryWindow &&
     availableDeliveryWindows.length > 0 &&
     hasEligibleDelivery &&
-    acknowledgedTerms;
+    acknowledgedTerms &&
+    (!afterCutoff || nextWeekOk !== null);
   const canCheckout = canSubmitOrderDetails && !afterCutoff;
 
   return (
@@ -387,17 +457,42 @@ export function OrderBuilder({
           </p>
           <h2 className="mt-3 text-3xl font-bold text-stone-950 sm:text-4xl">
             {afterCutoff
-              ? "Request this week's sourdough"
-              : "Order this week's sourdough"}
+              ? "Request approval for this delivery week"
+              : "Order sourdough for delivery"}
           </h2>
           <p className="mt-4 max-w-2xl text-base leading-7 text-stone-700">
             {afterCutoff
-              ? "Choose the items you want, confirm local delivery, and send an availability request."
-              : "Pick your favorites, confirm local delivery, and continue to secure checkout while this week's quantities are available."}
+              ? "Choose the items you want, confirm local delivery, pay securely, and Grace will approve, move, or refund the request."
+              : "Pick your delivery week, choose your favorites, confirm local delivery, and continue to secure checkout."}
           </p>
 
+          <label className="mt-6 grid max-w-md gap-2 text-sm font-bold text-stone-950">
+            Delivery week
+            <select
+              className="h-11 w-full min-w-0 rounded-md border border-stone-300 bg-white px-3 text-sm font-normal text-stone-950"
+              value={selectedWeek?.weeklyMenu.id || ""}
+              onChange={(event) => selectWeek(event.target.value)}
+              disabled={!weeks.length}
+            >
+              {!weeks.length ? <option value="">No delivery weeks available</option> : null}
+              {weeks.map((week) => (
+                <option key={week.weeklyMenu.id} value={week.weeklyMenu.id}>
+                  {formatWeekLabel(week)} - {week.weeklyMenu.name}
+                  {isAfterWeeklyCutoff(week.weeklyMenu.orderCutoffAt)
+                    ? " (approval request)"
+                    : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+          {selectedWeek ? (
+            <p className="mt-3 text-sm leading-6 text-stone-700">
+              {getCutoffMessage(selectedWeek.weeklyMenu.orderCutoffAt)}
+            </p>
+          ) : null}
+
           <div className="mt-8 grid gap-4">
-              {menu.map((item) => {
+            {menu.map((item) => {
               const quantity = quantities[item.id] || 0;
               const guidance = getProductGuidance(item);
               return (
@@ -506,8 +601,9 @@ export function OrderBuilder({
 
           {afterCutoff ? (
             <div className="mt-5 rounded-md border border-[#a94334]/25 bg-white p-4 text-sm leading-6 text-stone-700">
-              Online checkout is closed for this bake. Send your requested items
-              and delivery details, and we&apos;ll reply with availability.
+              This delivery week is past the normal cutoff. You can still pay
+              and submit an approval request; Grace will accept it, move it to
+              next week if you allow that, or refund it if it cannot be filled.
             </div>
           ) : null}
 
@@ -727,6 +823,35 @@ export function OrderBuilder({
                 ))}
               </select>
             </label>
+            {afterCutoff ? (
+              <fieldset className="rounded-md border border-stone-200 bg-white p-3 text-sm text-stone-700">
+                <legend className="px-1 text-xs font-bold uppercase tracking-wide text-stone-600">
+                  If this week is not available, would next week work?
+                </legend>
+                <div className="mt-2 grid gap-2">
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name="next-week-ok"
+                      className="accent-[#23443b]"
+                      checked={nextWeekOk === true}
+                      onChange={() => setNextWeekOk(true)}
+                    />
+                    <span>Yes, next week works if needed.</span>
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name="next-week-ok"
+                      className="accent-[#23443b]"
+                      checked={nextWeekOk === false}
+                      onChange={() => setNextWeekOk(false)}
+                    />
+                    <span>No, refund me if this week is not available.</span>
+                  </label>
+                </div>
+              </fieldset>
+            ) : null}
             {!availableDeliveryWindows.length ? (
               <div className="rounded-md bg-white p-3 text-sm leading-6 text-stone-700">
                 Delivery windows are currently full. Join the bake alert list or
@@ -824,7 +949,7 @@ export function OrderBuilder({
                 <CheckCircle2 className="mt-1 shrink-0 text-[#23443b]" size={16} />
                 <span>
                   {afterCutoff
-                    ? "No payment is collected for availability requests."
+                    ? "Payment is collected now, but the order waits for Grace to approve it."
                     : "Payment opens in Stripe Checkout after you continue."}
                 </span>
               </li>
@@ -840,7 +965,7 @@ export function OrderBuilder({
                 <CheckCircle2 className="mt-1 shrink-0 text-[#23443b]" size={16} />
                 <span>
                   {afterCutoff
-                    ? "We will reply by email before anything is confirmed."
+                    ? "If Grace cannot fill it, she will move it to next week only if you allowed that, or refund it."
                     : "After payment, your confirmation is sent by email."}
                 </span>
               </li>
@@ -896,7 +1021,7 @@ export function OrderBuilder({
             onClick={submitOrder}
           >
             {isPending ? <Loader2 className="animate-spin" size={16} /> : <Send size={16} />}
-            {afterCutoff ? "Send availability request" : "Continue to secure checkout"}
+            {afterCutoff ? "Pay and request approval" : "Continue to secure checkout"}
           </Button>
           {message ? (
             <p className="mt-3 text-sm text-[#a94334]" role="status" aria-live="polite">

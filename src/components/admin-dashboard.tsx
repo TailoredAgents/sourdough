@@ -5,7 +5,6 @@ import {
   AlertTriangle,
   Bot,
   CheckCircle2,
-  ClipboardList,
   Copy,
   Inbox,
   Loader2,
@@ -49,7 +48,7 @@ import { OrderDashboard } from "./order-dashboard";
 import { ProductEditor } from "./product-editor";
 import { WeeklyMenuEditor } from "./weekly-menu-editor";
 
-const activeOrderStatuses = ["paid", "baking", "out_for_delivery"] as const;
+const activeOrderStatuses = ["pending_approval", "paid", "baking", "out_for_delivery"] as const;
 
 export function AdminDashboard({
   aiKnowledgeEntries,
@@ -94,6 +93,7 @@ export function AdminDashboard({
     activeOrderStatuses.includes(order.status as (typeof activeOrderStatuses)[number]),
   ).length;
   const pendingPaymentCount = orders.filter((order) => order.status === "pending_payment").length;
+  const approvalCount = orders.filter((order) => order.status === "pending_approval").length;
   const paidOrderCount = orders.filter((order) => order.status === "paid").length;
   const approvedKnowledgeCount = aiKnowledgeEntries.filter((entry) => entry.approved).length;
   const menuCapacity = menu.reduce(
@@ -111,13 +111,13 @@ export function AdminDashboard({
   const draftStats = getAdminDraftStats(draft);
   const draftWarnings = getAdminDraftReviewWarnings(draft);
   const stats: { label: string; value: string; Icon: LucideIcon }[] = [
-    { label: "Active paid orders", value: String(openOrderCount), Icon: ClipboardList },
+    { label: "Orders needing approval", value: String(approvalCount), Icon: AlertTriangle },
     { label: "Open requests", value: String(openRequestCount), Icon: Inbox },
     { label: "Loaves/items left", value: String(remainingCount), Icon: Package },
     { label: "Delivery windows", value: String(deliveryWindows.length), Icon: Truck },
   ];
   const quickLinks = [
-    { label: "Orders", href: "#orders", count: openOrderCount },
+    { label: "Orders", href: "#orders", count: approvalCount || openOrderCount },
     { label: "Requests", href: "#requests", count: openRequestCount },
     { label: "Weekly menu", href: "#weekly-menu", count: remainingCount },
     { label: "Delivery", href: "#delivery", count: deliveryWindows.length },
@@ -264,8 +264,9 @@ export function AdminDashboard({
               {openOrderCount + openRequestCount} needs attention
             </p>
             <p className="mt-2 text-sm leading-6 text-stone-700">
-              {paidOrderCount} paid orders ready to work, {newRequestCount} new
-              requests, and {pendingPaymentCount} unpaid checkouts.
+              {approvalCount} approval requests, {paidOrderCount} paid orders ready
+              to work, {newRequestCount} new requests, and {pendingPaymentCount}
+              unpaid checkouts.
             </p>
           </div>
           <div className="rounded-md border border-stone-200 bg-white p-4">
@@ -282,8 +283,8 @@ export function AdminDashboard({
           <div className="rounded-md border border-amber-300 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
             <p className="font-bold">Owner reminder</p>
             <p className="mt-1">
-              Work paid orders first. Pending payment orders are not confirmed
-              until Stripe marks them paid.
+              Review paid approval requests first. Pending payment orders are
+              not confirmed until Stripe marks them paid.
             </p>
           </div>
           <div className="rounded-md border border-stone-200 bg-white p-4">

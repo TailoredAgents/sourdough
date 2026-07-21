@@ -45,10 +45,22 @@ describe("admin order workflow actions", () => {
     ]);
   });
 
+  it("keeps paid approval requests on the dedicated approval workflow", () => {
+    expect(getAdminOrderStatusActions("pending_approval")).toEqual([]);
+    expect(getAdminOrderStatusActions("pending_approval_payment")).toEqual([
+      {
+        label: "Cancel unpaid request",
+        status: "canceled",
+        variant: "ghost",
+      },
+    ]);
+  });
+
   it("identifies when admin status changes must adjust inventory reservations", () => {
     expect(getAdminOrderInventoryAdjustment("pending_payment", "canceled")).toBe(
       "release",
     );
+    expect(getAdminOrderInventoryAdjustment("pending_approval", "canceled")).toBeNull();
     expect(getAdminOrderInventoryAdjustment("paid", "canceled")).toBe("release");
     expect(getAdminOrderInventoryAdjustment("baking", "canceled")).toBe("release");
     expect(getAdminOrderInventoryAdjustment("out_for_delivery", "canceled")).toBe(

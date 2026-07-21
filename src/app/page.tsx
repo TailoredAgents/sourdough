@@ -29,11 +29,11 @@ import { formatCurrency } from "@/lib/utils";
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
-  const { menu, deliveryWindows, weeklyMenu, deliverySettings } = await getStorefrontData();
+  const { menu, weeklyMenu, deliverySettings, orderingWeeks } = await getStorefrontData();
   const afterCutoff = isAfterWeeklyCutoff(weeklyMenu?.orderCutoffAt);
   const siteUrl = `https://${bakery.domain}`;
   const cutoffMessage = getCutoffMessage(weeklyMenu?.orderCutoffAt);
-  const orderAction = afterCutoff ? "Send a request" : "Order this week";
+  const orderAction = "Order bread";
   const serviceZipCopy = deliverySettings.allowedPostalCodes.join(", ");
   const customerHighlights = [
     [
@@ -57,7 +57,7 @@ export default async function Home() {
     {
       question: "When should I order?",
       answer:
-        "Order while the weekly menu is open and before the posted cutoff. If checkout is closed, you can still send an availability request from the order form.",
+        "Choose a delivery week, then order before that week's cutoff. If the current week is past cutoff, you can still pay and submit an approval request.",
     },
     {
       question: "Can I see ingredients and allergens before ordering?",
@@ -78,7 +78,7 @@ export default async function Home() {
     [
       "1",
       "Build your order",
-      "Choose loaves, add-ons, and quantities while they are available.",
+      "Choose a delivery week, then pick loaves, add-ons, and quantities while they are available.",
     ],
     [
       "2",
@@ -88,8 +88,8 @@ export default async function Home() {
     afterCutoff
       ? [
           "3",
-          "Send your request",
-          "Submit your details and we will reply with current availability.",
+          "Request approval",
+          "Pay securely and Grace will approve, move, or refund the current-week request.",
         ]
       : [
           "3",
@@ -249,7 +249,7 @@ export default async function Home() {
                   data-analytics-section="hero"
                   className="inline-flex h-12 items-center justify-center rounded-md border border-white/35 bg-white/10 px-5 text-base font-bold text-white backdrop-blur transition hover:bg-white/20"
                 >
-                  View this week&apos;s menu
+                  View available weeks
                 </a>
               </div>
               <div className="mt-8 grid gap-3 text-sm text-stone-100 sm:grid-cols-3">
@@ -280,7 +280,7 @@ export default async function Home() {
             <div className="flex flex-col justify-between gap-6 sm:flex-row sm:items-end">
               <div>
                 <p className="text-sm font-bold uppercase tracking-[0.18em] text-[#a94334]">
-                  This week&apos;s menu
+                  Delivery week menu
                 </p>
                 <h2 className="mt-3 text-3xl font-bold text-stone-950 sm:text-4xl">
                   Choose your bread and add-ons
@@ -496,9 +496,9 @@ export default async function Home() {
                 Pick your items, choose delivery, checkout
               </h2>
               <p className="mt-4 text-base leading-7 text-stone-700">
-                Preorder while this week&apos;s menu is open. If online checkout is
-                closed, you can still send a request and we&apos;ll reply with
-                availability before anything is confirmed.
+                Pick a delivery week first, then choose an available delivery
+                day and time. Current-week requests after the cutoff can still
+                be paid and reviewed by Grace.
               </p>
               <div className="mt-6 max-w-lg">
                 <DeliveryZipChecker source="homepage-ordering-section" />
@@ -521,11 +521,7 @@ export default async function Home() {
           </div>
         </section>
 
-        <OrderBuilder
-          deliveryWindows={deliveryWindows}
-          afterCutoff={afterCutoff}
-          menu={menu}
-        />
+        <OrderBuilder weeks={orderingWeeks} />
 
         <section className="bg-white py-16 sm:py-20">
           <div className="mx-auto grid max-w-7xl gap-8 px-4 sm:px-6 lg:grid-cols-[0.9fr_1.1fr] lg:px-8">
