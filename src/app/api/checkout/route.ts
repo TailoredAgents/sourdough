@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { isAfterWeeklyCutoff } from "@/lib/cutoff";
+import { isAfterWeeklyCutoff, isCurrentLocalWeek } from "@/lib/cutoff";
 import { checkDeliveryAddress, type DeliveryCheckResult } from "@/lib/delivery";
 import {
   sendCustomerOrderConfirmation,
@@ -125,7 +125,9 @@ export async function POST(request: Request) {
   }
 
   const weeklyMenu = await getWeeklyMenuData(checkout.weeklyMenuId);
-  const afterCutoff = isAfterWeeklyCutoff(weeklyMenu?.orderCutoffAt);
+  const requiresApproval =
+    isCurrentLocalWeek(weeklyMenu?.startsAt) ||
+    isAfterWeeklyCutoff(weeklyMenu?.orderCutoffAt);
 
   if (!weeklyMenu?.published) {
     return NextResponse.json(
@@ -134,7 +136,7 @@ export async function POST(request: Request) {
     );
   }
 
-  if (afterCutoff && typeof checkout.nextWeekOk !== "boolean") {
+  if (requiresApproval && typeof checkout.nextWeekOk !== "boolean") {
     return NextResponse.json(
       { error: "Please answer whether next week works if this week is unavailable." },
       { status: 400 },
@@ -229,12 +231,12 @@ export async function POST(request: Request) {
   let pendingOrder;
   try {
     pendingOrder = await createPendingCheckoutOrder({
-      approvalMode: afterCutoff ? "after_cutoff" : "standard",
+      approvalMode: requiresApproval ? "after_cutoff" : "standard",
       checkout,
       deliveryCheck,
       deliveryWindowId: deliveryWindow.id,
       items,
-      reserveInventory: !afterCutoff,
+      reserveInventory: !requiresApproval,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Order could not be reserved.";
@@ -257,7 +259,7 @@ export async function POST(request: Request) {
         order_id: pendingOrder.id,
         weekly_menu_id: weeklyMenu.id,
         approval_mode: pendingOrder.approvalMode,
-        next_week_ok: afterCutoff ? String(Boolean(checkout.nextWeekOk)) : "",
+        next_week_ok: requiresApproval ? String(Boolean(checkout.nextWeekOk)) : "",
         customer_name: checkout.customer.name,
         customer_phone: checkout.customer.phone,
         delivery_window_id: deliveryWindow.id,

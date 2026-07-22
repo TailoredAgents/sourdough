@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getCutoffMessage, isAfterWeeklyCutoff } from "./cutoff";
+import { getCutoffMessage, isAfterWeeklyCutoff, isCurrentLocalWeek } from "./cutoff";
 
 describe("weekly cutoff", () => {
   it("uses the editable menu cutoff when present", () => {
@@ -29,5 +29,12 @@ describe("weekly cutoff", () => {
         new Date("2026-07-09T12:00:00.000Z"),
       ),
     ).toContain("Order by");
+  });
+
+  it("marks delivery weeks in the current local week as request weeks", () => {
+    const now = new Date("2026-07-22T14:00:00.000Z");
+
+    expect(isCurrentLocalWeek("2026-07-22T14:00:00.000Z", now)).toBe(true);
+    expect(isCurrentLocalWeek("2026-07-29T14:00:00.000Z", now)).toBe(false);
   });
 });
