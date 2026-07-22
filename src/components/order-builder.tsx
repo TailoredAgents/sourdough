@@ -226,7 +226,7 @@ export function OrderBuilder({
   const deliveryFeeLabel = deliveryCheck
     ? deliveryCheck.eligible
       ? formatCurrency(deliveryCheck.feeCents)
-      : "Unavailable for this ZIP"
+      : "Unavailable for delivery"
     : "Check ZIP for fee";
   const hasItems = cart.length > 0;
   const hasName = Boolean(customer.name.trim());

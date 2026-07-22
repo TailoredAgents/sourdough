@@ -302,7 +302,30 @@ test("homepage lets customers check ZIP before building a full order", async ({ 
   await expect(page.getByText(/ZIP 30114 is prefilled/i)).toBeVisible();
 });
 
-test("checkout explains ineligible delivery ZIPs before submit", async ({ page }) => {
+test("checkout explains ineligible delivery addresses before submit", async ({ page }) => {
+  await page.route("**/api/delivery/check", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        eligible: false,
+        preliminary: false,
+        provider: "google_routes",
+        providerStatus: "over_limit",
+        needsReview: false,
+        miles: 35.4,
+        durationMinutes: 44,
+        distanceMeters: 56970,
+        distanceMiles: 35.4,
+        message:
+          "This address is about 44 minutes from the bakery, which is outside our 30-minute delivery range.",
+        feeCents: 600,
+        postalCode: "30303",
+        allowedPostalCodes: ["30114", "30115", "30107", "30183", "30188", "30189"],
+      }),
+    });
+  });
+
   await page.goto("/");
 
   await page.locator('input[name="address-line1"]').fill("123 Main St");
@@ -311,10 +334,10 @@ test("checkout explains ineligible delivery ZIPs before submit", async ({ page }
   await page.getByRole("button", { name: "Check delivery and fee" }).click();
 
   await expect(
-    page.getByText(/30303 is outside our current delivery area/i),
+    page.getByText(/outside our 30-minute delivery range/i),
   ).toBeVisible();
   await expect(
-    page.locator("#checkout-details").getByText("Unavailable for this ZIP"),
+    page.locator("#checkout-details").getByText("Unavailable for delivery"),
   ).toBeVisible();
 });
 

@@ -3,7 +3,7 @@ import type { DeliveryAddress } from "./types";
 
 const GOOGLE_ROUTES_ENDPOINT =
   "https://routes.googleapis.com/directions/v2:computeRoutes";
-const GOOGLE_ROUTES_TIMEOUT_MS = 4_000;
+const GOOGLE_ROUTES_TIMEOUT_MS = 8_000;
 const METERS_PER_MILE = 1609.344;
 
 export type DeliverySettings = {
@@ -334,9 +334,13 @@ export async function checkDeliveryAddressWithRoutes(
   settings = getDeliverySettings(),
 ): Promise<DeliveryCheckResult> {
   const preliminary = checkDeliveryAddress(address, settings);
-  if (!preliminary.eligible) return { ...preliminary, preliminary: false };
+  if (preliminary.providerStatus === "error") {
+    return { ...preliminary, preliminary: false };
+  }
 
   if (!hasFullStreetAddress(address)) {
+    if (!preliminary.eligible) return { ...preliminary, preliminary: false };
+
     return {
       ...preliminary,
       preliminary: true,

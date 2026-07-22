@@ -209,6 +209,31 @@ describe("Google Routes delivery pricing", () => {
     expect(result.message).toContain("outside our 30-minute delivery range");
   });
 
+  it("uses Google drive time for full Georgia addresses outside the preliminary ZIP list", async () => {
+    mockGoogleRoute("900s", 12000);
+
+    const result = await checkDeliveryAddressWithRoutes(
+      {
+        line1: "100 Robin Rd Ext",
+        city: "Acworth",
+        state: "GA",
+        postalCode: "30102",
+      },
+      settings,
+    );
+
+    expect(result).toMatchObject({
+      eligible: true,
+      preliminary: false,
+      provider: "google_routes",
+      providerStatus: "ok",
+      postalCode: "30102",
+      durationMinutes: 15,
+      feeCents: 700,
+    });
+    expect(globalThis.fetch).toHaveBeenCalled();
+  });
+
   it("blocks checkout when Google cannot verify a full address", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue({
       ok: false,
