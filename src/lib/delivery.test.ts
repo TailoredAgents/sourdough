@@ -209,7 +209,7 @@ describe("Google Routes delivery pricing", () => {
     expect(result.message).toContain("outside our 30-minute delivery range");
   });
 
-  it("uses Google drive time for full Georgia addresses outside the preliminary ZIP list", async () => {
+  it("rejects full Georgia addresses outside the ZIP list before calling Google", async () => {
     mockGoogleRoute("900s", 12000);
 
     const result = await checkDeliveryAddressWithRoutes(
@@ -223,15 +223,14 @@ describe("Google Routes delivery pricing", () => {
     );
 
     expect(result).toMatchObject({
-      eligible: true,
+      eligible: false,
       preliminary: false,
-      provider: "google_routes",
-      providerStatus: "ok",
+      provider: "zip",
+      providerStatus: "over_limit",
       postalCode: "30102",
-      durationMinutes: 15,
-      feeCents: 700,
     });
-    expect(globalThis.fetch).toHaveBeenCalled();
+    expect(result.message).toContain("outside our current delivery area");
+    expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
   it("blocks checkout when Google cannot verify a full address", async () => {

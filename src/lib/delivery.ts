@@ -334,13 +334,9 @@ export async function checkDeliveryAddressWithRoutes(
   settings = getDeliverySettings(),
 ): Promise<DeliveryCheckResult> {
   const preliminary = checkDeliveryAddress(address, settings);
-  if (preliminary.providerStatus === "error") {
-    return { ...preliminary, preliminary: false };
-  }
+  if (!preliminary.eligible) return { ...preliminary, preliminary: false };
 
   if (!hasFullStreetAddress(address)) {
-    if (!preliminary.eligible) return { ...preliminary, preliminary: false };
-
     return {
       ...preliminary,
       preliminary: true,
