@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { getCurrentAdmin } from "@/lib/admin-auth";
 import { productAdminSchema, slugifyProductName } from "@/lib/product-admin";
+import { ensureRollingWeeklyMenus } from "@/lib/rolling-weeks";
 import { getSupabaseAdminClient } from "@/lib/supabase";
-import { getProductsData, getPublishedMenuId } from "@/lib/storefront-data";
+import { getProductsData } from "@/lib/storefront-data";
 
 export async function GET() {
   const admin = await getCurrentAdmin();
@@ -86,19 +87,58 @@ export async function POST(request: Request) {
   }
 
   const productId = savedProduct.id as string;
-  if (!product.id && product.includeInCurrentMenu) {
-    const weeklyMenuId = await getPublishedMenuId();
-    if (weeklyMenuId) {
-      const { error: menuError } = await supabase.from("weekly_menu_items").upsert(
-        {
-          weekly_menu_id: weeklyMenuId,
-          product_id: productId,
-          available_quantity: product.weeklyQuantity,
-          sold_quantity: 0,
-          featured: product.featured,
-        },
-        { onConflict: "weekly_menu_id,product_id" },
+  if (product.includeInCurrentMenu) {
+    const rollingMenuIds = await ensureRollingWeeklyMenus();
+    const { data: activeMenus, error: menusError } = await supabase
+      .from("weekly_menus")
+      .select("id")
+      .eq("published", true)
+      .gte("ends_at", new Date().toISOString())
+      .order("starts_at", { ascending: true });
+
+    if (menusError) {
+      return NextResponse.json({ error: menusError.message }, { status: 400 });
+    }
+
+    const weeklyMenuIds = Array.from(
+      new Set([
+        ...rollingMenuIds,
+        ...((activeMenus as Array<{ id: string }> | null) || []).map((menu) => menu.id),
+      ]),
+    );
+
+    if (weeklyMenuIds.length) {
+      const { data: existingItems, error: existingItemsError } = await supabase
+        .from("weekly_menu_items")
+        .select("weekly_menu_id")
+        .eq("product_id", productId)
+        .in("weekly_menu_id", weeklyMenuIds);
+
+      if (existingItemsError) {
+        return NextResponse.json({ error: existingItemsError.message }, { status: 400 });
+      }
+
+      const existingWeeklyMenuIds = new Set(
+        ((existingItems as Array<{ weekly_menu_id: string }> | null) || []).map(
+          (item) => item.weekly_menu_id,
+        ),
       );
+      const missingWeeklyMenuIds = weeklyMenuIds.filter(
+        (weeklyMenuId) => !existingWeeklyMenuIds.has(weeklyMenuId),
+      );
+
+      const { error: menuError } = missingWeeklyMenuIds.length
+        ? await supabase.from("weekly_menu_items").insert(
+            missingWeeklyMenuIds.map((weeklyMenuId) => ({
+              weekly_menu_id: weeklyMenuId,
+              product_id: productId,
+              available_quantity: product.weeklyQuantity,
+              sold_quantity: 0,
+              featured: product.featured,
+              unavailable: false,
+            })),
+          )
+        : { error: null };
 
       if (menuError) {
         return NextResponse.json({ error: menuError.message }, { status: 400 });

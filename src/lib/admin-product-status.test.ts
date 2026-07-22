@@ -75,7 +75,7 @@ describe("admin product status", () => {
         true,
       ),
     ).toEqual([
-      "This product is hidden but still appears in this week's menu.",
+      "This product is hidden but still appears in active delivery weeks.",
       "Add a real product photo before featuring this item.",
     ]);
 

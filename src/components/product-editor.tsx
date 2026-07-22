@@ -61,7 +61,7 @@ function productToForm(product?: Product): ProductForm {
       product?.imageStyle || "from-stone-100 via-amber-100 to-orange-200",
     active: product?.active ?? true,
     includeInCurrentMenu: !product,
-    weeklyQuantity: !product ? "1" : "0",
+    weeklyQuantity: "1",
     featured: false,
   };
 }
@@ -78,17 +78,17 @@ function formToPayload(form: ProductForm) {
     imageUrl: form.imageUrl.trim() || null,
     imageStyle: form.imageStyle.trim(),
     active: form.active,
-    includeInCurrentMenu: !form.id && form.includeInCurrentMenu,
+    includeInCurrentMenu: form.includeInCurrentMenu,
     weeklyQuantity: Math.max(0, Math.round(Number(form.weeklyQuantity || 0))),
     featured: form.featured,
   };
 }
 
 export function ProductEditor({
-  currentMenuProductIds,
+  customerVisibleProductIds,
   initialProducts,
 }: {
-  currentMenuProductIds: string[];
+  customerVisibleProductIds: string[];
   initialProducts: Product[];
 }) {
   const router = useRouter();
@@ -107,8 +107,8 @@ export function ProductEditor({
   const [message, setMessage] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const visibleProductIds = useMemo(
-    () => new Set([...currentMenuProductIds, ...locallyVisibleProductIds]),
-    [currentMenuProductIds, locallyVisibleProductIds],
+    () => new Set([...customerVisibleProductIds, ...locallyVisibleProductIds]),
+    [customerVisibleProductIds, locallyVisibleProductIds],
   );
   const productSummary = useMemo(
     () => summarizeAdminProducts(products, visibleProductIds),
@@ -180,13 +180,13 @@ export function ProductEditor({
           );
         setSelectedId(savedProduct?.id ?? nextProducts[0]?.id ?? null);
         setForm(productToForm(savedProduct ?? nextProducts[0]));
-        if (savedProduct && form.includeInCurrentMenu && !form.id) {
+        if (savedProduct && form.includeInCurrentMenu) {
           setLocallyVisibleProductIds((current) => new Set(current).add(savedProduct.id));
         }
         setMessage(
-          form.includeInCurrentMenu && !form.id
-            ? "Product saved and added to this week's menu."
-            : "Product saved. Add it to the weekly menu before expecting it on the storefront.",
+          form.includeInCurrentMenu
+            ? "Product saved and added to active delivery weeks."
+            : "Product saved. Add it to active delivery weeks before expecting it on the storefront.",
         );
         router.refresh();
       } catch {
@@ -271,8 +271,8 @@ export function ProductEditor({
         <div>
           <h2 className="text-xl font-bold text-stone-950">Product editor</h2>
           <p className="mt-1 text-sm leading-6 text-stone-700">
-            Manage the product catalog. Public storefront visibility is controlled by
-            the weekly menu builder.
+            Manage the product catalog. Customer storefront visibility also requires
+            the product to be included in active delivery weeks.
           </p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row">
@@ -303,7 +303,7 @@ export function ProductEditor({
         </div>
         <div>
           <p className="text-xs font-bold uppercase tracking-wide text-stone-500">
-            This week
+            In delivery weeks
           </p>
           <p className="mt-1 text-2xl font-bold text-stone-950">
             {productSummary.inCurrentMenu}
@@ -382,8 +382,8 @@ export function ProductEditor({
                     }`}
                   >
                     {visibleProductIds.has(product.id)
-                      ? "Public this week"
-                      : "Not in weekly menu"}
+                      ? "Public in weeks"
+                      : "Not in delivery weeks"}
                   </span>
                   <span
                     className={`inline-flex rounded-sm px-2 py-1 text-xs font-bold uppercase ${
@@ -535,11 +535,11 @@ export function ProductEditor({
             </label>
           </div>
 
-          <div className="grid min-w-0 gap-3 md:grid-cols-[160px_minmax(0,1fr)]">
+          <div className="grid min-w-0 gap-3 lg:grid-cols-2">
             <label className="grid gap-1 text-sm font-semibold text-stone-700">
               Price
               <input
-                className="h-11 rounded-md border border-stone-300 px-3 font-normal"
+                className="h-11 w-full min-w-0 rounded-md border border-stone-300 px-3 font-normal"
                 inputMode="decimal"
                 value={form.price}
                 onChange={(event) => updateForm("price", event.target.value)}
@@ -549,15 +549,15 @@ export function ProductEditor({
             <label className="grid gap-1 text-sm font-semibold text-stone-700">
               Product color style
               <textarea
-                className="min-h-20 min-w-0 rounded-md border border-stone-300 p-3 font-normal leading-6"
+                className="min-h-20 w-full min-w-0 rounded-md border border-stone-300 p-3 font-normal leading-6"
                 value={form.imageStyle}
                 onChange={(event) => updateForm("imageStyle", event.target.value)}
               />
             </label>
           </div>
 
-          {!form.id ? (
-            <div className="grid gap-3 rounded-md border border-stone-200 bg-white p-3 md:grid-cols-[1fr_140px_120px]">
+          {!visibleProductIds.has(form.id || "") || !form.id ? (
+            <div className="grid gap-3 rounded-md border border-stone-200 bg-white p-3 md:grid-cols-[minmax(0,1fr)_140px_120px]">
               <label className="flex items-center gap-2 text-sm font-semibold text-stone-700">
                 <input
                   type="checkbox"
@@ -566,7 +566,7 @@ export function ProductEditor({
                     updateForm("includeInCurrentMenu", event.target.checked)
                   }
                 />
-                Add to current weekly menu
+                Add to active delivery weeks
               </label>
               <label className="grid gap-1 text-sm font-semibold text-stone-700">
                 Weekly quantity

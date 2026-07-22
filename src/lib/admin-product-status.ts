@@ -33,15 +33,15 @@ export function getAdminProductStripeStatus(product: Product): AdminProductStrip
   };
 }
 
-export function getAdminProductWarnings(product: Product, isInCurrentMenu: boolean) {
+export function getAdminProductWarnings(product: Product, isInDeliveryWeeks: boolean) {
   const warnings: string[] = [];
   const stripeStatus = getAdminProductStripeStatus(product);
 
-  if (!product.active && isInCurrentMenu) {
-    warnings.push("This product is hidden but still appears in this week's menu.");
+  if (!product.active && isInDeliveryWeeks) {
+    warnings.push("This product is hidden but still appears in active delivery weeks.");
   }
 
-  if (product.active && isInCurrentMenu && stripeStatus.tone === "warning") {
+  if (product.active && isInDeliveryWeeks && stripeStatus.tone === "warning") {
     warnings.push("Run Stripe catalog sync before relying on checkout for this item.");
   }
 
@@ -54,16 +54,16 @@ export function getAdminProductWarnings(product: Product, isInCurrentMenu: boole
 
 export function summarizeAdminProducts(
   products: Product[],
-  currentMenuProductIds: Set<string>,
+  deliveryWeekProductIds: Set<string>,
 ) {
   return products.reduce(
     (summary, product) => {
-      const isInCurrentMenu = currentMenuProductIds.has(product.id);
+      const isInDeliveryWeeks = deliveryWeekProductIds.has(product.id);
       const stripeStatus = getAdminProductStripeStatus(product);
 
       return {
         active: summary.active + (product.active ? 1 : 0),
-        inCurrentMenu: summary.inCurrentMenu + (isInCurrentMenu ? 1 : 0),
+        inCurrentMenu: summary.inCurrentMenu + (isInDeliveryWeeks ? 1 : 0),
         needsStripeSync:
           summary.needsStripeSync + (stripeStatus.tone === "warning" ? 1 : 0),
         missingPhotos: summary.missingPhotos + (product.imageUrl ? 0 : 1),

@@ -17,7 +17,7 @@ export const metadata = {
 export default async function AdminPage() {
   const admin = await requireAdmin();
   const [
-    { deliverySettings, deliveryWindows, menu, products, weeklyMenu },
+    { deliverySettings, deliveryWindows, menu, orderingWeeks, products, weeklyMenu },
     customerMessages,
     aiKnowledgeEntries,
     orders,
@@ -58,6 +58,7 @@ export default async function AdminPage() {
         deliverySettings={deliverySettings}
         deliveryWindows={deliveryWindows}
         menu={menu}
+        orderingWeeks={orderingWeeks}
         orders={orders}
         products={products}
         weeklyMenu={weeklyMenu}

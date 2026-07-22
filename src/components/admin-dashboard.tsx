@@ -35,6 +35,7 @@ import type {
   DeliveryWindow,
   MenuProduct,
   Product,
+  OrderingWeek,
   WeeklyMenu,
   AdminOrder,
   WeeklyMenuSummary,
@@ -56,6 +57,7 @@ export function AdminDashboard({
   deliverySettings,
   deliveryWindows,
   menu,
+  orderingWeeks,
   orders,
   products,
   weeklyMenu,
@@ -66,6 +68,7 @@ export function AdminDashboard({
   deliverySettings: DeliverySettings;
   deliveryWindows: DeliveryWindow[];
   menu: MenuProduct[];
+  orderingWeeks: OrderingWeek[];
   orders: AdminOrder[];
   products: Product[];
   weeklyMenu: WeeklyMenu | null;
@@ -107,6 +110,11 @@ export function AdminDashboard({
   const remainingCount = menu.reduce(
     (sum, item) => sum + (item.unavailable ? 0 : item.remainingQuantity),
     0,
+  );
+  const customerVisibleProductIds = Array.from(
+    new Set(
+      orderingWeeks.flatMap((week) => week.menu.map((item) => item.id)),
+    ),
   );
   const draftStats = getAdminDraftStats(draft);
   const draftWarnings = getAdminDraftReviewWarnings(draft);
@@ -547,7 +555,7 @@ export function AdminDashboard({
         />
 
         <ProductEditor
-          currentMenuProductIds={menu.map((item) => item.id)}
+          customerVisibleProductIds={customerVisibleProductIds}
           initialProducts={products}
         />
       </main>
