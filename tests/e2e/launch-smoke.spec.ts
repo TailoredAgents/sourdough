@@ -1,4 +1,30 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
+
+async function mockEligibleFullAddressDelivery(page: Page) {
+  await page.route("**/api/delivery/check", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        eligible: true,
+        preliminary: false,
+        provider: "google_routes",
+        providerStatus: "ok",
+        needsReview: false,
+        miles: 5.4,
+        durationMinutes: 12,
+        distanceMeters: 8690,
+        distanceMiles: 5.4,
+        pricingBand: "11-20",
+        message:
+          "Delivery is available. This address is about 12 minutes from the bakery. Delivery fee: $7.00.",
+        feeCents: 700,
+        postalCode: "30114",
+        allowedPostalCodes: ["30114", "30115", "30107", "30183", "30188", "30189"],
+      }),
+    });
+  });
+}
 
 test("storefront renders menu or ordering unavailable state", async ({ page }) => {
   await page.goto("/");
@@ -70,6 +96,7 @@ test("customer pages avoid internal admin wording", async ({ page }) => {
 
 test("mobile customer funnel exposes navigation, ordering, and analytics", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
+  await mockEligibleFullAddressDelivery(page);
   await page.route("**/api/notify", async (route) => {
     await route.fulfill({
       status: 200,
@@ -136,7 +163,7 @@ test("mobile customer funnel exposes navigation, ordering, and analytics", async
   await page.waitForFunction(() =>
     window.dataLayer?.some((entry) => entry.event === "check_delivery"),
   );
-  await expect(page.getByText(/30114 is in our local delivery area/i)).toBeVisible();
+  await expect(page.getByText(/about 12 minutes from the bakery/i)).toBeVisible();
   await expect(
     page.getByText("Review ingredients, allergens, and terms"),
   ).toBeVisible();
@@ -184,7 +211,7 @@ test("narrow mobile storefront has no horizontal overflow", async ({ page }) => 
 test("delivery check accepts and rejects ZIPs", async ({ request }) => {
   const allowed = await request.post("/api/delivery/check", {
     data: {
-      line1: "1 Main St",
+      line1: "",
       city: "Canton",
       state: "GA",
       postalCode: "30114",
@@ -195,7 +222,7 @@ test("delivery check accepts and rejects ZIPs", async ({ request }) => {
 
   const woodstockAllowed = await request.post("/api/delivery/check", {
     data: {
-      line1: "1 Main St",
+      line1: "",
       city: "Woodstock",
       state: "GA",
       postalCode: "30188",
@@ -292,12 +319,13 @@ test("checkout explains ineligible delivery ZIPs before submit", async ({ page }
 });
 
 test("checkout asks customers to recheck delivery after ZIP changes", async ({ page }) => {
+  await mockEligibleFullAddressDelivery(page);
   await page.goto("/");
 
   await page.locator('input[name="address-line1"]').fill("123 Main St");
   await page.locator('input[name="postal-code"]').fill("30114");
   await page.getByRole("button", { name: "Check delivery and fee" }).click();
-  await expect(page.getByText(/30114 is in our local delivery area/i)).toBeVisible();
+  await expect(page.getByText(/about 12 minutes from the bakery/i)).toBeVisible();
 
   await page.locator('input[name="postal-code"]').fill("30115");
 
@@ -308,6 +336,7 @@ test("checkout asks customers to recheck delivery after ZIP changes", async ({ p
 });
 
 test("checkout normalizes Georgia state input before delivery check", async ({ page }) => {
+  await mockEligibleFullAddressDelivery(page);
   await page.goto("/");
 
   await page.locator('input[name="address-line1"]').fill("123 Main St");
@@ -316,7 +345,7 @@ test("checkout normalizes Georgia state input before delivery check", async ({ p
   await page.locator('input[name="postal-code"]').fill("30114");
   await page.getByRole("button", { name: "Check delivery and fee" }).click();
 
-  await expect(page.getByText(/30114 is in our local delivery area/i)).toBeVisible();
+  await expect(page.getByText(/about 12 minutes from the bakery/i)).toBeVisible();
 });
 
 test("checkout shows a controlled delivery-check failure message", async ({ page }) => {
@@ -342,6 +371,7 @@ test("checkout shows a controlled delivery-check failure message", async ({ page
 });
 
 test("checkout shows a controlled error when checkout response is malformed", async ({ page }) => {
+  await mockEligibleFullAddressDelivery(page);
   await page.route("**/api/checkout", async (route) => {
     await route.fulfill({
       status: 502,
@@ -358,7 +388,7 @@ test("checkout shows a controlled error when checkout response is malformed", as
   await page.locator('input[name="address-line1"]').fill("123 Main St");
   await page.locator('input[name="postal-code"]').fill("30114");
   await page.getByRole("button", { name: "Check delivery and fee" }).click();
-  await expect(page.getByText(/30114 is in our local delivery area/i)).toBeVisible();
+  await expect(page.getByText(/about 12 minutes from the bakery/i)).toBeVisible();
   await page
     .getByLabel(/I confirm the delivery details are correct/i)
     .check();
@@ -520,7 +550,9 @@ test("delivery page lets customers check ZIP before ordering", async ({ page }) 
   await expect(page.getByLabel("Delivery ZIP code")).toHaveValue("30114");
   await page.getByRole("button", { name: "Check ZIP" }).click();
   await expect(page.getByText(/30114 is in our local delivery area/i)).toBeVisible();
-  await expect(page.getByText(/Delivery fee:/i)).toBeVisible();
+  await expect(
+    page.getByText(/Add your full street address at checkout/i),
+  ).toBeVisible();
   await expect(page.getByRole("link", { name: "Order with this ZIP" })).toBeVisible();
   await page.waitForFunction(() =>
     window.dataLayer?.some(

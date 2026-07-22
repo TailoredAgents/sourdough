@@ -14,8 +14,15 @@ import type { DeliveryCheckResult } from "@/lib/delivery";
 
 const baseDeliveryCheck: DeliveryCheckResult = {
   eligible: true,
+  preliminary: false,
+  provider: "google_routes",
+  providerStatus: "ok",
   needsReview: false,
   miles: null,
+  durationMinutes: 12,
+  distanceMeters: 8047,
+  distanceMiles: 5,
+  pricingBand: "11-20",
   message: "30114 is in our local delivery area.",
   feeCents: 600,
   postalCode: "30114",

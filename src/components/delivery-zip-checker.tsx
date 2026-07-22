@@ -8,9 +8,11 @@ import { Button } from "./button";
 
 type DeliveryCheck = {
   eligible: boolean;
+  preliminary?: boolean;
   message: string;
   feeCents: number;
   postalCode: string | null;
+  durationMinutes?: number;
 };
 
 export function DeliveryZipChecker({
@@ -78,7 +80,8 @@ export function DeliveryZipChecker({
         <div>
           <h3 className="font-bold text-stone-950">Check your delivery ZIP</h3>
           <p className="mt-1 text-sm leading-6 text-stone-700">
-            Confirm local delivery before you start building an order.
+            Check the general service area first. Exact drive time and delivery
+            fee are confirmed with your full address before checkout.
           </p>
         </div>
       </div>
@@ -116,7 +119,9 @@ export function DeliveryZipChecker({
           )}
           <p>
             {result.message}
-            {result.eligible ? ` Delivery fee: ${formatCurrency(result.feeCents)}.` : ""}
+            {result.eligible && !result.preliminary
+              ? ` Delivery fee: ${formatCurrency(result.feeCents)}.`
+              : ""}
           </p>
         </div>
       ) : null}

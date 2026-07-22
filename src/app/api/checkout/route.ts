@@ -4,7 +4,10 @@ import {
   isPastSundayDeliveryEnd,
   isRequestDeliveryWeek,
 } from "@/lib/bake-schedule";
-import { checkDeliveryAddress, type DeliveryCheckResult } from "@/lib/delivery";
+import {
+  checkDeliveryAddressWithRoutes,
+  type DeliveryCheckResult,
+} from "@/lib/delivery";
 import {
   sendCustomerOrderConfirmation,
 } from "@/lib/email";
@@ -197,7 +200,10 @@ export async function POST(request: Request) {
   }
 
   const deliverySettings = await getDeliverySettingsData();
-  const deliveryCheck = checkDeliveryAddress(checkout.address, deliverySettings);
+  const deliveryCheck = await checkDeliveryAddressWithRoutes(
+    checkout.address,
+    deliverySettings,
+  );
   const state = checkout.address.state.trim().toUpperCase();
   if (state !== "GA" && state !== "GEORGIA") {
     return NextResponse.json(

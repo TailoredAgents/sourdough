@@ -62,7 +62,7 @@ describe("stripe line items", () => {
         unit_amount: 600,
         product_data: {
           name: "Local delivery",
-          description: "ZIP-based local delivery around Canton and Woodstock, GA",
+          description: "Drive-time based Sunday local delivery around Canton and Woodstock, GA",
         },
       },
     });

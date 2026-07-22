@@ -10,6 +10,7 @@ import {
   Loader2,
   Megaphone,
   Package,
+  Route,
   Truck,
   type LucideIcon,
   MailCheck,
@@ -51,6 +52,25 @@ import { WeeklyMenuEditor } from "./weekly-menu-editor";
 
 const activeOrderStatuses = ["pending_approval", "paid", "baking", "out_for_delivery"] as const;
 
+type SundayRouteStop = {
+  orderId: string;
+  customerName: string;
+  customerPhone: string | null;
+  address: string;
+  orderSummary: string;
+  notes: string | null;
+  deliveryInstructions: string | null;
+};
+
+type SundayRoute = {
+  originAddress: string;
+  destinationAddress: string;
+  durationMinutes: number | null;
+  distanceMiles: number | null;
+  stops: SundayRouteStop[];
+  mapsUrl: string;
+};
+
 export function AdminDashboard({
   aiKnowledgeEntries,
   customerMessages,
@@ -86,8 +106,11 @@ export function AdminDashboard({
   const [draftReviewed, setDraftReviewed] = useState(false);
   const [draftMessage, setDraftMessage] = useState<string | null>(null);
   const [emailTestMessage, setEmailTestMessage] = useState<string | null>(null);
+  const [sundayRoute, setSundayRoute] = useState<SundayRoute | null>(null);
+  const [sundayRouteMessage, setSundayRouteMessage] = useState<string | null>(null);
   const [isDraftPending, startDraftTransition] = useTransition();
   const [isEmailTestPending, startEmailTestTransition] = useTransition();
+  const [isRoutePending, startRouteTransition] = useTransition();
   const openRequestCount = customerMessages.filter(
     (message) => message.status === "new" || message.status === "in_progress",
   ).length;
@@ -129,6 +152,7 @@ export function AdminDashboard({
     { label: "Requests", href: "#requests", count: openRequestCount },
     { label: "Weekly menu", href: "#weekly-menu", count: remainingCount },
     { label: "Delivery", href: "#delivery", count: deliveryWindows.length },
+    { label: "Route", href: "#sunday-route", count: "Map" },
     { label: "Products", href: "#products", count: products.length },
     { label: "Drafts", href: "#assistant", count: "AI" },
     { label: "Knowledge", href: "#knowledge", count: approvedKnowledgeCount },
@@ -208,6 +232,36 @@ export function AdminDashboard({
         setEmailTestMessage(
           "Test email could not be sent. Check your connection and try again.",
         );
+      }
+    });
+  }
+
+  function buildSundayRoute() {
+    setSundayRouteMessage(null);
+    startRouteTransition(async () => {
+      try {
+        const response = await fetch("/api/admin/routes/sunday");
+        const payload = (await response.json().catch(() => null)) as
+          | { route?: SundayRoute; error?: string }
+          | null;
+
+        if (!response.ok || !payload?.route) {
+          setSundayRoute(null);
+          setSundayRouteMessage(
+            payload?.error || "Sunday route could not be optimized.",
+          );
+          return;
+        }
+
+        setSundayRoute(payload.route);
+        setSundayRouteMessage(
+          payload.route.stops.length
+            ? "Sunday route optimized."
+            : "No paid active Sunday delivery orders yet.",
+        );
+      } catch {
+        setSundayRoute(null);
+        setSundayRouteMessage("Sunday route could not be optimized. Try again.");
       }
     });
   }
@@ -331,6 +385,115 @@ export function AdminDashboard({
         </section>
 
         <OrderDashboard initialOrders={orders} />
+
+        <section
+          id="sunday-route"
+          className="mt-8 scroll-mt-28 rounded-md border border-stone-200 bg-white p-5"
+        >
+          <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+            <div>
+              <div className="flex items-center gap-2">
+                <Route className="text-[#a94334]" size={20} />
+                <h2 className="text-xl font-bold text-stone-950">
+                  Sunday delivery route
+                </h2>
+              </div>
+              <p className="mt-1 text-sm leading-6 text-stone-700">
+                Optimize paid active stops from the bakery to the route ending
+                address.
+              </p>
+            </div>
+            <Button
+              type="button"
+              onClick={buildSundayRoute}
+              disabled={isRoutePending}
+            >
+              {isRoutePending ? (
+                <Loader2 className="animate-spin" size={16} />
+              ) : (
+                <Route size={16} />
+              )}
+              Optimize route
+            </Button>
+          </div>
+
+          {sundayRouteMessage ? (
+            <p className="mt-4 text-sm font-semibold text-stone-700">
+              {sundayRouteMessage}
+            </p>
+          ) : null}
+
+          {sundayRoute ? (
+            <div className="mt-4 grid gap-4">
+              <div className="rounded-md border border-stone-200 bg-[#fffaf2] p-4 text-sm leading-6 text-stone-700">
+                <p>
+                  <span className="font-bold text-stone-950">Start:</span>{" "}
+                  {sundayRoute.originAddress}
+                </p>
+                <p>
+                  <span className="font-bold text-stone-950">End:</span>{" "}
+                  {sundayRoute.destinationAddress}
+                </p>
+                {sundayRoute.durationMinutes !== null &&
+                sundayRoute.distanceMiles !== null ? (
+                  <p>
+                    <span className="font-bold text-stone-950">Route:</span>{" "}
+                    about {sundayRoute.durationMinutes} minutes,{" "}
+                    {sundayRoute.distanceMiles} miles
+                  </p>
+                ) : null}
+                <a
+                  className="mt-3 inline-flex h-10 items-center justify-center rounded-md bg-[#23443b] px-4 text-sm font-bold text-white"
+                  href={sundayRoute.mapsUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Open in Google Maps
+                </a>
+              </div>
+
+              {sundayRoute.stops.length ? (
+                <div className="grid gap-3">
+                  {sundayRoute.stops.map((stop, index) => (
+                    <article
+                      key={stop.orderId}
+                      className="rounded-md border border-stone-200 bg-white p-4 text-sm leading-6 text-stone-700"
+                    >
+                      <div className="flex flex-col justify-between gap-2 sm:flex-row">
+                        <div>
+                          <p className="text-xs font-bold uppercase tracking-wide text-[#a94334]">
+                            Stop {index + 1}
+                          </p>
+                          <p className="mt-1 font-bold text-stone-950">
+                            {stop.customerName}
+                          </p>
+                        </div>
+                        {stop.customerPhone ? (
+                          <a
+                            className="font-semibold text-[#23443b] underline"
+                            href={`tel:${stop.customerPhone}`}
+                          >
+                            {stop.customerPhone}
+                          </a>
+                        ) : null}
+                      </div>
+                      <p className="mt-2">{stop.address}</p>
+                      <p className="mt-2 font-semibold text-stone-950">
+                        {stop.orderSummary}
+                      </p>
+                      {stop.deliveryInstructions ? (
+                        <p className="mt-2">
+                          Instructions: {stop.deliveryInstructions}
+                        </p>
+                      ) : null}
+                      {stop.notes ? <p className="mt-1">Notes: {stop.notes}</p> : null}
+                    </article>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </section>
 
         <CustomerMessageInbox initialMessages={customerMessages} />
 

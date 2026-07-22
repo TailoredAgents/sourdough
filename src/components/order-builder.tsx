@@ -36,8 +36,19 @@ import { ProductUnavailableOverlay } from "./product-unavailable-overlay";
 
 type DeliveryCheck = {
   eligible: boolean;
+  preliminary: boolean;
+  provider?: "zip" | "google_routes";
+  providerStatus?:
+    | "ok"
+    | "missing_address"
+    | "over_limit"
+    | "unavailable"
+    | "error";
   needsReview: boolean;
   miles: number | null;
+  durationMinutes?: number;
+  distanceMiles?: number;
+  pricingBand?: string;
   message: string;
   feeCents: number;
   postalCode: string | null;

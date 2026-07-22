@@ -179,6 +179,34 @@ function requireZipList(key) {
   }
 }
 
+function requireDeliveryFeeBands(key) {
+  const value = valueFor(key);
+  requireValue(key);
+  if (!value || isPlaceholder(value)) return;
+
+  const bands = value.split(",").map((item) => item.trim()).filter(Boolean);
+  if (!bands.length) {
+    failures.push(`${key} must include at least one minute-range fee band.`);
+    return;
+  }
+
+  for (const band of bands) {
+    const match = band.match(/^(\d+)-(\d+):(\d+)$/);
+    if (!match) {
+      failures.push(`${key} must use ranges like 0-10:500,11-20:700,21-30:1000.`);
+      return;
+    }
+
+    const min = Number(match[1]);
+    const max = Number(match[2]);
+    const fee = Number(match[3]);
+    if (max < min || fee < 0) {
+      failures.push(`${key} has an invalid band: ${band}.`);
+      return;
+    }
+  }
+}
+
 function warnIfMissing(key, reason) {
   if (!hasValue(key)) warnings.push(`${key}: ${reason}`);
 }
@@ -213,6 +241,11 @@ requireValue("OPENAI_MODEL");
 requireInteger("DELIVERY_FEE_CENTS", { min: 0 });
 requireZipList("DELIVERY_ALLOWED_POSTAL_CODES");
 requireValue("DELIVERY_SERVICE_AREA_COPY");
+requireValue("GOOGLE_MAPS_API_KEY");
+requireValue("DELIVERY_ORIGIN_ADDRESS");
+requireValue("DELIVERY_ROUTE_END_ADDRESS");
+requireInteger("DELIVERY_MAX_DRIVE_MINUTES", { min: 1 });
+requireDeliveryFeeBands("DELIVERY_FEE_BANDS");
 
 warnIfMissing(
   "OPENAI_API_KEY",
