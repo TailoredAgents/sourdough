@@ -7,10 +7,10 @@ import {
 } from "./admin-form-validation";
 
 const validWeeklyMenu = {
-  name: "Launch Week Bake Drop",
-  orderCutoffAt: "2026-07-16T10:00",
-  startsAt: "2026-07-17T10:00",
-  endsAt: "2026-07-18T10:00",
+  name: "Sunday Bake Drop",
+  orderCutoffAt: "2026-07-17T00:00",
+  startsAt: "2026-07-13T00:00",
+  endsAt: "2026-07-19T23:59",
   published: true,
   items: [
     {
@@ -28,10 +28,10 @@ const validDelivery = {
   serviceAreaCopy: "Delivery is available in selected Canton and Woodstock ZIP codes.",
   windows: [
     {
-      label: "Wednesday afternoon",
-      startsAt: "2026-07-17T10:00",
-      endsAt: "2026-07-17T14:00",
-      capacity: 12,
+      label: "Sunday, Jul 19, 3:00 PM-6:00 PM",
+      startsAt: "2026-07-19T15:00",
+      endsAt: "2026-07-19T18:00",
+      capacity: 20,
       reserved: 3,
     },
   ],
@@ -131,7 +131,7 @@ describe("admin form validation", () => {
           },
         ],
       }),
-    ).toBe("Wednesday afternoon cannot reserve more spots than capacity.");
+    ).toBe("Sunday, Jul 19, 3:00 PM-6:00 PM cannot reserve more spots than capacity.");
 
     expect(
       validateDeliveryForm({
@@ -143,7 +143,23 @@ describe("admin form validation", () => {
           },
         ],
       }),
-    ).toBe("Wednesday afternoon has reserved orders and cannot be removed.");
+    ).toBe("Sunday, Jul 19, 3:00 PM-6:00 PM has reserved orders and cannot be removed.");
+
+    expect(
+      validateDeliveryForm({
+        ...validDelivery,
+        windows: [
+          validDelivery.windows[0],
+          {
+            ...validDelivery.windows[0],
+            label: "Extra Sunday slot",
+            startsAt: "2026-07-19T18:00",
+            endsAt: "2026-07-19T20:00",
+            reserved: 0,
+          },
+        ],
+      }),
+    ).toBe("Each bake week can have one Sunday delivery slot.");
   });
 
   it("blocks incomplete product and AI knowledge saves before API calls", () => {

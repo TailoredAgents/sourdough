@@ -13,10 +13,10 @@ const validPayload = {
   },
   windows: [
     {
-      label: "Wednesday afternoon",
-      startsAt: "2026-07-15T19:00:00.000Z",
-      endsAt: "2026-07-15T22:00:00.000Z",
-      capacity: 12,
+      label: "Sunday, Jul 19, 3:00 PM-6:00 PM",
+      startsAt: "2026-07-19T19:00:00.000Z",
+      endsAt: "2026-07-19T22:00:00.000Z",
+      capacity: 20,
       reserved: 4,
       remove: false,
     },
@@ -28,7 +28,7 @@ describe("delivery admin validation", () => {
     expect(deliveryAdminSchema.safeParse(validPayload).success).toBe(true);
   });
 
-  it("rejects invalid delivery window dates", () => {
+  it("rejects invalid Sunday delivery dates", () => {
     expect(
       deliveryAdminSchema.safeParse({
         ...validPayload,
@@ -37,7 +37,7 @@ describe("delivery admin validation", () => {
     ).toBe(false);
   });
 
-  it("rejects delivery windows that end before they start", () => {
+  it("rejects Sunday delivery slots that end before they start", () => {
     expect(
       deliveryAdminSchema.safeParse({
         ...validPayload,
@@ -56,6 +56,24 @@ describe("delivery admin validation", () => {
       deliveryAdminSchema.safeParse({
         ...validPayload,
         windows: [{ ...validPayload.windows[0], capacity: 2, reserved: 3 }],
+      }).success,
+    ).toBe(false);
+  });
+
+  it("rejects more than one active Sunday delivery slot", () => {
+    expect(
+      deliveryAdminSchema.safeParse({
+        ...validPayload,
+        windows: [
+          validPayload.windows[0],
+          {
+            ...validPayload.windows[0],
+            label: "Extra Sunday slot",
+            startsAt: "2026-07-19T22:00:00.000Z",
+            endsAt: "2026-07-20T00:00:00.000Z",
+            reserved: 0,
+          },
+        ],
       }).success,
     ).toBe(false);
   });

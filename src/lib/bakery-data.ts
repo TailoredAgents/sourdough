@@ -1,4 +1,9 @@
 import type { DeliveryWindow, Product, WeeklyMenu, WeeklyMenuItem } from "./types";
+import {
+  DEFAULT_SUNDAY_DELIVERY_CAPACITY,
+  formatSundayDeliveryWindowLabel,
+  getFirstVisibleDeliveryWeekSchedule,
+} from "./bake-schedule";
 import { isWeeklyMenuItemUnavailable } from "./menu-availability";
 
 export const bakery = {
@@ -7,7 +12,7 @@ export const bakery = {
   orderEmail: "orders@landlsourdough.com",
   location: "Canton, GA",
   cutoffDay: "Thursday",
-  cutoffHour: "8:00 PM",
+  cutoffHour: "11:59 PM",
   deliveryPromise:
     "Local delivery in the Canton and Woodstock, Georgia area. Shipping is not currently available.",
   complianceNotes: [
@@ -107,73 +112,30 @@ export const weeklyMenu: WeeklyMenuItem[] = [
   { productId: "honey-butter", availableQuantity: 20, soldQuantity: 7 },
 ];
 
-function daysFrom(now: Date, days: number, hour: number, minute = 0) {
-  const date = new Date(now);
-  date.setDate(date.getDate() + days);
-  date.setHours(hour, minute, 0, 0);
-  return date;
-}
-
-function formatDeliveryWindowLabel(startsAt: Date, endsAt: Date) {
-  const day = new Intl.DateTimeFormat("en", {
-    weekday: "long",
-    month: "short",
-    day: "numeric",
-    timeZone: "America/New_York",
-  }).format(startsAt);
-  const time = new Intl.DateTimeFormat("en", {
-    hour: "numeric",
-    minute: "2-digit",
-    timeZone: "America/New_York",
-  });
-
-  return `${day}, ${time.format(startsAt)}-${time.format(endsAt)}`;
-}
-
 export function getFallbackBakeDates(now = new Date()) {
-  const orderCutoffAt = daysFrom(now, 1, 20);
-  const startsAt = daysFrom(now, 2, 0);
-  const endsAt = daysFrom(now, 5, 23, 59);
+  const schedule = getFirstVisibleDeliveryWeekSchedule(now);
 
   return {
-    orderCutoffAt,
-    startsAt,
-    endsAt,
+    orderCutoffAt: schedule.orderCutoffAt,
+    startsAt: schedule.startsAt,
+    endsAt: schedule.endsAt,
   };
 }
 
 export function getFallbackDeliveryWindows(now = new Date()): DeliveryWindow[] {
-  const firstStart = daysFrom(now, 2, 15);
-  const firstEnd = daysFrom(now, 2, 18);
-  const secondStart = daysFrom(now, 3, 9);
-  const secondEnd = daysFrom(now, 3, 12);
-  const thirdStart = daysFrom(now, 4, 14);
-  const thirdEnd = daysFrom(now, 4, 17);
+  const schedule = getFirstVisibleDeliveryWeekSchedule(now);
 
   return [
     {
-      id: "starter-window-1",
-      label: formatDeliveryWindowLabel(firstStart, firstEnd),
-      startsAt: firstStart.toISOString(),
-      endsAt: firstEnd.toISOString(),
-      capacity: 16,
+      id: "starter-sunday-window",
+      label: formatSundayDeliveryWindowLabel(
+        schedule.deliveryStartsAt,
+        schedule.deliveryEndsAt,
+      ),
+      startsAt: schedule.deliveryStartsAt.toISOString(),
+      endsAt: schedule.deliveryEndsAt.toISOString(),
+      capacity: DEFAULT_SUNDAY_DELIVERY_CAPACITY,
       reserved: 5,
-    },
-    {
-      id: "starter-window-2",
-      label: formatDeliveryWindowLabel(secondStart, secondEnd),
-      startsAt: secondStart.toISOString(),
-      endsAt: secondEnd.toISOString(),
-      capacity: 12,
-      reserved: 4,
-    },
-    {
-      id: "starter-window-3",
-      label: formatDeliveryWindowLabel(thirdStart, thirdEnd),
-      startsAt: thirdStart.toISOString(),
-      endsAt: thirdEnd.toISOString(),
-      capacity: 12,
-      reserved: 3,
     },
   ];
 }
@@ -197,8 +159,8 @@ export const deliveryWindows: DeliveryWindow[] = getFallbackDeliveryWindows();
 export const aiKnowledge = [
   `${bakery.name} is a local cottage bakery in ${bakery.location}.`,
   "Orders are for local Georgia delivery around Canton and Woodstock only. Shipping is not currently available.",
-  "The current order cutoff is set on the active weekly menu and shown before checkout.",
-  "After the posted cutoff, customers can send a request and the bakery will confirm availability.",
+  "Orders close Thursday at 11:59 PM, Friday is prep day, Saturday is bake day, and Sunday is local delivery from 3:00 PM to 6:00 PM.",
+  "After the posted cutoff, customers can submit a paid same-week request and the bakery will approve it, move it to next Sunday if allowed, or refund it.",
   "All product allergen details must come from the product cards. Do not claim allergen-free preparation.",
   "Allowed delivery ZIP codes and delivery fee are configured by the bakery owner in admin.",
 ];

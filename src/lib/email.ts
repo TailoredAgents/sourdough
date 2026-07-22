@@ -109,7 +109,7 @@ function renderCustomerConfirmation({
 }: BaseEmail) {
   return {
     subject: "We received your Luna & Lorelai's Sourdough order",
-    text: `Hi ${customerName},\n\nThank you for ordering from Luna & Lorelai's Sourdough.\n\nOrder:\n${orderSummary}\n\nDelivery window: ${deliveryWindow}\n\nPlease reply to this email if your delivery details need a correction. We will reach out if anything needs confirmation.\n\nLuna & Lorelai's Sourdough`,
+    text: `Hi ${customerName},\n\nThank you for ordering from Luna & Lorelai's Sourdough.\n\nOrder:\n${orderSummary}\n\nSunday delivery time: ${deliveryWindow}\n\nPlease reply to this email if your delivery details need a correction. We will reach out if anything needs confirmation.\n\nLuna & Lorelai's Sourdough`,
   };
 }
 
@@ -120,7 +120,7 @@ function renderCustomerApprovalRequestReceived({
 }: BaseEmail) {
   return {
     subject: "We received your Luna & Lorelai's Sourdough approval request",
-    text: `Hi ${customerName},\n\nPayment was received for your same-week approval request. Grace will review it and either accept it, move it to next week if you allowed that, or refund it if it cannot be filled.\n\nRequested order:\n${orderSummary}\n\nRequested delivery window: ${deliveryWindow}\n\nPlease reply to this email if your delivery details need a correction.\n\nLuna & Lorelai's Sourdough`,
+    text: `Hi ${customerName},\n\nPayment was received for your same-week approval request. Grace will review it and either accept it, move it to next Sunday if you allowed that, or refund it if it cannot be filled.\n\nRequested order:\n${orderSummary}\n\nRequested Sunday delivery time: ${deliveryWindow}\n\nPlease reply to this email if your delivery details need a correction.\n\nLuna & Lorelai's Sourdough`,
   };
 }
 
@@ -135,7 +135,7 @@ function renderOwnerNewOrder({
 }: OwnerEmail) {
   return {
     subject: `New sourdough order from ${customerName}`,
-    text: `New paid order received.\n\nCustomer: ${customerName}\nEmail: ${customerEmail}\nPhone: ${customerPhone}\n\nOrder:\n${orderSummary}\n\nDelivery window: ${deliveryWindow}\nAddress: ${address}\nNotes: ${notes || "None"}`,
+    text: `New paid order received.\n\nCustomer: ${customerName}\nEmail: ${customerEmail}\nPhone: ${customerPhone}\n\nOrder:\n${orderSummary}\n\nSunday delivery time: ${deliveryWindow}\nAddress: ${address}\nNotes: ${notes || "None"}`,
   };
 }
 
@@ -150,7 +150,7 @@ function renderOwnerApprovalRequest({
 }: OwnerEmail) {
   return {
     subject: `Approval needed for ${customerName}'s sourdough order`,
-    text: `Paid same-week approval request received.\n\nCustomer: ${customerName}\nEmail: ${customerEmail}\nPhone: ${customerPhone}\n\nRequested order:\n${orderSummary}\n\nRequested delivery window: ${deliveryWindow}\nAddress: ${address}\nNotes: ${notes || "None"}\n\nOpen the admin order dashboard to accept, move to next week, or deny and refund.`,
+    text: `Paid same-week approval request received.\n\nCustomer: ${customerName}\nEmail: ${customerEmail}\nPhone: ${customerPhone}\n\nRequested order:\n${orderSummary}\n\nRequested Sunday delivery time: ${deliveryWindow}\nAddress: ${address}\nNotes: ${notes || "None"}\n\nOpen the admin order dashboard to accept, move to next Sunday, or deny and refund.`,
   };
 }
 
@@ -165,7 +165,7 @@ function renderLastMinuteRequest({
 }: OwnerEmail) {
   return {
     subject: `Last-minute request from ${customerName}`,
-    text: `A last-minute request was submitted after the cutoff.\n\nCustomer: ${customerName}\nEmail: ${customerEmail}\nPhone: ${customerPhone}\n\nRequested items:\n${orderSummary}\n\nPreferred delivery window: ${deliveryWindow}\nAddress: ${address}\nNotes: ${notes || "None"}`,
+    text: `A last-minute request was submitted after the cutoff.\n\nCustomer: ${customerName}\nEmail: ${customerEmail}\nPhone: ${customerPhone}\n\nRequested items:\n${orderSummary}\n\nPreferred Sunday delivery time: ${deliveryWindow}\nAddress: ${address}\nNotes: ${notes || "None"}`,
   };
 }
 
@@ -177,7 +177,7 @@ function renderStatusUpdate({
 }: StatusEmail) {
   return {
     subject: `Your sourdough order is ${statusLabel.toLowerCase()}`,
-    text: `Hi ${customerName},\n\nYour Luna & Lorelai's Sourdough order status is now: ${statusLabel}.\n\nOrder:\n${orderSummary}\n\nDelivery window: ${deliveryWindow}\n\nReply to this email if anything needs attention.\n\nLuna & Lorelai's Sourdough`,
+    text: `Hi ${customerName},\n\nYour Luna & Lorelai's Sourdough order status is now: ${statusLabel}.\n\nOrder:\n${orderSummary}\n\nSunday delivery time: ${deliveryWindow}\n\nReply to this email if anything needs attention.\n\nLuna & Lorelai's Sourdough`,
   };
 }
 

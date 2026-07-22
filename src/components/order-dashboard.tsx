@@ -386,12 +386,12 @@ export function OrderDashboard({ initialOrders }: { initialOrders: AdminOrder[] 
                         Paid same-week request needs a decision
                       </p>
                       <p className="mt-1">
-                        Accepting reserves this week&apos;s inventory and delivery spot.
-                        Denying refunds the Stripe payment. Moving to next week is only
-                        available if the customer said next week works.
+                        Accepting reserves this Sunday&apos;s inventory and delivery spot.
+                        Denying refunds the Stripe payment. Moving to next Sunday is only
+                        available if the customer said next Sunday works.
                       </p>
                       <p className="mt-1 font-semibold text-stone-950">
-                        Next week works: {selectedOrder.nextWeekOk ? "Yes" : "No"}
+                        Next Sunday works: {selectedOrder.nextWeekOk ? "Yes" : "No"}
                       </p>
                     </div>
                   </div>
@@ -417,7 +417,7 @@ export function OrderDashboard({ initialOrders }: { initialOrders: AdminOrder[] 
                   {selectedOrder.nextWeekOk ? (
                     <div className="grid gap-2 border-t border-stone-200 pt-3">
                       <label className="grid gap-1 font-semibold text-stone-700">
-                        Move to next week
+                        Move to next Sunday
                         <select
                           className="h-11 rounded-md border border-stone-300 bg-white px-3 font-normal"
                           value={
@@ -434,7 +434,7 @@ export function OrderDashboard({ initialOrders }: { initialOrders: AdminOrder[] 
                           disabled={isPending || !selectedOrder.moveWindows.length}
                         >
                           {!selectedOrder.moveWindows.length ? (
-                            <option value="">No next-week windows available</option>
+                            <option value="">No next Sunday slots available</option>
                           ) : null}
                           {selectedOrder.moveWindows.map((window) => (
                             <option key={window.id} value={window.id}>
@@ -458,7 +458,7 @@ export function OrderDashboard({ initialOrders }: { initialOrders: AdminOrder[] 
                         }
                       >
                         {isPending ? <Loader2 className="animate-spin" size={16} /> : null}
-                        Move to next week
+                        Move to next Sunday
                       </Button>
                     </div>
                   ) : null}
@@ -469,7 +469,7 @@ export function OrderDashboard({ initialOrders }: { initialOrders: AdminOrder[] 
                 <div className="mt-4 flex gap-2 rounded-md border border-stone-200 bg-white p-3 text-sm leading-6 text-stone-700">
                   <AlertTriangle className="mt-0.5 shrink-0 text-[#a94334]" size={16} />
                   <p>
-                    This order is canceled. Restoring it will try to reserve the delivery
+                    This order is canceled. Restoring it will try to reserve the Sunday delivery
                     spot and product inventory again before marking it paid.
                   </p>
                 </div>
@@ -480,7 +480,7 @@ export function OrderDashboard({ initialOrders }: { initialOrders: AdminOrder[] 
                   <MapPin className="mt-0.5 text-[#a94334]" size={16} />
                   <div>
                     <p className="font-semibold text-stone-950">
-                      {selectedOrder.deliveryWindowLabel || "No delivery window"}
+                      {selectedOrder.deliveryWindowLabel || "No Sunday delivery time"}
                     </p>
                     <p className="mt-1">{deliveryAddressText}</p>
                     {deliveryMapHref ? (

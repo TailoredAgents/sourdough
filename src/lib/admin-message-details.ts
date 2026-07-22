@@ -22,6 +22,14 @@ function labeledValue(lines: string[], label: string) {
   return line?.slice(prefix.length).trim() || null;
 }
 
+function firstLabeledValue(lines: string[], labels: string[]) {
+  for (const label of labels) {
+    const value = labeledValue(lines, label);
+    if (value) return value;
+  }
+  return null;
+}
+
 function labeledBlock(lines: string[], label: string) {
   const startIndex = lines.findIndex((line) => line === `${label}:`);
   if (startIndex === -1) return [];
@@ -43,7 +51,10 @@ export function parseAdminMessageDetails(body: string): AdminMessageDetails {
     email: labeledValue(lines, "Email"),
     phone: labeledValue(lines, "Phone"),
     requestedItems: labeledBlock(lines, "Requested items"),
-    deliveryWindow: labeledValue(lines, "Preferred delivery window"),
+    deliveryWindow: firstLabeledValue(lines, [
+      "Preferred Sunday delivery time",
+      "Preferred delivery window",
+    ]),
     address: labeledValue(lines, "Address"),
     deliveryInstructions: labeledValue(lines, "Delivery instructions"),
     notes: labeledValue(lines, "Notes"),

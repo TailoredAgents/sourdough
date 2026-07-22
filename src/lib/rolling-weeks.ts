@@ -1,18 +1,22 @@
+import {
+  DEFAULT_SUNDAY_DELIVERY_CAPACITY,
+  addWeeks,
+  formatSundayDeliveryWindowLabel,
+  getRollingDeliveryWeekSchedules,
+} from "./bake-schedule";
 import { getSupabaseAdminClient } from "./supabase";
-
-const ROLLING_WEEK_COUNT = 5;
-const DAY_MS = 24 * 60 * 60 * 1000;
-const WEEK_MS = 7 * DAY_MS;
-const TIME_ZONE = "America/New_York";
 
 type WeeklyMenuTemplateRow = {
   id: string;
   name: string;
+  published: boolean;
+  auto_generated?: boolean | null;
+};
+
+type WeeklyMenuExistingRow = WeeklyMenuTemplateRow & {
   order_cutoff_at: string;
   starts_at: string;
   ends_at: string;
-  published: boolean;
-  auto_generated?: boolean | null;
 };
 
 type WeeklyMenuItemTemplateRow = {
@@ -23,139 +27,101 @@ type WeeklyMenuItemTemplateRow = {
   unavailable: boolean | null;
 };
 
-type DeliveryWindowTemplateRow = {
-  label: string;
-  starts_at: string;
-  ends_at: string;
-  capacity: number;
-  reserved: number;
-};
-
-function addWeeks(value: string, weeks: number) {
-  return new Date(new Date(value).getTime() + weeks * WEEK_MS);
+function getGenerationKey(templateId: string, startsAt: Date) {
+  return `${templateId}:sunday:${startsAt.toISOString().slice(0, 10)}`;
 }
 
-function getTimeZoneParts(date: Date) {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: TIME_ZONE,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  }).formatToParts(date);
-
-  const values = Object.fromEntries(
-    parts
-      .filter((part) => part.type !== "literal")
-      .map((part) => [part.type, Number(part.value)]),
-  );
-
-  return {
-    year: values.year,
-    month: values.month,
-    day: values.day,
-    hour: values.hour === 24 ? 0 : values.hour,
-    minute: values.minute,
-    second: values.second,
-  };
-}
-
-function zonedDateToUtc({
-  year,
-  month,
-  day,
-  hour,
-  minute,
-}: {
-  year: number;
-  month: number;
-  day: number;
-  hour: number;
-  minute: number;
-}) {
-  const guess = new Date(Date.UTC(year, month - 1, day, hour, minute, 0, 0));
-  const actual = getTimeZoneParts(guess);
-  const desiredUtc = Date.UTC(year, month - 1, day, hour, minute, 0, 0);
-  const actualUtc = Date.UTC(
-    actual.year,
-    actual.month - 1,
-    actual.day,
-    actual.hour,
-    actual.minute,
-    actual.second,
-    0,
-  );
-
-  return new Date(guess.getTime() + (desiredUtc - actualUtc));
-}
-
-function thursdayCutoffForDeliveryWeek(startsAt: Date) {
-  const parts = getTimeZoneParts(startsAt);
-  const localNoon = zonedDateToUtc({
-    year: parts.year,
-    month: parts.month,
-    day: parts.day,
-    hour: 12,
-    minute: 0,
-  });
-  const localDay = getTimeZoneParts(localNoon);
-  const localDate = new Date(Date.UTC(localDay.year, localDay.month - 1, localDay.day));
-  const weekday = new Intl.DateTimeFormat("en-US", {
-    timeZone: TIME_ZONE,
-    weekday: "short",
-  }).format(startsAt);
-  const dayIndex = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(weekday);
-  const daysUntilThursday = 4 - dayIndex;
-  localDate.setUTCDate(localDate.getUTCDate() + daysUntilThursday);
-
-  return zonedDateToUtc({
-    year: localDate.getUTCFullYear(),
-    month: localDate.getUTCMonth() + 1,
-    day: localDate.getUTCDate(),
-    hour: 20,
-    minute: 0,
-  });
-}
-
-function formatWeekName(baseName: string, startsAt: Date) {
+function formatWeekName(baseName: string, deliveryStartsAt: Date) {
   const label = new Intl.DateTimeFormat("en-US", {
-    timeZone: TIME_ZONE,
+    timeZone: "America/New_York",
     month: "short",
     day: "numeric",
-  }).format(startsAt);
-  const cleaned = baseName.replace(/\s+-\s+Week of .+$/i, "");
-  return `${cleaned} - Week of ${label}`;
+  }).format(deliveryStartsAt);
+  const cleaned = baseName
+    .replace(/\s+-\s+Week of .+$/i, "")
+    .replace(/\s+-\s+Sunday delivery .+$/i, "");
+  return `${cleaned} - Sunday delivery ${label}`;
 }
 
-function formatDeliveryWindowLabel(startsAt: Date, endsAt: Date) {
-  const day = new Intl.DateTimeFormat("en", {
-    weekday: "long",
-    month: "short",
-    day: "numeric",
-    timeZone: TIME_ZONE,
-  }).format(startsAt);
-  const time = new Intl.DateTimeFormat("en", {
-    hour: "numeric",
-    minute: "2-digit",
-    timeZone: TIME_ZONE,
-  });
-
-  return `${day}, ${time.format(startsAt)}-${time.format(endsAt)}`;
+function sameTimestamp(left: string, right: Date) {
+  return new Date(left).getTime() === right.getTime();
 }
 
-function rangesOverlap(aStart: Date, aEnd: Date, bStart: Date, bEnd: Date) {
-  return aStart.getTime() <= bEnd.getTime() && bStart.getTime() <= aEnd.getTime();
-}
-
-function getFirstRollingTarget(template: WeeklyMenuTemplateRow, now: Date) {
-  let weeks = 0;
-  while (addWeeks(template.ends_at, weeks).getTime() < now.getTime()) {
-    weeks += 1;
+async function syncMenuSchedule(
+  menu: WeeklyMenuExistingRow,
+  schedule: ReturnType<typeof getRollingDeliveryWeekSchedules>[number],
+) {
+  if (
+    sameTimestamp(menu.order_cutoff_at, schedule.orderCutoffAt) &&
+    sameTimestamp(menu.starts_at, schedule.startsAt) &&
+    sameTimestamp(menu.ends_at, schedule.endsAt)
+  ) {
+    return;
   }
-  return weeks;
+
+  const supabase = getSupabaseAdminClient();
+  if (!supabase) return;
+
+  const { error } = await supabase
+    .from("weekly_menus")
+    .update({
+      order_cutoff_at: schedule.orderCutoffAt.toISOString(),
+      starts_at: schedule.startsAt.toISOString(),
+      ends_at: schedule.endsAt.toISOString(),
+    })
+    .eq("id", menu.id);
+
+  if (error) {
+    console.error("[supabase] rolling menu schedule update failed", error.message);
+  }
+}
+
+async function ensureSundayDeliveryWindow(
+  weeklyMenuId: string,
+  schedule: ReturnType<typeof getRollingDeliveryWeekSchedules>[number],
+) {
+  const supabase = getSupabaseAdminClient();
+  if (!supabase) return;
+
+  const label = formatSundayDeliveryWindowLabel(
+    schedule.deliveryStartsAt,
+    schedule.deliveryEndsAt,
+  );
+  const { data: existing, error: existingError } = await supabase
+    .from("delivery_windows")
+    .select("id, starts_at, ends_at, capacity, reserved")
+    .eq("weekly_menu_id", weeklyMenuId)
+    .eq("starts_at", schedule.deliveryStartsAt.toISOString())
+    .maybeSingle();
+
+  if (existingError) {
+    console.error("[supabase] Sunday delivery window lookup failed", existingError.message);
+    return;
+  }
+
+  if (existing) {
+    const { error } = await supabase
+      .from("delivery_windows")
+      .update({
+        label,
+        starts_at: schedule.deliveryStartsAt.toISOString(),
+        ends_at: schedule.deliveryEndsAt.toISOString(),
+        capacity: Math.max(Number(existing.capacity || 0), DEFAULT_SUNDAY_DELIVERY_CAPACITY),
+      })
+      .eq("id", existing.id);
+    if (error) console.error("[supabase] Sunday delivery window update failed", error.message);
+    return;
+  }
+
+  const { error } = await supabase.from("delivery_windows").insert({
+    weekly_menu_id: weeklyMenuId,
+    label,
+    starts_at: schedule.deliveryStartsAt.toISOString(),
+    ends_at: schedule.deliveryEndsAt.toISOString(),
+    capacity: DEFAULT_SUNDAY_DELIVERY_CAPACITY,
+    reserved: 0,
+  });
+  if (error) console.error("[supabase] Sunday delivery window creation failed", error.message);
 }
 
 export async function ensureRollingWeeklyMenus(now = new Date()) {
@@ -164,10 +130,10 @@ export async function ensureRollingWeeklyMenus(now = new Date()) {
 
   const { data: templateRows, error: templateError } = await supabase
     .from("weekly_menus")
-    .select("id, name, order_cutoff_at, starts_at, ends_at, published, auto_generated")
+    .select("id, name, published, auto_generated")
     .eq("published", true)
     .order("auto_generated", { ascending: true })
-    .order("starts_at", { ascending: false })
+    .order("created_at", { ascending: false })
     .limit(20);
 
   if (templateError) {
@@ -188,33 +154,9 @@ export async function ensureRollingWeeklyMenus(now = new Date()) {
     return [];
   }
 
-  const { data: windowRows, error: windowError } = await supabase
-    .from("delivery_windows")
-    .select("label, starts_at, ends_at, capacity, reserved")
-    .eq("weekly_menu_id", template.id)
-    .order("starts_at", { ascending: true });
-  if (windowError) {
-    console.error("[supabase] rolling delivery window template lookup failed", windowError.message);
-    return [];
-  }
-
-  const firstOffset = getFirstRollingTarget(template, now);
-  const targetRanges = Array.from({ length: ROLLING_WEEK_COUNT }, (_, index) => {
-    const weekOffset = firstOffset + index;
-    const startsAt = addWeeks(template.starts_at, weekOffset);
-    const endsAt = addWeeks(template.ends_at, weekOffset);
-    return {
-      weekOffset,
-      startsAt,
-      endsAt,
-      generationKey: `${template.id}:${startsAt.toISOString().slice(0, 10)}`,
-    };
-  });
-
-  const lookupStart = new Date(targetRanges[0].startsAt.getTime() - DAY_MS).toISOString();
-  const lookupEnd = new Date(
-    targetRanges[targetRanges.length - 1].endsAt.getTime() + DAY_MS,
-  ).toISOString();
+  const schedules = getRollingDeliveryWeekSchedules(now);
+  const lookupStart = schedules[0].startsAt.toISOString();
+  const lookupEnd = addWeeks(schedules[schedules.length - 1].endsAt, 1).toISOString();
   const { data: existingRows, error: existingError } = await supabase
     .from("weekly_menus")
     .select("id, name, order_cutoff_at, starts_at, ends_at, published, auto_generated")
@@ -228,36 +170,35 @@ export async function ensureRollingWeeklyMenus(now = new Date()) {
     return [];
   }
 
-  const existing = ((existingRows || []) as WeeklyMenuTemplateRow[]).filter(
-    (menu) => menu.id !== template.id || new Date(menu.ends_at).getTime() >= now.getTime(),
+  const existing = ((existingRows || []) as WeeklyMenuExistingRow[]).filter(
+    (menu) => new Date(menu.ends_at).getTime() >= now.getTime(),
   );
   const resultIds: string[] = [];
 
-  for (const target of targetRanges) {
-    const matchingExisting = existing.find((menu) =>
-      rangesOverlap(
-        target.startsAt,
-        target.endsAt,
-        new Date(menu.starts_at),
-        new Date(menu.ends_at),
-      ),
+  for (const schedule of schedules) {
+    const matchingExisting = existing.find(
+      (menu) =>
+        new Date(menu.starts_at).getTime() <= schedule.endsAt.getTime() &&
+        schedule.startsAt.getTime() <= new Date(menu.ends_at).getTime(),
     );
+
     if (matchingExisting) {
+      await syncMenuSchedule(matchingExisting, schedule);
+      await ensureSundayDeliveryWindow(matchingExisting.id, schedule);
       resultIds.push(matchingExisting.id);
       continue;
     }
 
-    const cutoffAt = thursdayCutoffForDeliveryWeek(target.startsAt);
     const { data: createdMenu, error: createError } = await supabase
       .from("weekly_menus")
       .insert({
-        name: formatWeekName(template.name, target.startsAt),
-        order_cutoff_at: cutoffAt.toISOString(),
-        starts_at: target.startsAt.toISOString(),
-        ends_at: target.endsAt.toISOString(),
+        name: formatWeekName(template.name, schedule.deliveryStartsAt),
+        order_cutoff_at: schedule.orderCutoffAt.toISOString(),
+        starts_at: schedule.startsAt.toISOString(),
+        ends_at: schedule.endsAt.toISOString(),
         published: true,
         auto_generated: true,
-        generation_key: target.generationKey,
+        generation_key: getGenerationKey(template.id, schedule.startsAt),
         source_weekly_menu_id: template.id,
       })
       .select("id")
@@ -284,22 +225,7 @@ export async function ensureRollingWeeklyMenus(now = new Date()) {
       if (error) console.error("[supabase] rolling menu items creation failed", error.message);
     }
 
-    const windows = ((windowRows || []) as DeliveryWindowTemplateRow[]).map((window) => {
-      const startsAt = addWeeks(window.starts_at, target.weekOffset);
-      const endsAt = addWeeks(window.ends_at, target.weekOffset);
-      return {
-        weekly_menu_id: weeklyMenuId,
-        label: formatDeliveryWindowLabel(startsAt, endsAt),
-        starts_at: startsAt.toISOString(),
-        ends_at: endsAt.toISOString(),
-        capacity: window.capacity,
-        reserved: 0,
-      };
-    });
-    if (windows.length) {
-      const { error } = await supabase.from("delivery_windows").insert(windows);
-      if (error) console.error("[supabase] rolling delivery windows creation failed", error.message);
-    }
+    await ensureSundayDeliveryWindow(weeklyMenuId, schedule);
   }
 
   return resultIds;

@@ -6,9 +6,9 @@ import {
 
 const validMenu = {
   name: "Future Bake Drop",
-  orderCutoffAt: "2026-07-12T20:00:00.000Z",
-  startsAt: "2026-07-13T12:00:00.000Z",
-  endsAt: "2026-07-15T12:00:00.000Z",
+  orderCutoffAt: "2026-07-17T04:00:00.000Z",
+  startsAt: "2026-07-13T04:00:00.000Z",
+  endsAt: "2026-07-20T03:59:00.000Z",
   published: true,
   items: [
     {
@@ -70,11 +70,15 @@ describe("weekly menu admin validation", () => {
     ).toBe(true);
   });
 
-  it("rejects cutoff dates after the menu starts", () => {
+  it("allows the Thursday-night cutoff inside the Sunday delivery week", () => {
+    expect(weeklyMenuAdminSchema.safeParse(validMenu).success).toBe(true);
+  });
+
+  it("rejects cutoff dates after Sunday delivery ends", () => {
     expect(
       weeklyMenuAdminSchema.safeParse({
         ...validMenu,
-        orderCutoffAt: "2026-07-14T20:00:00.000Z",
+        orderCutoffAt: "2026-07-20T04:00:00.000Z",
       }).success,
     ).toBe(false);
   });

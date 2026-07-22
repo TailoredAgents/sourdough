@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { isAfterWeeklyCutoff, isCurrentLocalWeek } from "@/lib/cutoff";
+import {
+  isPastSundayDeliveryEnd,
+  isRequestDeliveryWeek,
+} from "@/lib/bake-schedule";
 import { checkDeliveryAddress, type DeliveryCheckResult } from "@/lib/delivery";
 import {
   sendCustomerOrderConfirmation,
@@ -72,7 +75,35 @@ export function getDeliveryWindowAvailabilityError(deliveryWindow: {
 }) {
   return deliveryWindow.reserved < deliveryWindow.capacity
     ? null
-    : "That delivery window is full. Please choose another available delivery window.";
+    : "That Sunday delivery time is full. Please choose another available Sunday delivery date.";
+}
+
+export function getCheckoutRequiresApproval(
+  weeklyMenu: { orderCutoffAt: string },
+  deliveryWindow: { endsAt: string },
+  now = new Date(),
+) {
+  return isRequestDeliveryWeek(
+    weeklyMenu.orderCutoffAt,
+    deliveryWindow.endsAt,
+    now,
+  );
+}
+
+export function getCheckoutDeliveryWindowError(
+  deliveryWindow: {
+    capacity: number;
+    reserved: number;
+    endsAt: string;
+  },
+  requiresApproval: boolean,
+  now = new Date(),
+) {
+  if (isPastSundayDeliveryEnd(deliveryWindow.endsAt, now)) {
+    return "That Sunday delivery time has passed. Please choose the next Sunday.";
+  }
+  if (requiresApproval) return null;
+  return getDeliveryWindowAvailabilityError(deliveryWindow);
 }
 
 export function getLastMinuteNotificationDeliveryWindow(deliveryWindow: {
@@ -125,20 +156,10 @@ export async function POST(request: Request) {
   }
 
   const weeklyMenu = await getWeeklyMenuData(checkout.weeklyMenuId);
-  const requiresApproval =
-    isCurrentLocalWeek(weeklyMenu?.startsAt) ||
-    isAfterWeeklyCutoff(weeklyMenu?.orderCutoffAt);
 
   if (!weeklyMenu?.published) {
     return NextResponse.json(
       { error: "Ordering is not open yet. Please check back for the next bake drop." },
-      { status: 400 },
-    );
-  }
-
-  if (requiresApproval && typeof checkout.nextWeekOk !== "boolean") {
-    return NextResponse.json(
-      { error: "Please answer whether next week works if this week is unavailable." },
       { status: 400 },
     );
   }
@@ -150,12 +171,24 @@ export async function POST(request: Request) {
 
   if (!deliveryWindow) {
     return NextResponse.json(
-      { error: "Please choose an available delivery window." },
+      { error: "Please choose an available Sunday delivery time." },
       { status: 400 },
     );
   }
 
-  const deliveryWindowError = getDeliveryWindowAvailabilityError(deliveryWindow);
+  const requiresApproval = getCheckoutRequiresApproval(weeklyMenu, deliveryWindow);
+
+  if (requiresApproval && typeof checkout.nextWeekOk !== "boolean") {
+    return NextResponse.json(
+      { error: "Please answer whether next Sunday works if this Sunday is unavailable." },
+      { status: 400 },
+    );
+  }
+
+  const deliveryWindowError = getCheckoutDeliveryWindowError(
+    deliveryWindow,
+    requiresApproval,
+  );
   if (deliveryWindowError) {
     return NextResponse.json(
       { error: deliveryWindowError },

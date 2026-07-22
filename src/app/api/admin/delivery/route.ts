@@ -60,7 +60,7 @@ export async function POST(request: Request) {
   const weeklyMenuId = parsed.data.weeklyMenuId || (await getPublishedMenuId());
   if (!weeklyMenuId) {
     return NextResponse.json(
-      { error: "Create and publish a weekly menu before editing delivery windows." },
+      { error: "Create and publish a weekly menu before editing Sunday delivery." },
       { status: 400 },
     );
   }

@@ -406,7 +406,7 @@ export function CustomerMessageInbox({
                   ) : null}
                   {selectedDetails.deliveryWindow ? (
                     <div>
-                      <p className="font-semibold text-stone-950">Delivery window</p>
+                      <p className="font-semibold text-stone-950">Sunday delivery time</p>
                       <p className="mt-1">{selectedDetails.deliveryWindow}</p>
                     </div>
                   ) : null}

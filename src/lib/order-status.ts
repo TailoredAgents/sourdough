@@ -22,7 +22,7 @@ export const customerOrderStatusMessages: Record<OrderStatus, string> = {
     "Payment is confirmed. The bakery is reviewing your same-week request and will email you after it is accepted, moved, or refunded.",
   paid: "Payment is confirmed. Watch your email for order and delivery updates.",
   baking: "Your order is in the bake queue.",
-  out_for_delivery: "Your order is on the way during the selected delivery window.",
+  out_for_delivery: "Your order is on the way during the selected Sunday delivery time.",
   delivered: "Your order has been marked delivered.",
   canceled: "This order has been canceled.",
 };

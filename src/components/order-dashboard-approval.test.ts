@@ -74,10 +74,10 @@ describe("order dashboard approval request display", () => {
     expect(html).toContain("customer@example.com");
     expect(html).toContain("4045550100");
     expect(html).toContain("Paid same-week request needs a decision");
-    expect(html).toContain("Next week works: Yes");
+    expect(html).toContain("Next Sunday works: Yes");
     expect(html).toContain("Accept request");
     expect(html).toContain("Deny &amp; refund");
-    expect(html).toContain("Move to next week");
+    expect(html).toContain("Move to next Sunday");
     expect(html).toContain("Next Week Bake Drop");
     expect(html).toContain("Classic Country Loaf");
     expect(html).toContain("Please slice if possible.");

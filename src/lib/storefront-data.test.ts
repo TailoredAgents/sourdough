@@ -12,7 +12,7 @@ describe("storefront data fallback safety", () => {
     expect(canUseLocalFallback("production")).toBe(false);
   });
 
-  it("keeps fallback weekly menu dates in the future", () => {
+  it("keeps fallback Sunday delivery dates orderable", () => {
     const now = new Date("2026-07-15T12:00:00.000Z");
     const weeklyMenu = getFallbackWeeklyMenu(now);
     const windows = getFallbackDeliveryWindows(now);
@@ -20,11 +20,11 @@ describe("storefront data fallback safety", () => {
     expect(new Date(weeklyMenu.orderCutoffAt).getTime()).toBeGreaterThan(
       now.getTime(),
     );
-    expect(new Date(weeklyMenu.startsAt).getTime()).toBeGreaterThan(now.getTime());
     expect(new Date(weeklyMenu.endsAt).getTime()).toBeGreaterThan(
       new Date(weeklyMenu.startsAt).getTime(),
     );
-    expect(windows).toHaveLength(3);
+    expect(new Date(weeklyMenu.endsAt).getTime()).toBeGreaterThan(now.getTime());
+    expect(windows).toHaveLength(1);
     expect(
       windows.every(
         (window) =>

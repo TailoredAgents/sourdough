@@ -9,6 +9,7 @@ import {
 import { productSlug } from "./product-slugs";
 import { getSupabaseAdminClient } from "./supabase";
 import { ensureRollingWeeklyMenus } from "./rolling-weeks";
+import { isStandardSundayDeliveryWindow } from "./bake-schedule";
 import {
   getDeliverySettings,
   normalizePostalCode,
@@ -410,6 +411,13 @@ export async function getDeliveryWindowsForMenuData(
   return (data as DeliveryWindowRow[]).map(mapDeliveryWindow);
 }
 
+async function getOrderingDeliveryWindowsForMenuData(weeklyMenuId: string | null) {
+  const windows = await getDeliveryWindowsForMenuData(weeklyMenuId);
+  return windows.filter((window) =>
+    isStandardSundayDeliveryWindow(window.startsAt, window.endsAt),
+  );
+}
+
 export async function getDeliveryWindowsData(): Promise<DeliveryWindow[]> {
   return getDeliveryWindowsForMenuData(await getPublishedMenuId());
 }
@@ -430,7 +438,7 @@ export async function getDeliveryWindowForMenuData(
   deliveryWindowId: string,
   weeklyMenuId: string,
 ) {
-  const windows = await getDeliveryWindowsForMenuData(weeklyMenuId);
+  const windows = await getOrderingDeliveryWindowsForMenuData(weeklyMenuId);
   return windows.find((deliveryWindow) => deliveryWindow.id === deliveryWindowId);
 }
 
@@ -508,7 +516,7 @@ export async function getOrderingWeeksData(): Promise<OrderingWeek[]> {
       {
         weeklyMenu,
         menu: weeklyMenu.items,
-        deliveryWindows: await getDeliveryWindowsForMenuData(weeklyMenu.id),
+        deliveryWindows: await getOrderingDeliveryWindowsForMenuData(weeklyMenu.id),
       },
     ];
   }
@@ -520,7 +528,7 @@ export async function getOrderingWeeksData(): Promise<OrderingWeek[]> {
       return {
         weeklyMenu,
         menu: weeklyMenu.items,
-        deliveryWindows: await getDeliveryWindowsForMenuData(id),
+        deliveryWindows: await getOrderingDeliveryWindowsForMenuData(id),
       };
     }),
   );

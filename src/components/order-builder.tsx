@@ -14,10 +14,10 @@ import {
 } from "lucide-react";
 import { trackEvent } from "@/lib/analytics";
 import {
-  getCutoffMessage,
-  isAfterWeeklyCutoff,
-  isCurrentLocalWeek,
-} from "@/lib/cutoff";
+  formatSundayDeliveryDateLabel,
+  isRequestDeliveryWeek,
+} from "@/lib/bake-schedule";
+import { getCutoffMessage } from "@/lib/cutoff";
 import {
   canOrderMenuProduct,
   getMenuProductAvailabilityLabel,
@@ -54,10 +54,13 @@ const EMPTY_MENU: MenuProduct[] = [];
 const EMPTY_DELIVERY_WINDOWS: DeliveryWindow[] = [];
 
 function isRequestWeek(week: OrderingWeek | null | undefined) {
+  const primaryWindow = week?.deliveryWindows[0];
   return Boolean(
     week &&
-      (isCurrentLocalWeek(week.weeklyMenu.startsAt) ||
-        isAfterWeeklyCutoff(week.weeklyMenu.orderCutoffAt)),
+      isRequestDeliveryWeek(
+        week.weeklyMenu.orderCutoffAt,
+        primaryWindow?.endsAt ?? week.weeklyMenu.endsAt,
+      ),
   );
 }
 
@@ -96,9 +99,9 @@ export function OrderBuilder({
   const menu = selectedWeek?.menu ?? EMPTY_MENU;
   const deliveryWindows = selectedWeek?.deliveryWindows ?? EMPTY_DELIVERY_WINDOWS;
   const requestSelected = isRequestWeek(selectedWeek);
-  const availableDeliveryWindows = deliveryWindows.filter(
-    (window) => window.reserved < window.capacity,
-  );
+  const availableDeliveryWindows = requestSelected
+    ? deliveryWindows
+    : deliveryWindows.filter((window) => window.reserved < window.capacity);
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [customer, setCustomer] = useState({
     name: "",
@@ -233,7 +236,7 @@ export function OrderBuilder({
   const checkoutSteps = [
     {
       done: Boolean(selectedWeek),
-      label: selectedWeek ? "Delivery week selected" : "Choose delivery week",
+      label: selectedWeek ? "Sunday delivery date selected" : "Choose Sunday delivery date",
     },
     {
       done: hasItems,
@@ -258,10 +261,10 @@ export function OrderBuilder({
     {
       done: hasDeliveryWindow && availableDeliveryWindows.length > 0,
       label: !availableDeliveryWindows.length
-        ? "No delivery windows available"
+        ? "No Sunday delivery time available"
         : hasDeliveryWindow
-        ? "Delivery window selected"
-        : "Choose a delivery window",
+        ? "Sunday delivery time selected"
+        : "Choose Sunday delivery time",
     },
     {
       done: acknowledgedTerms,
@@ -283,13 +286,10 @@ export function OrderBuilder({
   ];
 
   function formatWeekLabel(week: OrderingWeek) {
-    const startsAt = new Date(week.weeklyMenu.startsAt);
-    const endsAt = new Date(week.weeklyMenu.endsAt);
-    const formatter = new Intl.DateTimeFormat("en", {
-      month: "short",
-      day: "numeric",
-    });
-    return `${formatter.format(startsAt)}-${formatter.format(endsAt)}`;
+    const deliveryDate = new Date(
+      week.deliveryWindows[0]?.startsAt || week.weeklyMenu.endsAt,
+    );
+    return formatSundayDeliveryDateLabel(deliveryDate);
   }
 
   function selectWeek(weeklyMenuId: string) {
@@ -477,27 +477,27 @@ export function OrderBuilder({
           </p>
           <h2 className="mt-3 text-3xl font-bold text-stone-950 sm:text-4xl">
             {requestSelected
-              ? "Request approval for this delivery week"
-              : "Order sourdough for delivery"}
+              ? "Request approval for this Sunday"
+              : "Order sourdough for Sunday delivery"}
           </h2>
           <p className="mt-4 max-w-2xl text-base leading-7 text-stone-700">
             {requestSelected
-              ? "This week's delivery times are requests. Choose your items, pay securely, and Grace will approve, move, or refund the request."
-              : "Pick your delivery week, choose your favorites, confirm local delivery, and continue to secure checkout."}
+              ? "This Sunday is past the weekly cutoff. Choose your items, pay securely, and Grace will approve, move, or refund the request."
+              : "Pick your Sunday delivery date, choose your favorites, confirm local delivery, and continue to secure checkout."}
           </p>
 
           <label className="mt-6 grid max-w-md gap-2 text-sm font-bold text-stone-950">
-            Delivery week
+            Sunday delivery date
             <select
               className="h-11 w-full min-w-0 rounded-md border border-stone-300 bg-white px-3 text-sm font-normal text-stone-950"
               value={selectedWeek?.weeklyMenu.id || ""}
               onChange={(event) => selectWeek(event.target.value)}
               disabled={!weeks.length}
             >
-              {!weeks.length ? <option value="">No delivery weeks available</option> : null}
+              {!weeks.length ? <option value="">No Sunday deliveries available</option> : null}
               {weeks.map((week) => (
                 <option key={week.weeklyMenu.id} value={week.weeklyMenu.id}>
-                  {formatWeekLabel(week)} - {week.weeklyMenu.name}
+                  {formatWeekLabel(week)}
                   {isRequestWeek(week) ? " (request)" : ""}
                 </option>
               ))}
@@ -609,7 +609,7 @@ export function OrderBuilder({
             <div>
               <h3 className="text-xl font-bold text-stone-950">Checkout details</h3>
               <p className="mt-1 text-sm text-stone-700">
-                Confirm your contact info, delivery address, and preferred window.
+                Confirm your contact info, delivery address, and Sunday delivery time.
               </p>
             </div>
             <span className="rounded-sm bg-white px-2 py-1 text-xs font-bold uppercase text-[#a94334]">
@@ -620,7 +620,7 @@ export function OrderBuilder({
           {requestSelected ? (
             <div className="mt-5 rounded-md border border-[#a94334]/25 bg-white p-4 text-sm leading-6 text-stone-700">
               This week&apos;s delivery times are requests. You can still pay and
-              submit the order; Grace will accept it, move it to next week if
+              submit the order; Grace will accept it, move it to next Sunday if
               you allow that, or refund it if it cannot be filled.
             </div>
           ) : null}
@@ -817,7 +817,7 @@ export function OrderBuilder({
             ) : null}
 
             <label className="grid gap-1 text-xs font-bold uppercase tracking-wide text-stone-600">
-              Delivery window
+              Sunday delivery time
               <select
                 className="h-11 w-full min-w-0 rounded-md border border-stone-300 px-3 text-sm font-normal normal-case tracking-normal text-stone-950"
                 value={deliveryWindowId}
@@ -825,7 +825,7 @@ export function OrderBuilder({
                 disabled={!availableDeliveryWindows.length}
               >
                 {!availableDeliveryWindows.length ? (
-                  <option value="">No delivery windows available</option>
+                  <option value="">No Sunday delivery time available</option>
                 ) : null}
                 {deliveryWindows.map((window) => (
                   <option
@@ -835,7 +835,7 @@ export function OrderBuilder({
                   >
                     {window.label}
                     {requestSelected ? " (request)" : ""}{" "}
-                    {window.reserved >= window.capacity
+                    {!requestSelected && window.reserved >= window.capacity
                       ? "(full)"
                       : `(${window.capacity - window.reserved} spots)`}
                   </option>
@@ -845,7 +845,7 @@ export function OrderBuilder({
             {requestSelected ? (
               <fieldset className="rounded-md border border-stone-200 bg-white p-3 text-sm text-stone-700">
                 <legend className="px-1 text-xs font-bold uppercase tracking-wide text-stone-600">
-                  If this delivery time is not possible, would this time next week work?
+                  If this Sunday is not possible, would next Sunday 3:00-6:00 PM work?
                 </legend>
                 <div className="mt-2 grid gap-2">
                   <label className="flex items-center gap-2">
@@ -856,7 +856,7 @@ export function OrderBuilder({
                       checked={nextWeekOk === true}
                       onChange={() => setNextWeekOk(true)}
                     />
-                    <span>Yes, this time next week works if needed.</span>
+                    <span>Yes, next Sunday 3:00-6:00 PM works if needed.</span>
                   </label>
                   <label className="flex items-center gap-2">
                     <input
@@ -873,7 +873,7 @@ export function OrderBuilder({
             ) : null}
             {!availableDeliveryWindows.length ? (
               <div className="rounded-md bg-white p-3 text-sm leading-6 text-stone-700">
-                Delivery windows are currently full. Join the bake alert list or
+                Sunday delivery is currently full. Join the bake alert list or
                 use the question box for timing questions before the next menu.
               </div>
             ) : null}
@@ -976,15 +976,15 @@ export function OrderBuilder({
                 <CheckCircle2 className="mt-1 shrink-0 text-[#23443b]" size={16} />
                 <span>
                   {selectedDeliveryWindow
-                    ? `Your selected delivery window is ${selectedDeliveryWindow.label}.`
-                    : "Choose a delivery window before checkout so timing is clear."}
+                    ? `Your selected Sunday delivery time is ${selectedDeliveryWindow.label}.`
+                    : "Choose a Sunday delivery time before checkout so timing is clear."}
                 </span>
               </li>
               <li className="flex gap-2">
                 <CheckCircle2 className="mt-1 shrink-0 text-[#23443b]" size={16} />
                 <span>
                   {requestSelected
-                    ? "If Grace cannot fill it, she will move it to next week only if you allowed that, or refund it."
+                    ? "If Grace cannot fill it, she will move it to next Sunday only if you allowed that, or refund it."
                     : "After payment, your confirmation is sent by email."}
                 </span>
               </li>

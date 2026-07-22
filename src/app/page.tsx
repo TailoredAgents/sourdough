@@ -45,8 +45,8 @@ export default async function Home() {
       "See what is left before you order, so sold-out items never feel like a surprise.",
     ],
     [
-      "Local delivery windows",
-      "Pick an available delivery window and add porch, gate, or drop-off notes at checkout.",
+      "Sunday delivery",
+      "Order by Thursday night for Sunday 3:00-6:00 PM delivery, with notes for porch, gate, or drop-off details.",
     ],
   ];
   const faqs = [
@@ -57,7 +57,7 @@ export default async function Home() {
     {
       question: "When should I order?",
       answer:
-        "Choose a delivery week, then order before that week's cutoff. If the current week is past cutoff, you can still pay and submit an approval request.",
+        "Choose a Sunday delivery date, then order by Thursday at 11:59 PM. After the cutoff, you can still pay and submit a same-week approval request.",
     },
     {
       question: "Can I see ingredients and allergens before ordering?",
@@ -78,12 +78,12 @@ export default async function Home() {
     [
       "1",
       "Build your order",
-      "Choose a delivery week, then pick loaves, add-ons, and quantities while they are available.",
+      "Choose a Sunday delivery date, then pick loaves, add-ons, and quantities while they are available.",
     ],
     [
       "2",
       "Confirm delivery",
-      "Enter your ZIP code and pick an available delivery window.",
+      "Enter your ZIP code and confirm the Sunday 3:00-6:00 PM delivery time.",
     ],
     afterCutoff
       ? [
@@ -280,7 +280,7 @@ export default async function Home() {
             <div className="flex flex-col justify-between gap-6 sm:flex-row sm:items-end">
               <div>
                 <p className="text-sm font-bold uppercase tracking-[0.18em] text-[#a94334]">
-                  Delivery week menu
+                  Sunday delivery menu
                 </p>
                 <h2 className="mt-3 text-3xl font-bold text-stone-950 sm:text-4xl">
                   Choose your bread and add-ons
@@ -496,8 +496,8 @@ export default async function Home() {
                 Pick your items, choose delivery, checkout
               </h2>
               <p className="mt-4 text-base leading-7 text-stone-700">
-                Pick a delivery week first, then choose an available delivery
-                day and time. Current-week requests after the cutoff can still
+                Pick a Sunday delivery date first, then confirm the Sunday
+                3:00-6:00 PM delivery time. Same-week requests after the cutoff can still
                 be paid and reviewed by Grace.
               </p>
               <div className="mt-6 max-w-lg">

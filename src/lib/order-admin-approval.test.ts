@@ -51,7 +51,7 @@ const adminOrderRow = {
     phone: "4045550100",
   },
   delivery_windows: {
-    label: "Thursday, Jul 23, 9:00 AM-12:00 PM",
+      label: "Sunday, Jul 26, 3:00 PM-6:00 PM",
     weekly_menu_id: "44444444-4444-4444-8444-444444444444",
     weekly_menus: {
       name: "Launch Week Bake Drop",
@@ -265,6 +265,8 @@ describe("admin approval request decisions", () => {
               maybeSingle: async () => ({
                 data: {
                   id: nextWindowId,
+                  starts_at: "2026-08-02T19:00:00.000Z",
+                  ends_at: "2026-08-02T22:00:00.000Z",
                   weekly_menus: { starts_at: "2026-07-29T12:00:00.000Z" },
                 },
                 error: null,

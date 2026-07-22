@@ -7,6 +7,7 @@ import type {
   OrderStatus,
 } from "./types";
 import { sendOrderStatusUpdate } from "./email";
+import { isStandardSundayDeliveryWindow } from "./bake-schedule";
 import { getCustomerOrderStatusLabel } from "./order-status";
 import { getStripe } from "./stripe";
 import { getSupabaseAdminClient } from "./supabase";
@@ -273,7 +274,7 @@ async function getMoveWindowsByOrderId(orderRows: OrderRow[]) {
 
     const { data: windows, error: windowsError } = await supabase
       .from("delivery_windows")
-      .select("id, label, weekly_menu_id, starts_at, capacity, reserved")
+      .select("id, label, weekly_menu_id, starts_at, ends_at, capacity, reserved")
       .eq("weekly_menu_id", nextMenu.id)
       .order("starts_at", { ascending: true });
     if (windowsError) continue;
@@ -285,10 +286,15 @@ async function getMoveWindowsByOrderId(orderRows: OrderRow[]) {
         label: string;
         weekly_menu_id: string;
         starts_at: string;
+        ends_at: string;
         capacity: number;
         reserved: number;
       }>)
-        .filter((window) => window.reserved < window.capacity)
+        .filter(
+          (window) =>
+            window.reserved < window.capacity &&
+            isStandardSundayDeliveryWindow(window.starts_at, window.ends_at),
+        )
         .map((window) => ({
           id: window.id,
           label: window.label,
@@ -414,7 +420,7 @@ export async function updateAdminOrderStatus(id: string, status: OrderStatus) {
 
   if (inventoryAdjustment === "reserve") {
     if (!existingOrder.delivery_window_id) {
-      throw new Error("Order does not have a delivery window to restore inventory.");
+      throw new Error("Order does not have a Sunday delivery time to restore inventory.");
     }
 
     const { data: itemRows, error: itemError } = await supabase
@@ -514,7 +520,7 @@ export async function acceptApprovalOrder(id: string) {
     throw new Error("Only paid approval requests can be accepted.");
   }
   if (!order.delivery_window_id) {
-    throw new Error("Order does not have a delivery window to reserve.");
+    throw new Error("Order does not have a Sunday delivery time to reserve.");
   }
 
   await reserveInventoryForOrder(id, order.delivery_window_id as string);
@@ -554,18 +560,18 @@ export async function moveApprovalOrderToNextWeek(
     throw new Error("Only paid approval requests can be moved.");
   }
   if (!order.next_week_ok) {
-    throw new Error("Customer did not approve moving this order to next week.");
+    throw new Error("Customer did not approve moving this order to next Sunday.");
   }
 
   const currentWindow = single(order.delivery_windows as OrderDeliveryWindowRow | OrderDeliveryWindowRow[] | null);
   const currentMenu = single(currentWindow?.weekly_menus || null);
   const { data: targetWindow, error: targetWindowError } = await supabase
     .from("delivery_windows")
-    .select("id, weekly_menus(starts_at)")
+    .select("id, starts_at, ends_at, weekly_menus(starts_at)")
     .eq("id", targetDeliveryWindowId)
     .maybeSingle();
   if (targetWindowError) throw new Error(targetWindowError.message);
-  if (!targetWindow) throw new Error("Target delivery window could not be found.");
+  if (!targetWindow) throw new Error("Target Sunday delivery time could not be found.");
 
   const targetMenu = single(
     targetWindow.weekly_menus as { starts_at: string } | Array<{ starts_at: string }> | null,
@@ -576,6 +582,14 @@ export async function moveApprovalOrderToNextWeek(
     new Date(targetMenu.starts_at).getTime() <= new Date(currentMenu.starts_at).getTime()
   ) {
     throw new Error("Move target must be a later delivery week.");
+  }
+  if (
+    !isStandardSundayDeliveryWindow(
+      String(targetWindow.starts_at || ""),
+      String(targetWindow.ends_at || ""),
+    )
+  ) {
+    throw new Error("Move target must be the Sunday 3:00-6:00 PM delivery slot.");
   }
 
   await reserveInventoryForOrder(id, targetDeliveryWindowId);

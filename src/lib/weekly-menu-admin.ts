@@ -36,8 +36,8 @@ export const weeklyMenuAdminSchema = z
     message: "Menu start must be before menu end.",
     path: ["endsAt"],
   })
-  .refine((menu) => new Date(menu.orderCutoffAt) <= new Date(menu.startsAt), {
-    message: "Order cutoff must be before the menu starts.",
+  .refine((menu) => new Date(menu.orderCutoffAt) < new Date(menu.endsAt), {
+    message: "Order cutoff must be before Sunday delivery ends.",
     path: ["orderCutoffAt"],
   });
 

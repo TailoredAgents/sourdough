@@ -110,7 +110,7 @@ export default async function ProductPage({ params }: ProductRouteProps) {
       question: `How do I order ${product.name}?`,
       answer:
         canOrder
-          ? `Use the order button on this page to add ${product.name} from the weekly menu, then confirm your ZIP code, delivery address, delivery window, and checkout details.`
+          ? `Use the order button on this page to add ${product.name} from the weekly menu, then confirm your ZIP code, delivery address, Sunday delivery time, and checkout details.`
           : product.unavailable
             ? `${product.name} is currently unavailable this week. Check the weekly menu or ask a question before choosing another item.`
           : `${product.name} is sold out this week. Join the bake alert list to hear when future menus open.`,
@@ -392,8 +392,8 @@ export default async function ProductPage({ params }: ProductRouteProps) {
               <p className="mt-3 text-sm leading-6 text-stone-100">
                 {canOrder
                   ? afterCutoff
-                    ? "Return to the weekly order form with this item in view, then confirm your ZIP code, delivery window, and request details."
-                    : "Return to the weekly order form with this item in view, then confirm your ZIP code, delivery window, and checkout details."
+                    ? "Return to the weekly order form with this item in view, then confirm your ZIP code, Sunday delivery time, and request details."
+                    : "Return to the weekly order form with this item in view, then confirm your ZIP code, Sunday delivery time, and checkout details."
                   : product.unavailable
                     ? "Check the weekly menu for available items, or ask a question before choosing another item."
                   : "Join the bake alert list to hear when future menus open, or ask a question before choosing another item."}

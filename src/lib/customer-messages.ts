@@ -137,7 +137,7 @@ export function buildLastMinuteRequestBody({
     "Requested items:",
     buildItemSummary(items),
     "",
-    `Preferred delivery window: ${deliveryWindowLabel}`,
+    `Preferred Sunday delivery time: ${deliveryWindowLabel}`,
     `Address: ${address.line1}${address.line2 ? `, ${address.line2}` : ""}, ${address.city}, ${address.state} ${address.postalCode}`,
     `Delivery instructions: ${checkout.deliveryInstructions || "None"}`,
     "",

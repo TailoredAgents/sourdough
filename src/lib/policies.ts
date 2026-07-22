@@ -127,7 +127,7 @@ export const policyPages: PolicyPage[] = [
         heading: "Local delivery only",
         body: [
           `${bakery.name} offers local Georgia delivery from Canton, GA. The site does not offer shipping or out-of-state delivery.`,
-          "Delivery eligibility is checked by Georgia ZIP code. Allowed ZIP codes, delivery fees, and available delivery windows may change by week.",
+          "Delivery eligibility is checked by Georgia ZIP code. Allowed ZIP codes, delivery fees, and Sunday delivery availability may change by week.",
           `Pickup is not a standard checkout option. If pickup is available for a specific order, it must be separately arranged and confirmed by ${bakery.name}.`,
         ],
       },
@@ -135,7 +135,7 @@ export const policyPages: PolicyPage[] = [
         heading: "Inventory and order acceptance",
         body: [
           "Menu quantities are limited. An item may become unavailable if inventory sells out, a checkout session is not completed, or an order cannot be fulfilled as submitted.",
-          `A paid checkout confirmation means the order has been received for the selected delivery window. A submitted availability request is not a confirmed order until ${bakery.name} responds and accepts it.`,
+          `A paid checkout confirmation means the order has been received for the selected Sunday delivery time. A submitted availability request is not a confirmed order until ${bakery.name} responds and accepts it.`,
         ],
       },
       {
@@ -149,7 +149,7 @@ export const policyPages: PolicyPage[] = [
         heading: "Site information",
         body: [
           "The website and AI assistant provide general bakery information from approved content and current menu data. They do not provide legal, medical, tax, or allergen-safety advice.",
-          `${bakery.name} may update menu items, prices, policies, delivery windows, delivery areas, and availability before an order is accepted.`,
+          `${bakery.name} may update menu items, prices, policies, Sunday delivery availability, delivery areas, and availability before an order is accepted.`,
         ],
       },
     ],

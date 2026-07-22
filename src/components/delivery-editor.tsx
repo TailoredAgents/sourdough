@@ -10,6 +10,11 @@ import {
   Trash2,
 } from "lucide-react";
 import {
+  DEFAULT_SUNDAY_DELIVERY_CAPACITY,
+  formatSundayDeliveryWindowLabel,
+  getFirstVisibleDeliveryWeekSchedule,
+} from "@/lib/bake-schedule";
+import {
   getAdminPayloadError,
   hasAdminKeys,
   readAdminJsonResponse,
@@ -83,19 +88,17 @@ function buildWindowForm(window: DeliveryWindow): DeliveryWindowForm {
 }
 
 function buildNewWindow(): DeliveryWindowForm {
-  const startsAt = new Date();
-  startsAt.setDate(startsAt.getDate() + 3);
-  startsAt.setHours(10, 0, 0, 0);
-
-  const endsAt = new Date(startsAt);
-  endsAt.setHours(14, 0, 0, 0);
+  const schedule = getFirstVisibleDeliveryWeekSchedule();
 
   return {
     clientId: newClientId(),
-    label: "Saturday morning delivery",
-    startsAt: toLocalInputValue(startsAt.toISOString()),
-    endsAt: toLocalInputValue(endsAt.toISOString()),
-    capacity: 10,
+    label: formatSundayDeliveryWindowLabel(
+      schedule.deliveryStartsAt,
+      schedule.deliveryEndsAt,
+    ),
+    startsAt: toLocalInputValue(schedule.deliveryStartsAt.toISOString()),
+    endsAt: toLocalInputValue(schedule.deliveryEndsAt.toISOString()),
+    capacity: DEFAULT_SUNDAY_DELIVERY_CAPACITY,
     reserved: 0,
     remove: false,
   };
@@ -183,14 +186,14 @@ export function DeliveryEditor({
           !payload.deliverySettings ||
           !Array.isArray(payload.deliveryWindows)
         ) {
-          setMessage(getAdminPayloadError(payload) || "Delivery windows could not be loaded.");
+          setMessage(getAdminPayloadError(payload) || "Sunday delivery could not be loaded.");
           return;
         }
 
         setSettings(buildSettingsForm(payload.deliverySettings as DeliverySettings));
         setWindows((payload.deliveryWindows as DeliveryWindow[]).map(buildWindowForm));
       } catch {
-        setMessage("Delivery windows could not be loaded. Check your connection and try again.");
+        setMessage("Sunday delivery could not be loaded. Check your connection and try again.");
       }
     });
   }, [selectedWeeklyMenuId]);
@@ -271,9 +274,9 @@ export function DeliveryEditor({
     <section id="delivery" className="mt-8 scroll-mt-28 rounded-md border border-stone-200 bg-white p-5">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
         <div>
-          <h2 className="text-xl font-bold text-stone-950">Delivery editor</h2>
+          <h2 className="text-xl font-bold text-stone-950">Sunday delivery editor</h2>
           <p className="mt-1 text-sm leading-6 text-stone-700">
-            Set allowed delivery ZIPs, delivery fee, and customer delivery slots.
+            Set allowed ZIPs, delivery fee, and the Sunday 3:00-6:00 PM capacity.
           </p>
         </div>
         <Button type="button" onClick={saveDelivery} disabled={isPending}>
@@ -284,7 +287,7 @@ export function DeliveryEditor({
 
       <div className="mt-5 grid gap-3 lg:grid-cols-[1fr_1.2fr]">
         <label className="grid gap-1 text-sm font-semibold text-stone-700 lg:col-span-2">
-          Delivery windows for bake drop
+          Sunday delivery week
           <select
             className="h-11 rounded-md border border-stone-300 bg-white px-3 font-normal"
             value={selectedWeeklyMenuId}
@@ -348,26 +351,26 @@ export function DeliveryEditor({
 
       <div className="mt-6 flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
         <div>
-          <h3 className="font-bold text-stone-950">Delivery windows</h3>
+          <h3 className="font-bold text-stone-950">Sunday delivery capacity</h3>
           <p className="mt-1 text-sm text-stone-700">
-            {activeWindows.length} active windows, {formatCurrency(deliveryFeeCents)} fee.
+            {activeWindows.length} active Sunday slot, {formatCurrency(deliveryFeeCents)} fee.
           </p>
         </div>
         <Button
           type="button"
           variant="secondary"
           onClick={() => setWindows((current) => [...current, buildNewWindow()])}
-          disabled={isPending}
+          disabled={isPending || activeWindows.length >= 1}
         >
           <Plus size={16} />
-          Add window
+          Add Sunday slot
         </Button>
       </div>
 
       <div className="mt-4 grid gap-3 rounded-md border border-stone-200 bg-[#fffaf2] p-4 sm:grid-cols-4">
         <div>
           <p className="text-xs font-bold uppercase tracking-wide text-stone-500">
-            Windows
+            Sunday slots
           </p>
           <p className="mt-1 text-2xl font-bold text-stone-950">
             {activeWindows.length}
@@ -415,10 +418,10 @@ export function DeliveryEditor({
               <div className="grid gap-4 lg:grid-cols-[minmax(240px,1fr)_minmax(360px,1.25fr)_auto] lg:items-start">
                 <div className="grid gap-3">
                   <label className="grid gap-1 text-sm font-semibold text-stone-700">
-                    Label
+                    Customer label
                     <input
                       className="h-10 w-full min-w-52 rounded-md border border-stone-300 px-3"
-                      aria-label={`Delivery window label for ${window.label}`}
+                      aria-label={`Sunday delivery label for ${window.label}`}
                       value={window.label}
                       onChange={(event) =>
                         updateWindow(window.clientId, { label: event.target.value })
@@ -433,7 +436,7 @@ export function DeliveryEditor({
                   ) : null}
                   {hasReservedOrders ? (
                     <p className="text-sm leading-6 text-stone-700">
-                      Reserved windows cannot be removed until the related orders are
+                      Reserved Sunday slots cannot be removed until the related orders are
                       canceled or moved.
                     </p>
                   ) : null}
@@ -523,7 +526,7 @@ export function DeliveryEditor({
 
         {!activeWindows.length ? (
           <div className="rounded-md border border-dashed border-stone-300 bg-[#fffaf2] p-5 text-sm text-stone-700">
-            No active delivery windows. Add one before opening checkout.
+            No active Sunday delivery slot. Add one before opening checkout.
           </div>
         ) : null}
       </div>

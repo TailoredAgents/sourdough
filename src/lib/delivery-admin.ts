@@ -15,7 +15,7 @@ const deliveryWindowAdminSchema = z
     remove: z.boolean().optional().default(false),
   })
   .refine((window) => new Date(window.startsAt) < new Date(window.endsAt), {
-    message: "Delivery window start must be before the end.",
+    message: "Sunday delivery start must be before the end.",
     path: ["endsAt"],
   })
   .refine((window) => window.reserved <= window.capacity, {
@@ -23,7 +23,7 @@ const deliveryWindowAdminSchema = z
     path: ["reserved"],
   })
   .refine((window) => !window.remove || window.reserved === 0, {
-    message: "Delivery windows with reserved orders cannot be removed.",
+    message: "Sunday delivery slots with reserved orders cannot be removed.",
     path: ["remove"],
   });
 
@@ -40,6 +40,12 @@ export const deliveryAdminSchema = z.object({
     serviceAreaCopy: z.string().min(10).max(500),
   }),
   windows: z.array(deliveryWindowAdminSchema),
-});
+}).refine(
+  (input) => input.windows.filter((window) => !window.remove).length <= 1,
+  {
+    message: "Each bake week can have one Sunday delivery slot.",
+    path: ["windows"],
+  },
+);
 
 export type DeliveryAdminInput = z.infer<typeof deliveryAdminSchema>;

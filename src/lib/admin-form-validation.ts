@@ -70,8 +70,8 @@ export function validateWeeklyMenuForm(input: WeeklyMenuValidationInput) {
   if (new Date(input.startsAt) >= new Date(input.endsAt)) {
     return "Menu start must be before menu end.";
   }
-  if (new Date(input.orderCutoffAt) > new Date(input.startsAt)) {
-    return "Order cutoff must be before the menu starts.";
+  if (new Date(input.orderCutoffAt) >= new Date(input.endsAt)) {
+    return "Order cutoff must be before Sunday delivery ends.";
   }
 
   const includedItems = input.items.filter((item) => item.included);
@@ -114,9 +114,14 @@ export function validateDeliveryForm(input: DeliveryValidationInput) {
   if (serviceAreaCopy.length < 10) return "Service area copy needs at least 10 characters.";
   if (serviceAreaCopy.length > 500) return "Service area copy must stay under 500 characters.";
 
-  for (const window of input.windows.filter((entry) => !entry.remove)) {
-    const windowName = window.label.trim() || "Each delivery window";
-    if (window.label.trim().length < 2) return "Delivery window label is required.";
+  const activeWindows = input.windows.filter((entry) => !entry.remove);
+  if (activeWindows.length > 1) {
+    return "Each bake week can have one Sunday delivery slot.";
+  }
+
+  for (const window of activeWindows) {
+    const windowName = window.label.trim() || "Each Sunday delivery slot";
+    if (window.label.trim().length < 2) return "Sunday delivery label is required.";
     if (!isValidDate(window.startsAt)) return `${windowName} needs a valid start date.`;
     if (!isValidDate(window.endsAt)) return `${windowName} needs a valid end date.`;
     if (new Date(window.startsAt) >= new Date(window.endsAt)) {
@@ -137,7 +142,7 @@ export function validateDeliveryForm(input: DeliveryValidationInput) {
     (entry) => entry.remove && entry.reserved > 0,
   );
   if (reservedRemovedWindow) {
-    return `${reservedRemovedWindow.label || "Delivery window"} has reserved orders and cannot be removed.`;
+    return `${reservedRemovedWindow.label || "Sunday delivery slot"} has reserved orders and cannot be removed.`;
   }
 
   return null;

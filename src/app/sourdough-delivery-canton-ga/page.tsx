@@ -41,7 +41,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Sourdough Delivery in Canton, GA",
     description:
-      "Weekly sourdough preorders, local delivery windows, and small-batch add-ons around Canton, Georgia.",
+      "Weekly sourdough preorders, Sunday local delivery, and small-batch add-ons around Canton, Georgia.",
     url: pageUrl,
     siteName: bakery.name,
     images: [
@@ -78,7 +78,7 @@ export default async function CantonDeliveryPage() {
     {
       question: "When are sourdough orders delivered?",
       answer:
-        "Available delivery windows are shown with each weekly menu. Choose the window that works best when you build your order.",
+        "Choose a Sunday delivery date, order by Thursday night, and confirm the Sunday 3:00-6:00 PM delivery time when you build your order.",
     },
     {
       question: "Do you ship sourdough outside Georgia?",
@@ -210,7 +210,7 @@ export default async function CantonDeliveryPage() {
             </span>
             <span className="inline-flex items-center gap-2">
               <Truck className="text-[#a94334]" size={18} />
-              {deliveryWindows.length} delivery windows available
+              {deliveryWindows.length} Sunday delivery time available
             </span>
           </div>
         </section>
@@ -225,8 +225,8 @@ export default async function CantonDeliveryPage() {
                 Sourdough bread available for Canton-area delivery
               </h2>
               <p className="mt-4 text-base leading-7 text-stone-700">
-                Choose from the current weekly menu, confirm your ZIP code, pick
-                a delivery window, and complete secure checkout while quantities
+                Choose from the current Sunday menu, confirm your ZIP code, pick
+                the Sunday delivery time, and complete secure checkout while quantities
                 remain available.
               </p>
               <p className="mt-4 text-sm leading-6 text-stone-700">
@@ -412,7 +412,7 @@ export default async function CantonDeliveryPage() {
               </h2>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-stone-100">
                 Build your order from the current menu, check your ZIP code,
-                and choose an available local delivery window.
+                and confirm Sunday local delivery.
               </p>
             </div>
             <div className="flex flex-col gap-3 sm:flex-row">

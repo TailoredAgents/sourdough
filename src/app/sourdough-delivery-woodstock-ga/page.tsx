@@ -36,7 +36,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Sourdough Delivery in Woodstock, GA",
     description:
-      "Weekly sourdough preorders, local delivery windows, and small-batch add-ons for Woodstock, Georgia.",
+      "Weekly sourdough preorders, Sunday local delivery, and small-batch add-ons for Woodstock, Georgia.",
     url: pageUrl,
     siteName: bakery.name,
     images: [
@@ -84,7 +84,7 @@ export default async function WoodstockDeliveryPage() {
     {
       question: "How do I place a Woodstock delivery order?",
       answer:
-        "Choose from the weekly menu, check your ZIP, pick an available delivery window, and complete secure checkout or send an availability request if checkout is closed.",
+        "Choose from the weekly menu, check your ZIP, confirm Sunday 3:00-6:00 PM delivery, and complete secure checkout or send an approval request after cutoff.",
     },
     {
       question: "Do you ship sourdough outside Georgia?",
@@ -212,7 +212,7 @@ export default async function WoodstockDeliveryPage() {
             </span>
             <span className="inline-flex items-center gap-2">
               <Truck className="text-[#a94334]" size={18} />
-              {deliveryWindows.length} delivery windows available
+              {deliveryWindows.length} Sunday delivery time available
             </span>
             <span className="inline-flex items-center gap-2">
               <CheckCircle2 className="text-[#a94334]" size={18} />
@@ -410,7 +410,7 @@ export default async function WoodstockDeliveryPage() {
               </h2>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-stone-100">
                 Build your order from the current menu, check your Woodstock ZIP,
-                and choose an available local delivery window.
+                and confirm Sunday local delivery.
               </p>
             </div>
             <Link

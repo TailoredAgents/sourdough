@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   checkoutSchema,
+  getCheckoutDeliveryWindowError,
   getCheckoutDeliveryError,
+  getCheckoutRequiresApproval,
   getCheckoutRateLimitKey,
   getDeliveryWindowAvailabilityError,
   getLastMinuteNotificationDeliveryWindow,
@@ -99,16 +101,90 @@ describe("checkout delivery eligibility", () => {
     ).toBe(false);
   });
 
-  it("rejects full delivery windows before checkout starts", () => {
+  it("rejects full Sunday delivery slots before checkout starts", () => {
     expect(
       getDeliveryWindowAvailabilityError({ capacity: 10, reserved: 9 }),
     ).toBeNull();
     expect(
       getDeliveryWindowAvailabilityError({ capacity: 10, reserved: 10 }),
-    ).toContain("delivery window is full");
+    ).toContain("Sunday delivery time is full");
   });
 
-  it("uses the selected delivery window in last-minute owner notifications", () => {
+  it("uses normal checkout before the Thursday-night cutoff", () => {
+    expect(
+      getCheckoutRequiresApproval(
+        { orderCutoffAt: "2026-07-24T04:00:00.000Z" },
+        { endsAt: "2026-07-26T22:00:00.000Z" },
+        new Date("2026-07-23T16:00:00.000Z"),
+      ),
+    ).toBe(false);
+  });
+
+  it("uses approval requests after cutoff until Sunday delivery ends", () => {
+    const weeklyMenu = { orderCutoffAt: "2026-07-24T04:00:00.000Z" };
+    const deliveryWindow = { endsAt: "2026-07-26T22:00:00.000Z" };
+
+    expect(
+      getCheckoutRequiresApproval(
+        weeklyMenu,
+        deliveryWindow,
+        new Date("2026-07-24T04:00:00.000Z"),
+      ),
+    ).toBe(true);
+    expect(
+      getCheckoutRequiresApproval(
+        weeklyMenu,
+        deliveryWindow,
+        new Date("2026-07-26T21:59:59.000Z"),
+      ),
+    ).toBe(true);
+    expect(
+      getCheckoutRequiresApproval(
+        weeklyMenu,
+        deliveryWindow,
+        new Date("2026-07-26T22:00:00.000Z"),
+      ),
+    ).toBe(false);
+  });
+
+  it("allows full Sunday windows only for after-cutoff approval requests", () => {
+    const deliveryWindow = {
+      capacity: 20,
+      reserved: 20,
+      endsAt: "2026-07-26T22:00:00.000Z",
+    };
+
+    expect(
+      getCheckoutDeliveryWindowError(
+        deliveryWindow,
+        false,
+        new Date("2026-07-23T16:00:00.000Z"),
+      ),
+    ).toContain("Sunday delivery time is full");
+    expect(
+      getCheckoutDeliveryWindowError(
+        deliveryWindow,
+        true,
+        new Date("2026-07-24T16:00:00.000Z"),
+      ),
+    ).toBeNull();
+  });
+
+  it("rejects Sunday delivery after the Sunday slot has passed", () => {
+    expect(
+      getCheckoutDeliveryWindowError(
+        {
+          capacity: 20,
+          reserved: 0,
+          endsAt: "2026-07-26T22:00:00.000Z",
+        },
+        false,
+        new Date("2026-07-26T22:00:00.000Z"),
+      ),
+    ).toContain("has passed");
+  });
+
+  it("uses the selected Sunday delivery time in last-minute owner notifications", () => {
     expect(
       getLastMinuteNotificationDeliveryWindow({
         label: "Friday, 2:00-5:00 PM",

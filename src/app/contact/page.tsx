@@ -51,7 +51,7 @@ const contactReasons = [
   },
   {
     title: "Order help",
-    body: "Include your name, order email, delivery window, and what needs attention so the bakery can review it quickly.",
+    body: "Include your name, order email, Sunday delivery date, and what needs attention so the bakery can review it quickly.",
     icon: ShoppingBag,
   },
 ];
@@ -173,7 +173,7 @@ export default function ContactPage() {
               </h2>
               <p className="mt-3 text-sm leading-6 text-stone-700">
                 For order-specific questions, include the email used at
-                checkout, selected delivery window, and the correction or
+                checkout, selected Sunday delivery time, and the correction or
                 question. For allergy or ingredient questions, name the product
                 you are considering before ordering.
               </p>

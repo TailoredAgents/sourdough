@@ -107,9 +107,12 @@ on conflict (slug) do update set
 
 with launch_schedule as (
   select
-    ((date_trunc('day', now() at time zone 'America/New_York') + interval '1 day 20 hours') at time zone 'America/New_York') as order_cutoff_at,
-    ((date_trunc('day', now() at time zone 'America/New_York') + interval '2 days') at time zone 'America/New_York') as starts_at,
-    ((date_trunc('day', now() at time zone 'America/New_York') + interval '5 days 23 hours 59 minutes') at time zone 'America/New_York') as ends_at
+    case
+      when (now() at time zone 'America/New_York') >=
+        (date_trunc('week', now() at time zone 'America/New_York') + interval '6 days 18 hours')
+      then date_trunc('week', now() at time zone 'America/New_York') + interval '7 days'
+      else date_trunc('week', now() at time zone 'America/New_York')
+    end as delivery_week_start
 )
 insert into weekly_menus (
   id,
@@ -122,9 +125,9 @@ insert into weekly_menus (
 select
   '00000000-0000-4000-8000-000000000100',
   'Starter Bake Drop',
-  order_cutoff_at,
-  starts_at,
-  ends_at,
+  ((delivery_week_start + interval '4 days') at time zone 'America/New_York'),
+  (delivery_week_start at time zone 'America/New_York'),
+  ((delivery_week_start + interval '6 days 23 hours 59 minutes') at time zone 'America/New_York'),
   true
 from launch_schedule
 on conflict (id) do update set
@@ -151,47 +154,29 @@ on conflict (weekly_menu_id, product_id) do update set
   sold_quantity = excluded.sold_quantity,
   featured = excluded.featured;
 
+delete from delivery_windows
+where weekly_menu_id = '00000000-0000-4000-8000-000000000100'
+and id <> '00000000-0000-4000-8000-000000000201';
+
 with launch_windows as (
   select
-    ((date_trunc('day', now() at time zone 'America/New_York') + interval '2 days 15 hours') at time zone 'America/New_York') as first_starts_at,
-    ((date_trunc('day', now() at time zone 'America/New_York') + interval '2 days 18 hours') at time zone 'America/New_York') as first_ends_at,
-    ((date_trunc('day', now() at time zone 'America/New_York') + interval '3 days 9 hours') at time zone 'America/New_York') as second_starts_at,
-    ((date_trunc('day', now() at time zone 'America/New_York') + interval '3 days 12 hours') at time zone 'America/New_York') as second_ends_at,
-    ((date_trunc('day', now() at time zone 'America/New_York') + interval '4 days 14 hours') at time zone 'America/New_York') as third_starts_at,
-    ((date_trunc('day', now() at time zone 'America/New_York') + interval '4 days 17 hours') at time zone 'America/New_York') as third_ends_at
+    case
+      when (now() at time zone 'America/New_York') >=
+        (date_trunc('week', now() at time zone 'America/New_York') + interval '6 days 18 hours')
+      then date_trunc('week', now() at time zone 'America/New_York') + interval '7 days'
+      else date_trunc('week', now() at time zone 'America/New_York')
+    end as delivery_week_start
 ),
 windows as (
   select
     '00000000-0000-4000-8000-000000000201' as id,
     '00000000-0000-4000-8000-000000000100' as weekly_menu_id,
-    to_char(first_starts_at at time zone 'America/New_York', 'FMDay, Mon FMDD, FMHH12:MI AM') || '-' ||
-      to_char(first_ends_at at time zone 'America/New_York', 'FMHH12:MI AM') as label,
-    first_starts_at as starts_at,
-    first_ends_at as ends_at,
-    16 as capacity,
+    to_char((delivery_week_start + interval '6 days 15 hours'), 'FMDay, Mon FMDD, FMHH12:MI AM') || '-' ||
+      to_char((delivery_week_start + interval '6 days 18 hours'), 'FMHH12:MI AM') as label,
+    ((delivery_week_start + interval '6 days 15 hours') at time zone 'America/New_York') as starts_at,
+    ((delivery_week_start + interval '6 days 18 hours') at time zone 'America/New_York') as ends_at,
+    20 as capacity,
     5 as reserved
-  from launch_windows
-  union all
-  select
-    '00000000-0000-4000-8000-000000000202',
-    '00000000-0000-4000-8000-000000000100',
-    to_char(second_starts_at at time zone 'America/New_York', 'FMDay, Mon FMDD, FMHH12:MI AM') || '-' ||
-      to_char(second_ends_at at time zone 'America/New_York', 'FMHH12:MI AM'),
-    second_starts_at,
-    second_ends_at,
-    12,
-    4
-  from launch_windows
-  union all
-  select
-    '00000000-0000-4000-8000-000000000203',
-    '00000000-0000-4000-8000-000000000100',
-    to_char(third_starts_at at time zone 'America/New_York', 'FMDay, Mon FMDD, FMHH12:MI AM') || '-' ||
-      to_char(third_ends_at at time zone 'America/New_York', 'FMHH12:MI AM'),
-    third_starts_at,
-    third_ends_at,
-    12,
-    3
   from launch_windows
 )
 insert into delivery_windows (

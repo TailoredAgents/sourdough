@@ -125,7 +125,7 @@ export default async function ServiceAreaPage({ params }: ServiceAreaPageProps) 
     {
       question: "How do I order for this ZIP?",
       answer:
-        "Use the weekly order form, confirm the delivery ZIP and fee, choose an available delivery window, and complete checkout or send an availability request if checkout is closed.",
+        "Use the weekly order form, confirm the delivery ZIP and fee, choose a Sunday delivery date, and complete checkout or send an approval request after cutoff.",
     },
     {
       question: "Can every address in this ZIP receive delivery?",
@@ -225,7 +225,7 @@ export default async function ServiceAreaPage({ params }: ServiceAreaPageProps) 
               </h1>
               <p className="mt-4 max-w-2xl text-base leading-7 text-stone-700">
                 {description} Check the weekly menu, confirm delivery, and
-                reserve an available delivery window while quantities remain.
+                reserve Sunday delivery while quantities remain.
               </p>
               <p className="mt-4 max-w-2xl text-sm leading-6 text-stone-700">
                 {deliverySettings.serviceAreaCopy}
@@ -255,7 +255,7 @@ export default async function ServiceAreaPage({ params }: ServiceAreaPageProps) 
                     Weekly preorder
                   </p>
                   <p className="mt-1 text-sm leading-6 text-stone-700">
-                    Choose from the current weekly menu.
+                    Choose from the current Sunday delivery menu.
                   </p>
                 </div>
               </div>

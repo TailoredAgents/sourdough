@@ -122,7 +122,7 @@ export function AdminDashboard({
     { label: "Orders needing approval", value: String(approvalCount), Icon: AlertTriangle },
     { label: "Open requests", value: String(openRequestCount), Icon: Inbox },
     { label: "Loaves/items left", value: String(remainingCount), Icon: Package },
-    { label: "Delivery windows", value: String(deliveryWindows.length), Icon: Truck },
+    { label: "Sunday delivery slots", value: String(deliveryWindows.length), Icon: Truck },
   ];
   const quickLinks = [
     { label: "Orders", href: "#orders", count: approvalCount || openOrderCount },
@@ -521,7 +521,7 @@ export function AdminDashboard({
             </div>
           </div>
           <div className="rounded-md border border-stone-200 bg-white p-5">
-            <h2 className="text-xl font-bold text-stone-950">Delivery windows</h2>
+            <h2 className="text-xl font-bold text-stone-950">Sunday delivery slots</h2>
             <div className="mt-4 grid gap-3">
               {deliveryWindows.map((window) => (
                 <div key={window.id} className="rounded-md border border-stone-100 p-3">
