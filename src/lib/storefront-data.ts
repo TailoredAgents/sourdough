@@ -2,6 +2,7 @@ import {
   aiKnowledge as fallbackAiKnowledge,
   getActiveMenu as getFallbackActiveMenu,
   getFallbackDeliveryWindows,
+  getFallbackOrderingWeeks,
   getFallbackWeeklyMenu,
   getMenuProduct as getFallbackMenuProduct,
   products as fallbackProducts,
@@ -500,14 +501,7 @@ export async function getApprovedAiKnowledgeData(): Promise<string[]> {
 export async function getOrderingWeeksData(): Promise<OrderingWeek[]> {
   const supabase = getSupabaseAdminClient();
   if (!supabase) {
-    const weeklyMenu = getFallbackWeeklyMenu();
-    return [
-      {
-        weeklyMenu,
-        menu: weeklyMenu.items,
-        deliveryWindows: getFallbackDeliveryWindows(),
-      },
-    ];
+    return canUseLocalFallback() ? getFallbackOrderingWeeks() : [];
   }
 
   const menuIds = await ensureRollingWeeklyMenus();

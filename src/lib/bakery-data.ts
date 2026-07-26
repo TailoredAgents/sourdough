@@ -1,8 +1,16 @@
-import type { DeliveryWindow, Product, WeeklyMenu, WeeklyMenuItem } from "./types";
+import type {
+  DeliveryWindow,
+  OrderingWeek,
+  Product,
+  WeeklyMenu,
+  WeeklyMenuItem,
+} from "./types";
 import {
   DEFAULT_SUNDAY_DELIVERY_CAPACITY,
+  formatSundayDeliveryDateLabel,
   formatSundayDeliveryWindowLabel,
   getFirstVisibleDeliveryWeekSchedule,
+  getRollingDeliveryWeekSchedules,
 } from "./bake-schedule";
 import { isWeeklyMenuItemUnavailable } from "./menu-availability";
 
@@ -152,6 +160,39 @@ export function getFallbackWeeklyMenu(now = new Date()): WeeklyMenu {
     published: true,
     items: getActiveMenu(),
   };
+}
+
+export function getFallbackOrderingWeeks(now = new Date()): OrderingWeek[] {
+  const menu = getActiveMenu();
+
+  return getRollingDeliveryWeekSchedules(now).map((schedule) => {
+    const dateKey = schedule.deliveryStartsAt.toISOString().slice(0, 10);
+    const weeklyMenuId = `starter-bake-drop-${dateKey}`;
+    const weeklyMenu: WeeklyMenu = {
+      id: weeklyMenuId,
+      name: formatSundayDeliveryDateLabel(schedule.deliveryStartsAt),
+      orderCutoffAt: schedule.orderCutoffAt.toISOString(),
+      startsAt: schedule.startsAt.toISOString(),
+      endsAt: schedule.endsAt.toISOString(),
+      published: true,
+      items: menu,
+    };
+    const deliveryWindow: DeliveryWindow = {
+      id: `starter-sunday-window-${dateKey}`,
+      weeklyMenuId,
+      label: schedule.deliveryLabel,
+      startsAt: schedule.deliveryStartsAt.toISOString(),
+      endsAt: schedule.deliveryEndsAt.toISOString(),
+      capacity: DEFAULT_SUNDAY_DELIVERY_CAPACITY,
+      reserved: 5,
+    };
+
+    return {
+      weeklyMenu,
+      menu,
+      deliveryWindows: [deliveryWindow],
+    };
+  });
 }
 
 export const deliveryWindows: DeliveryWindow[] = getFallbackDeliveryWindows();
