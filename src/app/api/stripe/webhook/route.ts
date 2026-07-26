@@ -1,16 +1,7 @@
 import { NextResponse } from "next/server";
-import {
-  sendCustomerApprovalRequestReceived,
-  sendCustomerOrderConfirmation,
-  sendOwnerApprovalRequestNotification,
-  sendOwnerNewOrderNotification,
-} from "@/lib/email";
-import {
-  cancelExpiredCheckoutSession,
-  markCheckoutSessionPaid,
-} from "@/lib/order-records";
+import { cancelExpiredCheckoutSession } from "@/lib/order-records";
 import { handleBreadClubStripeEvent } from "@/lib/bread-club/webhook";
-import { sendOwnerAlert } from "@/lib/owner-alerts";
+import { completeStorefrontCheckoutSession } from "@/lib/order-payment";
 import { getStripe } from "@/lib/stripe";
 
 export async function POST(request: Request) {
@@ -47,68 +38,7 @@ export async function POST(request: Request) {
 
     if (event.type === "checkout.session.completed") {
       const session = event.data.object;
-      const paidOrder = await markCheckoutSessionPaid(session.id, {
-        taxCents: session.total_details?.amount_tax,
-        totalCents: session.amount_total,
-      });
-
-      if (paidOrder?.customerEmail) {
-        if (paidOrder.status === "pending_approval") {
-          await sendCustomerApprovalRequestReceived({
-            to: paidOrder.customerEmail,
-            customerName: paidOrder.customerName,
-            orderSummary: paidOrder.orderSummary,
-            deliveryWindow: paidOrder.deliveryWindow,
-            orderId: paidOrder.orderId,
-          });
-        } else {
-          await sendCustomerOrderConfirmation({
-            to: paidOrder.customerEmail,
-            customerName: paidOrder.customerName,
-            orderSummary: paidOrder.orderSummary,
-            deliveryWindow: paidOrder.deliveryWindow,
-            orderId: paidOrder.orderId,
-          });
-        }
-      }
-
-      if (paidOrder && process.env.BAKERY_EMAIL) {
-        const ownerNotification = {
-          to: process.env.BAKERY_EMAIL,
-          customerName: paidOrder.customerName,
-          customerEmail: paidOrder.customerEmail,
-          customerPhone: paidOrder.customerPhone,
-          orderSummary: paidOrder.orderSummary,
-          deliveryWindow: paidOrder.deliveryWindow,
-          orderId: paidOrder.orderId,
-          address: paidOrder.deliveryAddress,
-          notes: paidOrder.notes || "",
-        };
-        if (paidOrder.status === "pending_approval") {
-          await sendOwnerApprovalRequestNotification(ownerNotification);
-        } else {
-          await sendOwnerNewOrderNotification(ownerNotification);
-        }
-      }
-      if (paidOrder) {
-        await sendOwnerAlert({
-          type: "order",
-          customerName: paidOrder.customerName,
-          orderSummary: paidOrder.orderSummary,
-          notes:
-            paidOrder.status === "pending_approval"
-              ? `Paid same-week approval request. ${paidOrder.notes || ""}`.trim()
-              : paidOrder.notes || null,
-          orderId: paidOrder.orderId,
-        });
-      }
-
-      console.log("[stripe:webhook] paid order", {
-        sessionId: session.id,
-        orderId: paidOrder?.orderId || session.metadata?.order_id,
-        customerEmail: paidOrder?.customerEmail || session.customer_email,
-        deliveryWindow: paidOrder?.deliveryWindow || session.metadata?.delivery_window,
-      });
+      await completeStorefrontCheckoutSession(session);
     }
 
     if (event.type === "checkout.session.expired") {

@@ -18,8 +18,8 @@ const payload = await response.json().catch(() => ({}));
 if (!response.ok || payload.ok === false) {
   throw new Error(
     payload.error ||
-      `Bread Club daily job failed with HTTP ${response.status}.`,
+      `Bakery operations job failed with HTTP ${response.status}.`,
   );
 }
 
-console.log(JSON.stringify(payload.report, null, 2));
+console.log(JSON.stringify(payload, null, 2));

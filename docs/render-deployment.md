@@ -80,13 +80,14 @@ new web services.
 10. Run `npm run check:prod-env`.
 11. Run `npm run smoke:live`.
 
-The Blueprint also creates `landl-bread-club-daily`, a daily cron service.
+The Blueprint also creates `landl-bread-club-daily`, an hourly operations cron.
 Enter the same `CRON_SECRET` on the web and cron services so the authenticated
 lifecycle call remains valid after every Blueprint sync. The cron calls the
-authenticated lifecycle
-endpoint at 10:00 UTC each day and handles rolling weeks, renewal reservations,
-reminders, Friday summaries, stale checkout cleanup, credit reconciliation,
-and Stripe/database reconciliation.
+authenticated lifecycle endpoint at seven minutes past each hour. It recovers
+paid storefront sessions missed by webhooks, releases expired checkout
+reservations, and handles rolling weeks, renewal reservations, reminders,
+Friday summaries, stale checkout cleanup, credit reconciliation, and
+Stripe/database reconciliation.
 
 ## Smoke Tests
 

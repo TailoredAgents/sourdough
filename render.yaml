@@ -95,7 +95,7 @@ services:
     plan: starter
     repo: https://github.com/TailoredAgents/sourdough
     branch: main
-    schedule: "0 10 * * *"
+    schedule: "7 * * * *"
     buildCommand: npm ci --omit=dev
     startCommand: npm run bread-club:daily
     envVars:

@@ -40,6 +40,14 @@ export type PaidOrderSummary = {
   notes: string | null;
 };
 
+type PaidOrderRow = {
+  id: string;
+  customer_id: string;
+  delivery_window_id: string;
+  delivery_address: DeliveryAddress;
+  notes: string | null;
+};
+
 export type OrderConfirmation = {
   id: string;
   status: OrderStatus;
@@ -282,6 +290,84 @@ export async function cancelPendingOrderByToken(orderId: string, token: string) 
   return releasePendingOrder(orderId);
 }
 
+async function hydratePaidOrderSummary(
+  order: PaidOrderRow,
+  status: OrderStatus,
+): Promise<PaidOrderSummary> {
+  const supabase = getSupabaseAdminClient();
+  if (!supabase) throw new Error("Supabase admin client is not configured.");
+
+  const [customerResult, deliveryWindowResult, orderItemsResult] =
+    await Promise.all([
+      supabase
+        .from("customers")
+        .select("name, email, phone")
+        .eq("id", order.customer_id)
+        .maybeSingle(),
+      supabase
+        .from("delivery_windows")
+        .select("label")
+        .eq("id", order.delivery_window_id)
+        .maybeSingle(),
+      supabase
+        .from("order_items")
+        .select("quantity, products(name)")
+        .eq("order_id", order.id),
+    ]);
+
+  if (customerResult.error) throw new Error(customerResult.error.message);
+  if (deliveryWindowResult.error) {
+    throw new Error(deliveryWindowResult.error.message);
+  }
+  if (orderItemsResult.error) throw new Error(orderItemsResult.error.message);
+
+  return {
+    orderId: order.id,
+    customerName: String(customerResult.data?.name || "there"),
+    customerEmail: String(customerResult.data?.email || ""),
+    customerPhone: String(customerResult.data?.phone || ""),
+    orderSummary:
+      orderItemsResult.data
+        ?.map((item) => {
+          const product = Array.isArray(item.products)
+            ? item.products[0]
+            : item.products;
+          return `${item.quantity} x ${product?.name || "Item"}`;
+        })
+        .join("\n") || "Order paid in Stripe Checkout",
+    deliveryWindow: String(
+      deliveryWindowResult.data?.label || "Selected window",
+    ),
+    deliveryAddress: formatAddress(order.delivery_address),
+    notes: order.notes,
+    status,
+  };
+}
+
+export async function getPaidCheckoutOrderSummaryBySessionId(
+  sessionId: string,
+): Promise<PaidOrderSummary | null> {
+  const supabase = getSupabaseAdminClient();
+  if (!supabase) throw new Error("Supabase admin client is not configured.");
+
+  const { data: order, error } = await supabase
+    .from("orders")
+    .select(
+      "id, customer_id, delivery_window_id, delivery_address, notes, status",
+    )
+    .eq("stripe_checkout_session_id", sessionId)
+    .in("status", ["paid", "pending_approval"])
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  if (!order) return null;
+
+  return hydratePaidOrderSummary(
+    order as PaidOrderRow,
+    order.status as OrderStatus,
+  );
+}
+
 export async function markCheckoutSessionPaid(
   sessionId: string,
   payment?: {
@@ -332,43 +418,7 @@ export async function markCheckoutSessionPaid(
   }
   if (!order) return null;
 
-  const [{ data: customer }, { data: deliveryWindow }, { data: orderItems }] =
-    await Promise.all([
-      supabase
-        .from("customers")
-        .select("name, email, phone")
-        .eq("id", order.customer_id)
-        .maybeSingle(),
-      supabase
-        .from("delivery_windows")
-        .select("label")
-        .eq("id", order.delivery_window_id)
-        .maybeSingle(),
-      supabase
-        .from("order_items")
-        .select("quantity, products(name)")
-        .eq("order_id", order.id),
-    ]);
-
-  return {
-    orderId: order.id as string,
-    customerName: String(customer?.name || "there"),
-    customerEmail: String(customer?.email || ""),
-    customerPhone: String(customer?.phone || ""),
-    orderSummary:
-      orderItems
-        ?.map((item) => {
-          const product = Array.isArray(item.products)
-            ? item.products[0]
-            : item.products;
-          return `${item.quantity} x ${product?.name || "Item"}`;
-        })
-        .join("\n") || "Order paid in Stripe Checkout",
-    deliveryWindow: String(deliveryWindow?.label || "Selected window"),
-    deliveryAddress: formatAddress(order.delivery_address as DeliveryAddress),
-    notes: (order.notes as string | null) ?? null,
-    status: paidStatus,
-  };
+  return hydratePaidOrderSummary(order as PaidOrderRow, paidStatus);
 }
 
 export async function cancelExpiredCheckoutSession(sessionId: string) {

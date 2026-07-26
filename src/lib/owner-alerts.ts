@@ -1,4 +1,4 @@
-import { sendOwnerShortAlert } from "./email";
+import { hasSentEmailEvent, sendOwnerShortAlert } from "./email";
 
 type OwnerAlertInput = {
   type: "order" | "request" | "inquiry";
@@ -7,6 +7,7 @@ type OwnerAlertInput = {
   notes?: string | null;
   orderId?: string;
   customerMessageId?: string;
+  throwOnFailure?: boolean;
 };
 
 function envFlagEnabled(name: string, fallback = false) {
@@ -79,8 +80,19 @@ export async function sendOwnerAlert(input: OwnerAlertInput) {
 
   const subject = buildOwnerAlertSubject(input.type, input.customerName);
   const body = buildOwnerAlertMessage(input);
+  const pendingRecipients: string[] = [];
+  for (const recipient of recipients) {
+    const alreadySent = await hasSentEmailEvent({
+      template: "owner_short_alert",
+      to: recipient,
+      orderId: input.orderId,
+      customerMessageId: input.customerMessageId,
+    });
+    if (!alreadySent) pendingRecipients.push(recipient);
+  }
+
   const results = await Promise.allSettled(
-    recipients.map((to) =>
+    pendingRecipients.map((to) =>
       sendOwnerShortAlert({
         to,
         subject,
@@ -94,7 +106,7 @@ export async function sendOwnerAlert(input: OwnerAlertInput) {
   results.forEach((result, index) => {
     if (result.status === "rejected") {
       console.error("[owner-alert] send failed", {
-        to: recipients[index],
+        to: pendingRecipients[index],
         error:
           result.reason instanceof Error
             ? result.reason.message
@@ -102,4 +114,13 @@ export async function sendOwnerAlert(input: OwnerAlertInput) {
       });
     }
   });
+
+  const failedCount = results.filter(
+    (result) => result.status === "rejected",
+  ).length;
+  if (failedCount && input.throwOnFailure) {
+    throw new Error(
+      `${failedCount} owner alert${failedCount === 1 ? "" : "s"} failed to send.`,
+    );
+  }
 }

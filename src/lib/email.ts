@@ -1,7 +1,7 @@
 import { Resend } from "resend";
 import { getSupabaseAdminClient } from "./supabase";
 
-type EmailTemplate =
+export type EmailTemplate =
   | "customer_order_confirmation"
   | "customer_approval_request_received"
   | "owner_new_order"
@@ -114,6 +114,37 @@ async function logEmailEvent({
   if (error) {
     console.error("[email] event log failed", error.message);
   }
+}
+
+export async function hasSentEmailEvent({
+  template,
+  to,
+  orderId,
+  customerMessageId,
+}: {
+  template: EmailTemplate;
+  to: string;
+  orderId?: string;
+  customerMessageId?: string;
+}) {
+  const supabase = getSupabaseAdminClient();
+  if (!supabase || (!orderId && !customerMessageId)) return false;
+
+  let query = supabase
+    .from("email_events")
+    .select("id")
+    .eq("template", template)
+    .eq("recipient", to)
+    .eq("status", "sent")
+    .limit(1);
+
+  query = orderId
+    ? query.eq("order_id", orderId)
+    : query.eq("customer_message_id", customerMessageId as string);
+
+  const { data, error } = await query.maybeSingle();
+  if (error) throw new Error(error.message);
+  return Boolean(data);
 }
 
 function renderCustomerConfirmation({

@@ -33,7 +33,7 @@ in `BREAD_CLUB_TEST_EMAILS`.
 6. Confirm the deployed webhook accepts a signed Stripe test event after
    Render has the matching secret. Do not accept live checkout traffic during
    any secret-copy gap.
-7. Deploy the web service and the daily cron from `render.yaml`.
+7. Deploy the web service and hourly operations cron from `render.yaml`.
 8. Run `npm run check:prod-env`, `npm run validate`, and the live read-only
    smoke suite.
 
@@ -66,7 +66,7 @@ delete Stripe financial history.
   public enrollment was still disabled.
 - The owner smoke test and cleanup passed.
 - The production webhook has no failed Bread Club events.
-- The daily cron completed once successfully.
+- The hourly operations cron completed once successfully.
 - Stripe business public details include the monitored support email and
   `https://www.landlsourdough.com/contact` support URL.
 - Product ingredient costs are entered where contribution reporting is needed.

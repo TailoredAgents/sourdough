@@ -2,13 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   constructEvent: vi.fn(),
-  markCheckoutSessionPaid: vi.fn(),
+  completeStorefrontCheckoutSession: vi.fn(),
   cancelExpiredCheckoutSession: vi.fn(),
-  sendCustomerApprovalRequestReceived: vi.fn(),
-  sendCustomerOrderConfirmation: vi.fn(),
-  sendOwnerApprovalRequestNotification: vi.fn(),
-  sendOwnerNewOrderNotification: vi.fn(),
-  sendOwnerAlert: vi.fn(),
 }));
 
 vi.mock("@/lib/stripe", () => ({
@@ -20,19 +15,12 @@ vi.mock("@/lib/stripe", () => ({
 }));
 
 vi.mock("@/lib/order-records", () => ({
-  markCheckoutSessionPaid: mocks.markCheckoutSessionPaid,
   cancelExpiredCheckoutSession: mocks.cancelExpiredCheckoutSession,
 }));
 
-vi.mock("@/lib/email", () => ({
-  sendCustomerApprovalRequestReceived: mocks.sendCustomerApprovalRequestReceived,
-  sendCustomerOrderConfirmation: mocks.sendCustomerOrderConfirmation,
-  sendOwnerApprovalRequestNotification: mocks.sendOwnerApprovalRequestNotification,
-  sendOwnerNewOrderNotification: mocks.sendOwnerNewOrderNotification,
-}));
-
-vi.mock("@/lib/owner-alerts", () => ({
-  sendOwnerAlert: mocks.sendOwnerAlert,
+vi.mock("@/lib/order-payment", () => ({
+  completeStorefrontCheckoutSession:
+    mocks.completeStorefrontCheckoutSession,
 }));
 
 async function postWebhook() {
@@ -55,65 +43,33 @@ beforeEach(() => {
   }
 });
 
-describe("Stripe approval request webhook", () => {
-  it("routes paid same-week requests to approval emails and owner alert", async () => {
+describe("Stripe order webhook", () => {
+  it("routes completed Checkout Sessions through the paid-order workflow", async () => {
+    const session = {
+      id: "cs_approval",
+      amount_total: 3210,
+      total_details: { amount_tax: 210 },
+      customer_email: "customer@example.com",
+      metadata: { order_id: "order-id" },
+    };
     mocks.constructEvent.mockReturnValue({
       id: "evt_approval",
       type: "checkout.session.completed",
       data: {
-        object: {
-          id: "cs_approval",
-          amount_total: 3210,
-          total_details: { amount_tax: 210 },
-          customer_email: "customer@example.com",
-          metadata: { order_id: "order-id" },
-        },
+        object: session,
       },
     });
-    mocks.markCheckoutSessionPaid.mockResolvedValue({
+    mocks.completeStorefrontCheckoutSession.mockResolvedValue({
       orderId: "order-id",
-      status: "pending_approval",
-      customerName: "Same Week Customer",
-      customerEmail: "customer@example.com",
-      customerPhone: "4045550100",
-      orderSummary: "2 x Classic Country Loaf",
-      deliveryWindow: "Thursday, Jul 23, 9:00 AM-12:00 PM",
-      deliveryAddress: "123 Main Street, Canton, GA 30114",
-      notes: "Please slice if possible.",
     });
 
     const response = await postWebhook();
 
     await expect(response.json()).resolves.toEqual({ received: true });
-    expect(mocks.markCheckoutSessionPaid).toHaveBeenCalledWith("cs_approval", {
-      taxCents: 210,
-      totalCents: 3210,
-    });
-    expect(mocks.sendCustomerApprovalRequestReceived).toHaveBeenCalledWith(
-      expect.objectContaining({
-        to: "customer@example.com",
-        customerName: "Same Week Customer",
-        orderSummary: "2 x Classic Country Loaf",
-        orderId: "order-id",
-      }),
+    expect(
+      mocks.completeStorefrontCheckoutSession,
+    ).toHaveBeenCalledWith(
+      session,
     );
-    expect(mocks.sendOwnerApprovalRequestNotification).toHaveBeenCalledWith(
-      expect.objectContaining({
-        to: "owner@example.com",
-        customerName: "Same Week Customer",
-        customerPhone: "4045550100",
-        address: "123 Main Street, Canton, GA 30114",
-        notes: "Please slice if possible.",
-      }),
-    );
-    expect(mocks.sendOwnerAlert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        type: "order",
-        customerName: "Same Week Customer",
-        notes: expect.stringContaining("Paid same-week approval request"),
-      }),
-    );
-    expect(mocks.sendCustomerOrderConfirmation).not.toHaveBeenCalled();
-    expect(mocks.sendOwnerNewOrderNotification).not.toHaveBeenCalled();
   });
 });
