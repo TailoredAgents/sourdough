@@ -2,8 +2,10 @@ import Link from "next/link";
 import Image from "next/image";
 import { ShoppingBag } from "lucide-react";
 import { buttonClassName } from "./button";
+import { isBreadClubPublicEnabled } from "@/lib/bread-club/config";
 
 export function SiteHeader() {
+  const breadClubEnabled = isBreadClubPublicEnabled();
   return (
     <header className="sticky top-0 z-40 border-b border-stone-200 bg-[#fffaf2]/90 backdrop-blur">
       <a
@@ -50,6 +52,16 @@ export function SiteHeader() {
           >
             Delivery
           </Link>
+          {breadClubEnabled ? (
+            <Link
+              href="/bread-club"
+              data-analytics-event="nav_click"
+              data-analytics-label="Bread Club"
+              data-analytics-section="header"
+            >
+              Bread Club
+            </Link>
+          ) : null}
           <Link
             href="/#questions"
             data-analytics-event="nav_click"
@@ -88,7 +100,9 @@ export function SiteHeader() {
       </div>
       <nav
         aria-label="Mobile navigation"
-        className="grid grid-cols-5 gap-2 border-t border-stone-200 px-4 py-2 text-center text-[0.8rem] font-bold text-stone-700 md:hidden"
+        className={`grid gap-2 border-t border-stone-200 px-4 py-2 text-center text-[0.8rem] font-bold text-stone-700 md:hidden ${
+          breadClubEnabled ? "grid-cols-3" : "grid-cols-5"
+        }`}
       >
         <Link
           href="/#menu"
@@ -139,6 +153,18 @@ export function SiteHeader() {
         >
           Help
         </Link>
+        {breadClubEnabled ? (
+          <Link
+            href="/bread-club"
+            aria-label="Bread Club"
+            data-analytics-event="nav_click"
+            data-analytics-label="Bread Club"
+            data-analytics-section="mobile_header"
+            className="rounded-sm bg-white px-2 py-2"
+          >
+            Club
+          </Link>
+        ) : null}
       </nav>
     </header>
   );

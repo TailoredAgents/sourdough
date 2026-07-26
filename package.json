@@ -18,7 +18,9 @@
     "check:assets": "node scripts/check-assets.mjs",
     "validate": "npm run lint && npm run check:seed && npm run check:assets && npm test && npm run test:e2e && npm run build",
     "stripe:sync-catalog": "node scripts/sync-stripe-catalog.mjs",
-    "delivery:align-sunday": "node scripts/align-sunday-delivery.mjs"
+    "delivery:align-sunday": "node scripts/align-sunday-delivery.mjs",
+    "bread-club:daily": "node scripts/run-bread-club-daily.mjs",
+    "bread-club:setup": "node scripts/setup-bread-club.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.0",

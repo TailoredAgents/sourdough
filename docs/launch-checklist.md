@@ -154,3 +154,23 @@ Current status: repo is pushed, Supabase schema exists in the live database, see
 ## Recommended Next Step
 
 Finish the external launch tasks next: confirm Render production environment variables, fix DNS/SSL for the apex domain, add Stripe test keys/webhook secret, and run the proof checklist in `docs/ultimate-launch-roadmap.md`.
+
+## Sunday Bread Club
+
+- [x] Add four-week plan, membership, cycle, fulfillment, credit, add-on, magic-link, and event data structures
+- [x] Add atomic four-Sunday inventory and stop reservations
+- [x] Add customer enrollment and exact route-based recurring totals
+- [x] Add passwordless member management, selection swaps, skip, add-on, plan, address, billing, and cancellation actions
+- [x] Add owner Bread Club dashboard and ordinary order badges
+- [x] Add idempotent Stripe subscription webhook handling
+- [x] Add idempotent daily Render lifecycle job
+- [x] Add automatic-renewal and cancellation policy wording
+- [x] Apply the additive Bread Club migration in production
+- [x] Synchronize live recurring Stripe Products and Prices
+- [x] Configure the live Stripe webhook and Billing Portal
+- [x] Generate one shared cron secret through the Render Blueprint
+- [ ] Add the new webhook signing secret to Render and verify a signed event
+- [ ] Add Stripe business support email and support URL
+- [ ] Confirm Georgia tax treatment
+- [ ] Complete and clean up the authorized owner smoke subscription
+- [ ] Enable public enrollment and monitor for 24 hours

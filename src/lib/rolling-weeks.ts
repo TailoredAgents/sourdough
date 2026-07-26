@@ -91,24 +91,24 @@ async function ensureSundayDeliveryWindow(
     .from("delivery_windows")
     .select("id, starts_at, ends_at, capacity, reserved")
     .eq("weekly_menu_id", weeklyMenuId)
-    .eq("starts_at", schedule.deliveryStartsAt.toISOString())
-    .maybeSingle();
+    .order("starts_at", { ascending: true })
+    .limit(1);
 
   if (existingError) {
     console.error("[supabase] Sunday delivery window lookup failed", existingError.message);
     return;
   }
 
-  if (existing) {
+  const existingWindow = existing?.[0];
+  if (existingWindow) {
     const { error } = await supabase
       .from("delivery_windows")
       .update({
         label,
         starts_at: schedule.deliveryStartsAt.toISOString(),
         ends_at: schedule.deliveryEndsAt.toISOString(),
-        capacity: Math.max(Number(existing.capacity || 0), DEFAULT_SUNDAY_DELIVERY_CAPACITY),
       })
-      .eq("id", existing.id);
+      .eq("id", existingWindow.id);
     if (error) console.error("[supabase] Sunday delivery window update failed", error.message);
     return;
   }
@@ -183,7 +183,9 @@ export async function ensureRollingWeeklyMenus(now = new Date()) {
     );
 
     if (matchingExisting) {
-      await syncMenuSchedule(matchingExisting, schedule);
+      if (matchingExisting.auto_generated) {
+        await syncMenuSchedule(matchingExisting, schedule);
+      }
       await ensureSundayDeliveryWindow(matchingExisting.id, schedule);
       resultIds.push(matchingExisting.id);
       continue;

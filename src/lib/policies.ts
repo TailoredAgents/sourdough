@@ -12,8 +12,8 @@ export type PolicyPage = {
   sections: PolicySection[];
 };
 
-export const policyLastUpdated = "July 15, 2026";
-export const policyLastUpdatedIso = "2026-07-15";
+export const policyLastUpdated = "July 26, 2026";
+export const policyLastUpdatedIso = "2026-07-26";
 
 export const policyPages: PolicyPage[] = [
   {
@@ -66,6 +66,21 @@ export const policyPages: PolicyPage[] = [
         ],
       },
       {
+        heading: "Sunday Bread Club cancellation",
+        body: [
+          `Bread Club memberships renew every four weeks at the recurring amount accepted during enrollment. Members can stop the next renewal immediately through the secure membership page or by emailing ${bakery.orderEmail}.`,
+          "Cancellation takes effect at the end of the already-paid four-week billing period. Already-paid Sunday deliveries remain scheduled unless the bakery separately approves a change or refund.",
+          "Any unused, unexpired rollover loaf and delivery-fee credit is reviewed and refunded when the Stripe subscription ends. Refund timing depends on Stripe and the customer's bank.",
+        ],
+      },
+      {
+        heading: "Bread Club skips and credits",
+        body: [
+          "Each paid Bread Club cycle includes one skip requested before Thursday at 11:59 PM. The skipped Sunday inventory and delivery stop are released.",
+          "The included loaf quantity becomes a rollover credit valid for 60 days. The skipped Sunday delivery fee is applied to the next Stripe invoice. Rollover use remains subject to product and Sunday capacity.",
+        ],
+      },
+      {
         heading: "Refunds",
         body: [
           "Approved refunds are returned through the original payment method. Stripe or the customer's bank may take additional time to post the refund after it is issued.",
@@ -99,6 +114,13 @@ export const policyPages: PolicyPage[] = [
         body: [
           "Customer information is used to confirm orders, check delivery eligibility, prepare bakery items, deliver orders, respond to questions, send order updates, prevent abuse, and maintain business records.",
           "Current menu, order, and bakery information may be used by site tools such as the chat assistant. The chat assistant cannot handle payments, change orders, or provide medical, legal, tax, or allergen-safety advice.",
+        ],
+      },
+      {
+        heading: "Bread Club account access and billing",
+        body: [
+          "Bread Club uses single-use, time-limited email links instead of customer passwords. The bakery stores a protected token hash, membership selections, delivery history, skip credits, renewal consent, and Stripe customer, subscription, and invoice references.",
+          "Stripe hosts payment checkout and the billing portal. The bakery does not receive or store full card numbers.",
         ],
       },
       {
@@ -136,6 +158,14 @@ export const policyPages: PolicyPage[] = [
         body: [
           "Menu quantities are limited. An item may become unavailable if inventory sells out, a checkout session is not completed, or an order cannot be fulfilled as submitted.",
           `A paid checkout confirmation means the order has been received for the selected Sunday delivery time. A submitted availability request is not a confirmed order until ${bakery.name} responds and accepts it.`,
+        ],
+      },
+      {
+        heading: "Sunday Bread Club renewal terms",
+        body: [
+          "Bread Club is a prepaid subscription billed when enrollment begins and every four weeks afterward. The exact plan, delivery amount, first charge date, recurring frequency, tax treatment, and cancellation methods are displayed before the customer separately accepts automatic renewal.",
+          "Each paid cycle reserves four Sunday deliveries. Classic and Variety reserve one loaf per Sunday; Family reserves two. Bread Club enrollment is limited by product inventory, a separate weekly loaf commitment limit, delivery-stop capacity, and verified delivery eligibility.",
+          "A subscription never enters the same-week approval-request flow. Before the Thursday cutoff, the first delivery may be that Sunday. After cutoff, the first delivery begins with the next normally available Sunday.",
         ],
       },
       {

@@ -38,6 +38,7 @@ type ProductValidationInput = {
   description: string;
   ingredients: string;
   price: string;
+  estimatedIngredientCost?: string;
   imageStyle: string;
 };
 
@@ -158,6 +159,12 @@ export function validateProductForm(input: ProductValidationInput) {
   const price = Number(input.price);
   if (!Number.isFinite(price) || price < 0 || price > 500) {
     return "Product price must be between $0.00 and $500.00.";
+  }
+  if (input.estimatedIngredientCost) {
+    const cost = Number(input.estimatedIngredientCost);
+    if (!Number.isFinite(cost) || cost < 0 || cost > 500) {
+      return "Estimated ingredient cost must be between $0.00 and $500.00.";
+    }
   }
   if (input.imageStyle.trim().length < 3) return "Product color style is required.";
 

@@ -33,6 +33,7 @@ type ProductRow = {
   ingredients: string[];
   allergens: string[];
   price_cents: number;
+  estimated_ingredient_cost_cents: number | null;
   stripe_product_id: string | null;
   stripe_price_id: string | null;
   stripe_price_cents: number | null;
@@ -139,6 +140,7 @@ function mapProduct(row: ProductRow): Product {
     ingredients: row.ingredients,
     allergens: row.allergens,
     priceCents: row.price_cents,
+    estimatedIngredientCostCents: row.estimated_ingredient_cost_cents,
     stripeProductId: row.stripe_product_id,
     stripePriceId: row.stripe_price_id,
     stripePriceCents: row.stripe_price_cents,
@@ -246,7 +248,7 @@ async function getMenuItemsData(weeklyMenuId: string): Promise<MenuProduct[]> {
   const { data, error } = await supabase
     .from("weekly_menu_items")
     .select(
-      "product_id, available_quantity, sold_quantity, featured, unavailable, products(id, name, category, description, ingredients, allergens, price_cents, stripe_product_id, stripe_price_id, stripe_price_cents, stripe_synced_at, image_url, image_style, active)",
+      "product_id, available_quantity, sold_quantity, featured, unavailable, products(id, name, category, description, ingredients, allergens, price_cents, estimated_ingredient_cost_cents, stripe_product_id, stripe_price_id, stripe_price_cents, stripe_synced_at, image_url, image_style, active)",
     )
     .eq("weekly_menu_id", weeklyMenuId);
 
@@ -377,7 +379,7 @@ export async function getProductsData(): Promise<Product[]> {
 
   const { data, error } = await supabase
     .from("products")
-    .select("id, name, category, description, ingredients, allergens, price_cents, stripe_product_id, stripe_price_id, stripe_price_cents, stripe_synced_at, image_url, image_style, active")
+    .select("id, name, category, description, ingredients, allergens, price_cents, estimated_ingredient_cost_cents, stripe_product_id, stripe_price_id, stripe_price_cents, stripe_synced_at, image_url, image_style, active")
     .order("name", { ascending: true });
 
   if (error) {

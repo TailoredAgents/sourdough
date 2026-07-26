@@ -44,6 +44,12 @@ export default async function AdminPage() {
             <Link href="/" className="text-sm font-semibold text-stone-700">
               Back to storefront
             </Link>
+            <Link
+              href="/admin/bread-club"
+              className="text-sm font-semibold text-[#23443b]"
+            >
+              Bread Club
+            </Link>
             <form action="/auth/logout" method="post">
               <button className="text-sm font-semibold text-[#a94334]" type="submit">
                 Logout

@@ -9,7 +9,18 @@ type EmailTemplate =
   | "owner_short_alert"
   | "last_minute_request"
   | "order_status_update"
-  | "customer_message_reply";
+  | "customer_message_reply"
+  | "bread_club_magic_link"
+  | "bread_club_welcome"
+  | "bread_club_selection_reminder"
+  | "bread_club_skip_credit"
+  | "bread_club_addon_receipt"
+  | "bread_club_renewal"
+  | "bread_club_payment_failure"
+  | "bread_club_plan_change"
+  | "bread_club_cancellation"
+  | "bread_club_owner_alert"
+  | "bread_club_friday_summary";
 
 type BaseEmail = {
   to: string;
@@ -64,6 +75,7 @@ async function logEmailEvent({
   to,
   orderId,
   customerMessageId,
+  breadClubMembershipId,
   status,
   providerId,
   providerResponse,
@@ -73,6 +85,7 @@ async function logEmailEvent({
   to: string;
   orderId?: string;
   customerMessageId?: string;
+  breadClubMembershipId?: string;
   status: "sent" | "demo" | "failed";
   providerId?: string;
   providerResponse?: unknown;
@@ -86,6 +99,7 @@ async function logEmailEvent({
     recipient: to,
     order_id: orderId || null,
     customer_message_id: customerMessageId || null,
+    bread_club_membership_id: breadClubMembershipId || null,
     status,
     provider_id: providerId || null,
     provider_response:
@@ -208,15 +222,19 @@ async function sendTemplatedEmail({
   to,
   orderId,
   customerMessageId,
+  breadClubMembershipId,
   subject,
   text,
+  html,
 }: {
   template: EmailTemplate;
   to: string;
   orderId?: string;
   customerMessageId?: string;
+  breadClubMembershipId?: string;
   subject: string;
   text: string;
+  html?: string;
 }) {
   const apiKey = process.env.RESEND_API_KEY;
 
@@ -228,6 +246,7 @@ async function sendTemplatedEmail({
         to,
         orderId,
         customerMessageId,
+        breadClubMembershipId,
         status: "failed",
         errorMessage: missingEmailError,
       });
@@ -240,6 +259,7 @@ async function sendTemplatedEmail({
       to,
       orderId,
       customerMessageId,
+      breadClubMembershipId,
       status: "demo",
       providerResponse: { demo: true },
     });
@@ -253,6 +273,7 @@ async function sendTemplatedEmail({
       to,
       subject,
       text,
+      ...(html ? { html } : {}),
     });
     const resendErrorMessage = getResendErrorMessage(result);
     if (resendErrorMessage) {
@@ -269,6 +290,7 @@ async function sendTemplatedEmail({
       to,
       orderId,
       customerMessageId,
+      breadClubMembershipId,
       status: "sent",
       providerId,
       providerResponse: result,
@@ -282,6 +304,7 @@ async function sendTemplatedEmail({
       to,
       orderId,
       customerMessageId,
+      breadClubMembershipId,
       status: "failed",
       errorMessage: message,
     });
@@ -365,4 +388,16 @@ export async function sendCustomerMessageReply(input: CustomerReplyEmail) {
 
 export async function sendOrderConfirmation(input: BaseEmail) {
   return sendCustomerOrderConfirmation(input);
+}
+
+export async function sendBakeryTransactionalEmail(input: {
+  template: EmailTemplate;
+  to: string;
+  subject: string;
+  text: string;
+  html: string;
+  orderId?: string;
+  breadClubMembershipId?: string;
+}) {
+  return sendTemplatedEmail(input);
 }

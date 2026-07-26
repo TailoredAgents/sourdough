@@ -22,6 +22,10 @@ vi.mock("./delivery", () => ({
 function orderFixture(patch: Partial<AdminOrder>): AdminOrder {
   return {
     id: "order-1",
+    source: "storefront",
+    membershipId: null,
+    breadClubFulfillmentId: null,
+    stripeInvoiceId: null,
     customerName: "Test Customer",
     customerEmail: "customer@example.com",
     customerPhone: "4045550100",

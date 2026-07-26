@@ -25,6 +25,10 @@ import { productPath } from "@/lib/product-slugs";
 import { getStorefrontData } from "@/lib/storefront-data";
 import { absoluteImageUrl } from "@/lib/url";
 import { formatCurrency } from "@/lib/utils";
+import {
+  BREAD_CLUB_PLAN_COPY,
+  isBreadClubPublicEnabled,
+} from "@/lib/bread-club/config";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +39,7 @@ export default async function Home() {
   const cutoffMessage = getCutoffMessage(weeklyMenu?.orderCutoffAt);
   const orderAction = "Order bread";
   const serviceZipCopy = deliverySettings.allowedPostalCodes.join(", ");
+  const breadClubEnabled = isBreadClubPublicEnabled();
   const customerHighlights = [
     [
       "Naturally leavened",
@@ -242,15 +247,27 @@ export default async function Home() {
                 >
                   {orderAction}
                 </a>
-                <a
-                  href="#menu"
-                  data-analytics-event="view_menu_click"
-                  data-analytics-label="View this week's menu"
-                  data-analytics-section="hero"
-                  className="inline-flex h-12 items-center justify-center rounded-md border border-white/35 bg-white/10 px-5 text-base font-bold text-white backdrop-blur transition hover:bg-white/20"
-                >
-                  View available weeks
-                </a>
+                {breadClubEnabled ? (
+                  <Link
+                    href="/bread-club"
+                    data-analytics-event="bread_club_cta_click"
+                    data-analytics-label="Join Bread Club"
+                    data-analytics-section="hero"
+                    className="inline-flex h-12 items-center justify-center rounded-md border border-white/35 bg-white/10 px-5 text-base font-bold text-white backdrop-blur transition hover:bg-white/20"
+                  >
+                    Join Bread Club
+                  </Link>
+                ) : (
+                  <a
+                    href="#menu"
+                    data-analytics-event="view_menu_click"
+                    data-analytics-label="View this week's menu"
+                    data-analytics-section="hero"
+                    className="inline-flex h-12 items-center justify-center rounded-md border border-white/35 bg-white/10 px-5 text-base font-bold text-white backdrop-blur transition hover:bg-white/20"
+                  >
+                    View available weeks
+                  </a>
+                )}
               </div>
               <div className="mt-8 grid gap-3 text-sm text-stone-100 sm:grid-cols-3">
                 <span className="inline-flex items-center gap-2">
@@ -485,6 +502,75 @@ export default async function Home() {
             </div>
           </div>
         </section>
+
+        {breadClubEnabled ? (
+          <section className="border-y border-stone-200 bg-white py-16 sm:py-20">
+            <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+              <div className="flex flex-col justify-between gap-5 lg:flex-row lg:items-end">
+                <div>
+                  <p className="text-sm font-bold uppercase text-[#a94334]">
+                    Sunday Bread Club
+                  </p>
+                  <h2 className="mt-3 max-w-2xl text-3xl font-bold text-stone-950 sm:text-4xl">
+                    Keep Sunday bread planned for four weeks
+                  </h2>
+                </div>
+                <div className="max-w-xl">
+                  <p className="text-sm leading-6 text-stone-700">
+                    Reserve one or two loaves each Sunday, change available
+                    selections before Thursday night, and manage skips,
+                    add-ons, billing, and cancellation online.
+                  </p>
+                  <Link
+                    href="/bread-club"
+                    className="mt-4 inline-flex h-11 items-center justify-center rounded-md bg-[#23443b] px-5 text-sm font-bold text-white"
+                  >
+                    Compare Bread Club plans
+                  </Link>
+                </div>
+              </div>
+              <div className="mt-8 grid gap-4 lg:grid-cols-3">
+                {[
+                  ["classic", "Classic Club", 4400],
+                  ["variety", "Variety Club", 5200],
+                  ["family", "Family Club", 9600],
+                ].map(([slug, name, price]) => {
+                  const copy =
+                    BREAD_CLUB_PLAN_COPY[
+                      slug as keyof typeof BREAD_CLUB_PLAN_COPY
+                    ];
+                  return (
+                    <article
+                      key={slug}
+                      className="border border-stone-200 bg-[#fffaf2] p-5"
+                    >
+                      {copy.badge ? (
+                        <span className="rounded-sm bg-[#a94334] px-2 py-1 text-xs font-bold text-white">
+                          {copy.badge}
+                        </span>
+                      ) : null}
+                      <h3 className="mt-4 text-xl font-bold text-stone-950">
+                        {name}
+                      </h3>
+                      <p className="mt-2 text-sm leading-6 text-stone-700">
+                        {copy.shortDescription}
+                      </p>
+                      <p className="mt-5 text-xl font-bold text-stone-950">
+                        {formatCurrency(Number(price))}
+                        <span className="ml-1 text-sm font-medium text-stone-600">
+                          / 4 weeks
+                        </span>
+                      </p>
+                      <p className="mt-1 text-sm font-semibold text-[#a94334]">
+                        From {formatCurrency(copy.fromDeliveredCents)} delivered
+                      </p>
+                    </article>
+                  );
+                })}
+              </div>
+            </div>
+          </section>
+        ) : null}
 
         <section id="delivery" className="scroll-mt-32 bg-white py-16 sm:py-20">
           <div className="mx-auto grid max-w-7xl gap-8 px-4 sm:px-6 lg:grid-cols-[0.9fr_1.1fr] lg:px-8">

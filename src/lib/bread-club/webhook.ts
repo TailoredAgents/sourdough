@@ -1,0 +1,549 @@
+import type Stripe from "stripe";
+import {
+  sendBreadClubOwnerAlert,
+  sendBreadClubPaymentFailure,
+  sendBreadClubRenewal,
+  sendBreadClubWelcome,
+} from "./emails";
+import {
+  activateBreadClubCycleForInvoice,
+  expireBreadClubCheckoutSession,
+  findBreadClubCycleByInvoiceId,
+  findPendingCycleForMembership,
+  markBreadClubInvoiceFailed,
+  prepareNextBreadClubCycle,
+  recordBreadClubCheckoutCompleted,
+  releaseBreadClubPendingCycle,
+} from "./records";
+import {
+  markInvoiceDeliveryCreditsApplied,
+  refundBreadClubUnusedCredits,
+} from "./billing";
+import { getStripe } from "@/lib/stripe";
+import { getSupabaseAdminClient } from "@/lib/supabase";
+import { getSiteUrl } from "@/lib/utils";
+import { sendOwnerAlert } from "@/lib/owner-alerts";
+import {
+  completeBreadClubAddonCheckout,
+  expireBreadClubAddonCheckout,
+} from "./member-actions";
+
+function stripeId(
+  value:
+    | string
+    | { id: string }
+    | null
+    | undefined,
+) {
+  return typeof value === "string" ? value : value?.id || null;
+}
+
+function invoiceSubscriptionDetails(invoice: Stripe.Invoice) {
+  return invoice.parent?.subscription_details || null;
+}
+
+function invoiceMembershipId(invoice: Stripe.Invoice) {
+  return (
+    invoiceSubscriptionDetails(invoice)?.metadata
+      ?.bread_club_membership_id || null
+  );
+}
+
+function subscriptionMembershipId(subscription: Stripe.Subscription) {
+  return subscription.metadata.bread_club_membership_id || null;
+}
+
+function eventObjectId(event: Stripe.Event) {
+  const object = event.data.object as { id?: string };
+  return object.id || null;
+}
+
+export function isBreadClubStripeEvent(event: Stripe.Event) {
+  if (
+    event.type === "checkout.session.completed" ||
+    event.type === "checkout.session.expired"
+  ) {
+    const session = event.data.object as Stripe.Checkout.Session;
+    return (
+      session.metadata?.checkout_kind === "bread_club_subscription" ||
+      session.metadata?.checkout_kind === "bread_club_addon"
+    );
+  }
+
+  if (
+    event.type === "invoice.paid" ||
+    event.type === "invoice.payment_failed" ||
+    event.type === "invoice.upcoming"
+  ) {
+    return Boolean(
+      invoiceMembershipId(event.data.object as Stripe.Invoice),
+    );
+  }
+
+  if (
+    event.type === "customer.subscription.updated" ||
+    event.type === "customer.subscription.deleted"
+  ) {
+    return Boolean(
+      subscriptionMembershipId(
+        event.data.object as Stripe.Subscription,
+      ),
+    );
+  }
+
+  return false;
+}
+
+async function claimEvent(event: Stripe.Event) {
+  const supabase = getSupabaseAdminClient();
+  if (!supabase) throw new Error("Supabase admin client is not configured.");
+  const { data, error } = await supabase.rpc("claim_stripe_event", {
+    p_event_id: event.id,
+    p_event_type: event.type,
+    p_object_id: eventObjectId(event),
+  });
+  if (error) throw new Error(error.message);
+  return Boolean(data);
+}
+
+async function finishEvent(
+  eventId: string,
+  status: "processed" | "failed",
+  errorMessage?: string,
+) {
+  const supabase = getSupabaseAdminClient();
+  if (!supabase) throw new Error("Supabase admin client is not configured.");
+  const { error } = await supabase
+    .from("processed_stripe_events")
+    .update({
+      status,
+      processed_at: status === "processed" ? new Date().toISOString() : null,
+      last_error: errorMessage || null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", eventId);
+  if (error) throw new Error(error.message);
+}
+
+function subscriptionItemDetails(subscription: Stripe.Subscription) {
+  const planItem = subscription.items.data.find(
+    (item) => Boolean(item.price.metadata.bread_club_plan_id),
+  );
+  const deliveryItem = subscription.items.data.find(
+    (item) => Boolean(item.price.metadata.bread_club_delivery_band),
+  );
+  const periodEnd = subscription.items.data.reduce(
+    (latest, item) => Math.max(latest, item.current_period_end || 0),
+    0,
+  );
+
+  return {
+    planItemId: planItem?.id || null,
+    deliveryItemId: deliveryItem?.id || null,
+    currentPeriodEnd: periodEnd
+      ? new Date(periodEnd * 1000).toISOString()
+      : null,
+  };
+}
+
+async function membershipNotificationData(
+  membershipId: string,
+  cycleId: string,
+) {
+  const supabase = getSupabaseAdminClient();
+  if (!supabase) throw new Error("Supabase admin client is not configured.");
+
+  const [membershipResult, cycleResult, fulfillmentResult] =
+    await Promise.all([
+      supabase
+        .from("bread_club_memberships")
+        .select(
+          "id, customers(name, email), bread_club_plans(name), first_delivery_at",
+        )
+        .eq("id", membershipId)
+        .maybeSingle(),
+      supabase
+        .from("bread_club_cycles")
+        .select("cycle_number, total_cents")
+        .eq("id", cycleId)
+        .maybeSingle(),
+      supabase
+        .from("bread_club_fulfillments")
+        .select("delivery_windows(label, starts_at)")
+        .eq("cycle_id", cycleId)
+        .order("created_at", { ascending: true }),
+    ]);
+  if (membershipResult.error) throw new Error(membershipResult.error.message);
+  if (cycleResult.error) throw new Error(cycleResult.error.message);
+  if (fulfillmentResult.error) throw new Error(fulfillmentResult.error.message);
+
+  const membership = membershipResult.data;
+  const customer = Array.isArray(membership?.customers)
+    ? membership?.customers[0]
+    : membership?.customers;
+  const plan = Array.isArray(membership?.bread_club_plans)
+    ? membership?.bread_club_plans[0]
+    : membership?.bread_club_plans;
+  const sundayLabels = (fulfillmentResult.data || []).map((row) => {
+    const window = Array.isArray(row.delivery_windows)
+      ? row.delivery_windows[0]
+      : row.delivery_windows;
+    return String(window?.label || "Sunday 3:00-6:00 PM");
+  });
+
+  return {
+    customerName: String(customer?.name || "Bread Club member"),
+    customerEmail: String(customer?.email || ""),
+    planName: String(plan?.name || "Sunday Bread Club"),
+    cycleNumber: Number(cycleResult.data?.cycle_number || 1),
+    totalCents: Number(cycleResult.data?.total_cents || 0),
+    sundayLabels,
+  };
+}
+
+async function notifyPaidCycle(
+  membershipId: string,
+  cycleId: string,
+) {
+  const notification = await membershipNotificationData(
+    membershipId,
+    cycleId,
+  );
+  if (!notification.customerEmail) return;
+  const manageUrl = `${getSiteUrl()}/bread-club/manage`;
+
+  if (notification.cycleNumber === 1) {
+    const sends: Promise<unknown>[] = [
+      sendBreadClubWelcome({
+        to: notification.customerEmail,
+        customerName: notification.customerName,
+        membershipId,
+        planName: notification.planName,
+        recurringTotalCents: notification.totalCents,
+        sundayLabels: notification.sundayLabels,
+        manageUrl,
+      }),
+      sendOwnerAlert({
+        type: "order",
+        customerName: notification.customerName,
+        orderSummary: `${notification.planName}, four Sunday deliveries`,
+        notes: `Paid Bread Club membership. First delivery: ${
+          notification.sundayLabels[0] || "Next Sunday"
+        }.`,
+      }),
+    ];
+
+    if (process.env.BAKERY_EMAIL) {
+      sends.push(
+        sendBreadClubOwnerAlert({
+          to: process.env.BAKERY_EMAIL,
+          membershipId,
+          customerName: notification.customerName,
+          planName: notification.planName,
+          amountCents: notification.totalCents,
+          firstDeliveryLabel:
+            notification.sundayLabels[0] || "Next Sunday",
+        }),
+      );
+    }
+
+    const results = await Promise.allSettled(sends);
+    results.forEach((result) => {
+      if (result.status === "rejected") {
+        console.error("[bread-club] paid-cycle email failed", {
+          membershipId,
+          cycleId,
+          error: result.reason,
+        });
+      }
+    });
+    return;
+  }
+
+  try {
+      await sendBreadClubRenewal({
+        to: notification.customerEmail,
+        customerName: notification.customerName,
+        membershipId,
+        planName: notification.planName,
+        amountCents: notification.totalCents,
+        sundayLabels: notification.sundayLabels,
+        manageUrl,
+      });
+  } catch (error) {
+    console.error("[bread-club] paid-cycle email failed", {
+      membershipId,
+      cycleId,
+      error,
+    });
+  }
+}
+
+async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
+  const membershipId =
+    session.metadata?.bread_club_membership_id || "";
+  const cycleId = session.metadata?.bread_club_cycle_id || "";
+  if (!membershipId) return;
+
+  const stripe = getStripe();
+  if (!stripe) throw new Error("STRIPE_SECRET_KEY is not configured.");
+  const subscriptionId = stripeId(session.subscription);
+  const subscription = subscriptionId
+    ? await stripe.subscriptions.retrieve(subscriptionId, {
+        expand: ["latest_invoice"],
+      })
+    : null;
+  const itemDetails = subscription
+    ? subscriptionItemDetails(subscription)
+    : {
+        planItemId: null,
+        deliveryItemId: null,
+        currentPeriodEnd: null,
+      };
+
+  await recordBreadClubCheckoutCompleted({
+    membershipId,
+    sessionId: session.id,
+    stripeCustomerId: stripeId(session.customer),
+    stripeSubscriptionId: subscriptionId,
+    planSubscriptionItemId: itemDetails.planItemId,
+    deliverySubscriptionItemId: itemDetails.deliveryItemId,
+    currentPeriodEnd: itemDetails.currentPeriodEnd,
+  });
+
+  const latestInvoice =
+    subscription?.latest_invoice &&
+    typeof subscription.latest_invoice !== "string"
+      ? subscription.latest_invoice
+      : null;
+  if (cycleId && latestInvoice?.status === "paid") {
+    const pending = await findPendingCycleForMembership(membershipId);
+    if (pending?.id === cycleId) {
+      await activateBreadClubCycleForInvoice({
+        membershipId,
+        cycleId,
+        invoiceId: latestInvoice.id,
+        amountPaidCents: latestInvoice.amount_paid,
+        taxCents:
+          latestInvoice.total_taxes?.reduce(
+            (sum, tax) => sum + tax.amount,
+            0,
+          ) || 0,
+        paidAt: latestInvoice.status_transitions.paid_at
+          ? new Date(
+              latestInvoice.status_transitions.paid_at * 1000,
+            ).toISOString()
+          : undefined,
+      });
+      await notifyPaidCycle(membershipId, cycleId);
+    }
+  }
+}
+
+async function handleInvoicePaid(invoice: Stripe.Invoice) {
+  const membershipId = invoiceMembershipId(invoice);
+  if (!membershipId) return;
+  const existingCycle = await findBreadClubCycleByInvoiceId(invoice.id);
+  if (existingCycle?.status === "paid") {
+    await markInvoiceDeliveryCreditsApplied(membershipId, invoice);
+    return;
+  }
+  let cycle = await findPendingCycleForMembership(membershipId);
+  if (!cycle) {
+    cycle = await prepareNextBreadClubCycle(membershipId);
+  }
+
+  await activateBreadClubCycleForInvoice({
+    membershipId,
+    cycleId: cycle.id,
+    invoiceId: invoice.id,
+    amountPaidCents: invoice.amount_paid,
+    taxCents:
+      invoice.total_taxes?.reduce((sum, tax) => sum + tax.amount, 0) || 0,
+    paidAt: invoice.status_transitions.paid_at
+      ? new Date(invoice.status_transitions.paid_at * 1000).toISOString()
+      : undefined,
+  });
+  await markInvoiceDeliveryCreditsApplied(membershipId, invoice);
+  await notifyPaidCycle(membershipId, cycle.id);
+}
+
+async function handleInvoicePaymentFailed(invoice: Stripe.Invoice) {
+  const membershipId = invoiceMembershipId(invoice);
+  if (!membershipId) return;
+  await markBreadClubInvoiceFailed(membershipId, invoice.id);
+
+  const supabase = getSupabaseAdminClient();
+  if (!supabase) return;
+  const { data } = await supabase
+    .from("bread_club_memberships")
+    .select("customers(name, email)")
+    .eq("id", membershipId)
+    .maybeSingle();
+  const customer = Array.isArray(data?.customers)
+    ? data?.customers[0]
+    : data?.customers;
+  if (!customer?.email) return;
+  try {
+    await sendBreadClubPaymentFailure({
+      to: String(customer.email),
+      customerName: String(customer.name || "there"),
+      membershipId,
+      portalUrl: `${getSiteUrl()}/bread-club/manage`,
+    });
+  } catch (error) {
+    console.error("[bread-club] payment-failure email failed", error);
+  }
+}
+
+async function handleSubscriptionUpdate(
+  subscription: Stripe.Subscription,
+  deleted = false,
+) {
+  const membershipId = subscriptionMembershipId(subscription);
+  if (!membershipId) return;
+  const supabase = getSupabaseAdminClient();
+  if (!supabase) throw new Error("Supabase admin client is not configured.");
+  const details = subscriptionItemDetails(subscription);
+  const status = deleted
+    ? "canceled"
+    : subscription.status === "past_due" ||
+        subscription.status === "unpaid"
+      ? "past_due"
+      : subscription.cancel_at_period_end
+        ? "canceling"
+        : subscription.status === "active" ||
+            subscription.status === "trialing"
+          ? "active"
+          : "incomplete";
+
+  const { error } = await supabase
+    .from("bread_club_memberships")
+    .update({
+      status,
+      cancel_at_period_end: subscription.cancel_at_period_end || deleted,
+      canceled_at:
+        deleted || subscription.canceled_at
+          ? new Date(
+              (subscription.canceled_at || Math.floor(Date.now() / 1000)) *
+                1000,
+            ).toISOString()
+          : null,
+      stripe_plan_subscription_item_id: details.planItemId,
+      stripe_delivery_subscription_item_id: details.deliveryItemId,
+      stripe_current_period_end: details.currentPeriodEnd,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", membershipId);
+  if (error) throw new Error(error.message);
+
+  if (subscription.cancel_at_period_end || deleted) {
+    const pending = await findPendingCycleForMembership(membershipId);
+    if (pending) await releaseBreadClubPendingCycle(pending.id);
+  }
+
+  if (deleted) {
+    try {
+      await refundBreadClubUnusedCredits(membershipId);
+    } catch (error) {
+      console.error("[bread-club] unused credit refund failed", {
+        membershipId,
+        error,
+      });
+    }
+  }
+}
+
+async function processEvent(event: Stripe.Event) {
+  switch (event.type) {
+    case "checkout.session.completed":
+      if (
+        (event.data.object as Stripe.Checkout.Session).metadata
+          ?.checkout_kind === "bread_club_addon"
+      ) {
+        await completeBreadClubAddonCheckout(
+          event.data.object as Stripe.Checkout.Session,
+        );
+      } else {
+        await handleCheckoutCompleted(
+          event.data.object as Stripe.Checkout.Session,
+        );
+      }
+      break;
+    case "checkout.session.expired":
+      if (
+        (event.data.object as Stripe.Checkout.Session).metadata
+          ?.checkout_kind === "bread_club_addon"
+      ) {
+        await expireBreadClubAddonCheckout(
+          (event.data.object as Stripe.Checkout.Session).id,
+        );
+      } else {
+        await expireBreadClubCheckoutSession(
+          (event.data.object as Stripe.Checkout.Session).id,
+        );
+      }
+      break;
+    case "invoice.paid":
+      await handleInvoicePaid(event.data.object as Stripe.Invoice);
+      break;
+    case "invoice.payment_failed":
+      await handleInvoicePaymentFailed(
+        event.data.object as Stripe.Invoice,
+      );
+      break;
+    case "invoice.upcoming": {
+      const membershipId = invoiceMembershipId(
+        event.data.object as Stripe.Invoice,
+      );
+      if (membershipId) {
+        const supabase = getSupabaseAdminClient();
+        if (!supabase) {
+          throw new Error("Supabase admin client is not configured.");
+        }
+        const { data: membership, error } = await supabase
+          .from("bread_club_memberships")
+          .select("status, cancel_at_period_end")
+          .eq("id", membershipId)
+          .maybeSingle();
+        if (error) throw new Error(error.message);
+        if (
+          membership &&
+          ["active", "past_due"].includes(String(membership.status)) &&
+          !membership.cancel_at_period_end
+        ) {
+          await prepareNextBreadClubCycle(membershipId);
+        }
+      }
+      break;
+    }
+    case "customer.subscription.updated":
+      await handleSubscriptionUpdate(
+        event.data.object as Stripe.Subscription,
+      );
+      break;
+    case "customer.subscription.deleted":
+      await handleSubscriptionUpdate(
+        event.data.object as Stripe.Subscription,
+        true,
+      );
+      break;
+  }
+}
+
+export async function handleBreadClubStripeEvent(event: Stripe.Event) {
+  if (!isBreadClubStripeEvent(event)) return false;
+  const claimed = await claimEvent(event);
+  if (!claimed) return true;
+
+  try {
+    await processEvent(event);
+    await finishEvent(event.id, "processed");
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Bread Club webhook failed.";
+    await finishEvent(event.id, "failed", message);
+    throw error;
+  }
+  return true;
+}

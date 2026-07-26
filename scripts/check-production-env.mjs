@@ -168,6 +168,22 @@ function requireInteger(key, { min = Number.MIN_SAFE_INTEGER } = {}) {
   }
 }
 
+function requireBoolean(key) {
+  const value = valueFor(key);
+  requireValue(key);
+  if (value && !["true", "false"].includes(value.toLowerCase())) {
+    failures.push(`${key} must be true or false.`);
+  }
+}
+
+function requireOneOf(key, allowed) {
+  const value = valueFor(key);
+  requireValue(key);
+  if (value && !allowed.includes(value)) {
+    failures.push(`${key} must be one of: ${allowed.join(", ")}.`);
+  }
+}
+
 function requireZipList(key) {
   const value = valueFor(key);
   requireValue(key);
@@ -246,6 +262,50 @@ requireValue("DELIVERY_ORIGIN_ADDRESS");
 requireValue("DELIVERY_ROUTE_END_ADDRESS");
 requireInteger("DELIVERY_MAX_DRIVE_MINUTES", { min: 1 });
 requireDeliveryFeeBands("DELIVERY_FEE_BANDS");
+requireBoolean("BREAD_CLUB_PUBLIC_ENABLED");
+requireBoolean("BREAD_CLUB_AUTOMATIC_TAX_ENABLED");
+requireOneOf("BREAD_CLUB_TAX_STATUS", [
+  "pending",
+  "registered",
+  "exempt",
+]);
+requireValue("CRON_SECRET");
+requireOptionalEmailList("BREAD_CLUB_TEST_EMAILS");
+
+if (
+  valueFor("BREAD_CLUB_PUBLIC_ENABLED") === "true" &&
+  valueFor("BREAD_CLUB_TAX_STATUS") === "pending"
+) {
+  failures.push(
+    "BREAD_CLUB_PUBLIC_ENABLED cannot be true while BREAD_CLUB_TAX_STATUS is pending.",
+  );
+}
+if (
+  valueFor("BREAD_CLUB_PUBLIC_ENABLED") === "true" &&
+  valueFor("BREAD_CLUB_TAX_STATUS") === "registered" &&
+  valueFor("BREAD_CLUB_AUTOMATIC_TAX_ENABLED") !== "true"
+) {
+  failures.push(
+    "BREAD_CLUB_AUTOMATIC_TAX_ENABLED must be true when a registered Bread Club launch is public.",
+  );
+}
+if (
+  valueFor("BREAD_CLUB_PUBLIC_ENABLED") === "true" &&
+  valueFor("BREAD_CLUB_TAX_STATUS") === "exempt" &&
+  valueFor("BREAD_CLUB_AUTOMATIC_TAX_ENABLED") !== "false"
+) {
+  failures.push(
+    "BREAD_CLUB_AUTOMATIC_TAX_ENABLED must be false when an exempt Bread Club launch is public.",
+  );
+}
+if (
+  valueFor("BREAD_CLUB_PUBLIC_ENABLED") === "true" &&
+  !hasValue("BREAD_CLUB_TEST_EMAILS")
+) {
+  warnings.push(
+    "BREAD_CLUB_TEST_EMAILS is blank; no owner allowlist remains for controlled smoke tests.",
+  );
+}
 
 warnIfMissing(
   "OPENAI_API_KEY",

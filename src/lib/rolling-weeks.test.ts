@@ -97,8 +97,8 @@ describe("rolling Sunday delivery weeks", () => {
         return {
           select: () => ({
             eq: () => ({
-              eq: () => ({
-                maybeSingle: async () => ({ data: null, error: null }),
+              order: () => ({
+                limit: async () => ({ data: [], error: null }),
               }),
             }),
           }),

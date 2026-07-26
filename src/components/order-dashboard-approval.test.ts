@@ -6,6 +6,10 @@ import type { AdminOrder } from "@/lib/types";
 
 const approvalOrder: AdminOrder = {
   id: "11111111-1111-4111-8111-111111111111",
+  source: "storefront",
+  membershipId: null,
+  breadClubFulfillmentId: null,
+  stripeInvoiceId: null,
   customerName: "Same Week Customer",
   customerEmail: "customer@example.com",
   customerPhone: "4045550100",

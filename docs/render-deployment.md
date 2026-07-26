@@ -42,9 +42,20 @@ Do not commit real secret values.
 | `OPENAI_MODEL` | `gpt-5-mini` |
 | `STRIPE_SECRET_KEY` | Stripe secret key before accepting paid orders; blank keeps production checkout unavailable |
 | `STRIPE_WEBHOOK_SECRET` | Stripe webhook signing secret before accepting paid orders |
+| `STRIPE_BILLING_PORTAL_CONFIGURATION_ID` | Optional Bread Club portal configuration ID; Supabase is the fallback source |
+| `BREAD_CLUB_PUBLIC_ENABLED` | `false` until tax and owner smoke gates pass |
+| `BREAD_CLUB_AUTOMATIC_TAX_ENABLED` | `false` until Georgia tax treatment is resolved |
+| `BREAD_CLUB_TAX_STATUS` | `pending`, `registered`, or `exempt` |
+| `BREAD_CLUB_TEST_EMAILS` | Comma-separated owner emails allowed to run disabled-mode smoke enrollment |
+| `CRON_SECRET` | Generated and shared by the Blueprint's `landl-internal-jobs` environment group |
 | `DELIVERY_FEE_CENTS` | `600` |
 | `DELIVERY_ALLOWED_POSTAL_CODES` | `30114,30115,30107,30183` fallback when Supabase is unavailable |
 | `DELIVERY_SERVICE_AREA_COPY` | Fallback service area copy when Supabase is unavailable |
+| `GOOGLE_MAPS_API_KEY` | Server-side Google Routes API key |
+| `DELIVERY_ORIGIN_ADDRESS` | `4501 Holly Springs Parkway, Canton, GA 30115` |
+| `DELIVERY_ROUTE_END_ADDRESS` | `403 Three Branches Ct, Woodstock, GA 30188` |
+| `DELIVERY_MAX_DRIVE_MINUTES` | `30` |
+| `DELIVERY_FEE_BANDS` | `0-10:500,11-20:700,21-30:1000` |
 
 The public verification and analytics keys are listed in the Blueprint so they
 are visible during production setup. They can remain blank until the matching
@@ -68,6 +79,13 @@ new web services.
 9. After DNS is live, confirm `NEXT_PUBLIC_SITE_URL=https://landlsourdough.com`.
 10. Run `npm run check:prod-env`.
 11. Run `npm run smoke:live`.
+
+The Blueprint also creates `landl-bread-club-daily`, a daily cron service. The
+`landl-internal-jobs` environment group generates one `CRON_SECRET` and applies
+it to both services automatically. The cron calls the authenticated lifecycle
+endpoint at 10:00 UTC each day and handles rolling weeks, renewal reservations,
+reminders, Friday summaries, stale checkout cleanup, credit reconciliation,
+and Stripe/database reconciliation.
 
 ## Smoke Tests
 

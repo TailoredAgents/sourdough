@@ -47,6 +47,14 @@ export const productAdminSchema = z.object({
   ingredients: z.array(z.string().min(1)).min(1, "Add at least one ingredient."),
   allergens: z.array(z.string().min(1)).default([]),
   priceCents: z.number().int().min(0).max(50000),
+  estimatedIngredientCostCents: z
+    .number()
+    .int()
+    .min(0)
+    .max(50000)
+    .nullable()
+    .optional()
+    .default(null),
   imageUrl: productImageUrlSchema,
   imageStyle: z.string().min(3).max(160),
   active: z.boolean(),

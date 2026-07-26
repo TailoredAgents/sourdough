@@ -1,3 +1,9 @@
+envVarGroups:
+  - name: landl-internal-jobs
+    envVars:
+      - key: CRON_SECRET
+        generateValue: true
+
 services:
   - type: web
     name: landl-sourdough
@@ -54,6 +60,17 @@ services:
         sync: false
       - key: STRIPE_WEBHOOK_SECRET
         sync: false
+      - key: STRIPE_BILLING_PORTAL_CONFIGURATION_ID
+        sync: false
+      - key: BREAD_CLUB_PUBLIC_ENABLED
+        value: "false"
+      - key: BREAD_CLUB_AUTOMATIC_TAX_ENABLED
+        value: "false"
+      - key: BREAD_CLUB_TAX_STATUS
+        value: pending
+      - key: BREAD_CLUB_TEST_EMAILS
+        sync: false
+      - fromGroup: landl-internal-jobs
       - key: DELIVERY_CENTER_LAT
         value: "34.2368"
       - key: DELIVERY_CENTER_LNG
@@ -66,3 +83,27 @@ services:
         value: "30114,30115,30107,30183,30188,30189"
       - key: DELIVERY_SERVICE_AREA_COPY
         value: "Delivery is available in selected ZIP codes around Canton and Woodstock: 30114, 30115, 30107, 30183, 30188, and 30189."
+      - key: GOOGLE_MAPS_API_KEY
+        sync: false
+      - key: DELIVERY_ORIGIN_ADDRESS
+        value: "4501 Holly Springs Parkway, Canton, GA 30115"
+      - key: DELIVERY_ROUTE_END_ADDRESS
+        value: "403 Three Branches Ct, Woodstock, GA 30188"
+      - key: DELIVERY_MAX_DRIVE_MINUTES
+        value: "30"
+      - key: DELIVERY_FEE_BANDS
+        value: "0-10:500,11-20:700,21-30:1000"
+
+  - type: cron
+    name: landl-bread-club-daily
+    runtime: node
+    plan: starter
+    repo: https://github.com/TailoredAgents/sourdough
+    branch: main
+    schedule: "0 10 * * *"
+    buildCommand: npm ci --omit=dev
+    startCommand: npm run bread-club:daily
+    envVars:
+      - key: NEXT_PUBLIC_SITE_URL
+        value: https://landlsourdough.com
+      - fromGroup: landl-internal-jobs

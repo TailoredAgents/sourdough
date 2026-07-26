@@ -39,6 +39,7 @@ type ProductForm = {
   ingredients: string;
   allergens: string;
   price: string;
+  estimatedIngredientCost: string;
   imageUrl: string;
   imageStyle: string;
   active: boolean;
@@ -56,6 +57,11 @@ function productToForm(product?: Product): ProductForm {
     ingredients: product ? joinList(product.ingredients) : "",
     allergens: product ? joinList(product.allergens) : "",
     price: product ? (product.priceCents / 100).toFixed(2) : "",
+    estimatedIngredientCost:
+      product?.estimatedIngredientCostCents === null ||
+      product?.estimatedIngredientCostCents === undefined
+        ? ""
+        : (product.estimatedIngredientCostCents / 100).toFixed(2),
     imageUrl: product?.imageUrl || "",
     imageStyle:
       product?.imageStyle || "from-stone-100 via-amber-100 to-orange-200",
@@ -75,6 +81,9 @@ function formToPayload(form: ProductForm) {
     ingredients: splitList(form.ingredients),
     allergens: splitList(form.allergens),
     priceCents: Math.round(Number(form.price || 0) * 100),
+    estimatedIngredientCostCents: form.estimatedIngredientCost
+      ? Math.round(Number(form.estimatedIngredientCost) * 100)
+      : null,
     imageUrl: form.imageUrl.trim() || null,
     imageStyle: form.imageStyle.trim(),
     active: form.active,
@@ -535,7 +544,7 @@ export function ProductEditor({
             </label>
           </div>
 
-          <div className="grid min-w-0 gap-3 lg:grid-cols-2">
+          <div className="grid min-w-0 gap-3 lg:grid-cols-3">
             <label className="grid gap-1 text-sm font-semibold text-stone-700">
               Price
               <input
@@ -544,6 +553,18 @@ export function ProductEditor({
                 value={form.price}
                 onChange={(event) => updateForm("price", event.target.value)}
                 placeholder="12.00"
+              />
+            </label>
+            <label className="grid gap-1 text-sm font-semibold text-stone-700">
+              Estimated ingredient cost
+              <input
+                className="h-11 w-full min-w-0 rounded-md border border-stone-300 px-3 font-normal"
+                inputMode="decimal"
+                value={form.estimatedIngredientCost}
+                onChange={(event) =>
+                  updateForm("estimatedIngredientCost", event.target.value)
+                }
+                placeholder="3.00"
               />
             </label>
             <label className="grid gap-1 text-sm font-semibold text-stone-700">

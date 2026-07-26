@@ -2,6 +2,7 @@ import type { MetadataRoute } from "next";
 import { productPath } from "@/lib/product-slugs";
 import { policyLastUpdatedIso, policyPages } from "@/lib/policies";
 import { serviceAreaPath } from "@/lib/service-areas";
+import { isBreadClubPublicEnabled } from "@/lib/bread-club/config";
 import {
   getActiveMenuData,
   getActiveWeeklyMenuData,
@@ -57,6 +58,16 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       changeFrequency: "monthly",
       priority: 0.6,
     },
+    ...(isBreadClubPublicEnabled()
+      ? [
+          {
+            url: `${baseUrl}/bread-club`,
+            lastModified: weeklyLastModified,
+            changeFrequency: "weekly" as const,
+            priority: 0.85,
+          },
+        ]
+      : []),
     {
       url: `${baseUrl}/policies`,
       lastModified: policyLastModified,

@@ -9,6 +9,7 @@ import {
   cancelExpiredCheckoutSession,
   markCheckoutSessionPaid,
 } from "@/lib/order-records";
+import { handleBreadClubStripeEvent } from "@/lib/bread-club/webhook";
 import { sendOwnerAlert } from "@/lib/owner-alerts";
 import { getStripe } from "@/lib/stripe";
 
@@ -39,6 +40,11 @@ export async function POST(request: Request) {
   }
 
   try {
+    const breadClubHandled = await handleBreadClubStripeEvent(event);
+    if (breadClubHandled) {
+      return NextResponse.json({ received: true });
+    }
+
     if (event.type === "checkout.session.completed") {
       const session = event.data.object;
       const paidOrder = await markCheckoutSessionPaid(session.id);

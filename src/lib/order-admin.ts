@@ -35,6 +35,10 @@ type OrderDeliveryWindowRow = {
 
 type OrderRow = {
   id: string;
+  source: "storefront" | "bread_club" | "bread_club_addon";
+  bread_club_membership_id: string | null;
+  bread_club_fulfillment_id: string | null;
+  stripe_invoice_id: string | null;
   delivery_window_id: string | null;
   customers: OrderCustomerRow | OrderCustomerRow[] | null;
   delivery_windows: OrderDeliveryWindowRow | OrderDeliveryWindowRow[] | null;
@@ -166,6 +170,10 @@ function mapOrder(
   const weeklyMenu = single(deliveryWindow?.weekly_menus || null);
   return {
     id: row.id,
+    source: row.source,
+    membershipId: row.bread_club_membership_id,
+    breadClubFulfillmentId: row.bread_club_fulfillment_id,
+    stripeInvoiceId: row.stripe_invoice_id,
     customerName: customer?.name || "Unknown customer",
     customerEmail: customer?.email || row.delivery_address.email || "",
     customerPhone: customer?.phone || row.delivery_address.phone || null,
@@ -208,7 +216,7 @@ export async function getAdminOrdersData(): Promise<AdminOrder[]> {
   const { data: orders, error: ordersError } = await supabase
     .from("orders")
     .select(
-      "id, customers(name, email, phone), delivery_windows(label, weekly_menu_id, weekly_menus(name, starts_at)), status, stripe_checkout_session_id, subtotal_cents, delivery_fee_cents, total_cents, delivery_address, delivery_miles, delivery_instructions, delivery_check, notes, next_week_ok, approval_mode, approved_at, denied_at, refunded_at, stripe_refund_id, admin_decision_note, paid_at, created_at, updated_at, checkout_cancel_token",
+      "id, source, bread_club_membership_id, bread_club_fulfillment_id, stripe_invoice_id, customers(name, email, phone), delivery_windows(label, weekly_menu_id, weekly_menus(name, starts_at)), status, stripe_checkout_session_id, subtotal_cents, delivery_fee_cents, total_cents, delivery_address, delivery_miles, delivery_instructions, delivery_check, notes, next_week_ok, approval_mode, approved_at, denied_at, refunded_at, stripe_refund_id, admin_decision_note, paid_at, created_at, updated_at, checkout_cancel_token",
     )
     .order("created_at", { ascending: false })
     .limit(100);

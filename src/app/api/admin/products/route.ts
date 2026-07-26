@@ -64,6 +64,7 @@ export async function POST(request: Request) {
     ingredients: product.ingredients,
     allergens: product.allergens,
     price_cents: product.priceCents,
+    estimated_ingredient_cost_cents: product.estimatedIngredientCostCents,
     image_url: product.imageUrl || null,
     image_style: product.imageStyle,
     active: product.active,

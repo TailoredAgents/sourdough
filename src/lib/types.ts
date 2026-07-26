@@ -8,6 +8,7 @@ export type Product = {
   ingredients: string[];
   allergens: string[];
   priceCents: number;
+  estimatedIngredientCostCents?: number | null;
   stripeProductId?: string | null;
   stripePriceId?: string | null;
   stripePriceCents?: number | null;
@@ -154,6 +155,10 @@ export type AdminOrderItem = {
 
 export type AdminOrder = {
   id: string;
+  source: "storefront" | "bread_club" | "bread_club_addon";
+  membershipId: string | null;
+  breadClubFulfillmentId: string | null;
+  stripeInvoiceId: string | null;
   customerName: string;
   customerEmail: string;
   customerPhone: string | null;

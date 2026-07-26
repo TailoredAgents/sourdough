@@ -271,9 +271,19 @@ export function OrderDashboard({ initialOrders }: { initialOrders: AdminOrder[] 
                   <p className="font-semibold text-stone-950">
                     #{shortId(order.id)} - {order.customerName}
                   </p>
-                  <p className="mt-1 text-xs text-stone-500">
-                    {formatDate(order.createdAt)}
-                  </p>
+                  <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-stone-500">
+                    <span>{formatDate(order.createdAt)}</span>
+                    {order.source === "bread_club" ? (
+                      <span className="rounded-sm bg-[#23443b] px-1.5 py-0.5 font-semibold text-white">
+                        Bread Club
+                      </span>
+                    ) : null}
+                    {order.source === "bread_club_addon" ? (
+                      <span className="rounded-sm bg-amber-100 px-1.5 py-0.5 font-semibold text-amber-950">
+                        Club add-on
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
                 <span
                   className={`rounded-sm px-2 py-1 text-xs font-bold uppercase ${
@@ -323,6 +333,13 @@ export function OrderDashboard({ initialOrders }: { initialOrders: AdminOrder[] 
                   <h3 className="mt-1 text-lg font-bold text-stone-950">
                     Order #{shortId(selectedOrder.id)}
                   </h3>
+                  {selectedOrder.source !== "storefront" ? (
+                    <p className="mt-1 text-sm font-semibold text-[#23443b]">
+                      {selectedOrder.source === "bread_club"
+                        ? "Bread Club Sunday delivery"
+                        : "Bread Club add-on"}
+                    </p>
+                  ) : null}
                   <p className="mt-1 text-sm text-stone-600">
                     {selectedOrder.customerName} - {selectedOrder.customerEmail}
                   </p>

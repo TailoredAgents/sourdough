@@ -78,6 +78,128 @@ test("sitemap exposes customer routes with freshness metadata", async ({ request
   expect(sitemap).toMatch(/<lastmod>\d{4}-\d{2}-\d{2}T/);
 });
 
+test("Bread Club stays customer-safe while public enrollment is disabled", async ({
+  page,
+}) => {
+  await page.goto("/bread-club");
+
+  await expect(
+    page.getByRole("heading", {
+      name: "Fresh bread already planned for Sunday",
+    }),
+  ).toBeVisible();
+  const disabledHeading = page.getByRole("heading", {
+    name: "Enrollment opens after the final billing review",
+  });
+  if (await disabledHeading.isVisible()) {
+    await expect(
+      page.getByRole("button", { name: /Continue to secure payment/i }),
+    ).toHaveCount(0);
+  } else {
+    await expect(
+      page.getByRole("heading", {
+        name: "Four Sundays, one simple renewal",
+      }),
+    ).toBeVisible();
+  }
+  const mainText = await page.locator("#main-content").innerText();
+  expect(mainText).not.toMatch(/\b(owner|internal|published|draft)\b/i);
+});
+
+test("Bread Club preview calculates the exact recurring total and consent", async ({
+  page,
+}) => {
+  await page.route("**/api/delivery/check", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        eligible: true,
+        preliminary: false,
+        provider: "google_routes",
+        providerStatus: "ok",
+        needsReview: false,
+        miles: 5.4,
+        durationMinutes: 12,
+        distanceMeters: 8690,
+        distanceMiles: 5.4,
+        pricingBand: "11-20",
+        message:
+          "Delivery is available. This address is about 12 minutes from the bakery. Delivery fee: $7.00.",
+        feeCents: 700,
+        postalCode: "30114",
+        allowedPostalCodes: ["30114"],
+      }),
+    });
+  });
+  await page.goto("/bread-club?preview=1");
+
+  await expect(page.getByRole("button", { name: /Classic Club/i })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Variety Club/i })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Family Club/i })).toBeVisible();
+  await expect(page.getByText("Most flexible")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Your first four delivery dates" }),
+  ).toBeVisible();
+  await expect(page.getByText("Delivery 4")).toBeVisible();
+
+  await page.locator('input[name="bread-club-name"]').fill("Bread Club Customer");
+  await page
+    .locator('input[name="bread-club-email"]')
+    .fill("member@example.com");
+  await page.locator('input[name="bread-club-phone"]').fill("4045550100");
+  await page
+    .locator('input[name="bread-club-address-line1"]')
+    .fill("123 Main Street");
+  await page.locator('input[name="bread-club-postal-code"]').fill("30114");
+  await page.getByRole("button", { name: "Check delivery and total" }).click();
+  await expect(
+    page.getByRole("button", { name: "Checking drive time..." }),
+  ).toBeVisible();
+  await expect(page.getByText(/about 12 minutes from the bakery/i)).toBeVisible();
+
+  const totalSection = page
+    .getByRole("heading", { name: "Exact four-week total" })
+    .locator("..");
+  await expect(totalSection).toContainText("Variety Club");
+  await expect(totalSection).toContainText("Four Sunday deliveries");
+  await expect(totalSection).toContainText("$80.00");
+
+  const consent = page.getByLabel(
+    /I authorize \$80\.00 to be charged today.*every four weeks/i,
+  );
+  await expect(consent).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Continue to secure payment" }),
+  ).toBeDisabled();
+  await consent.check();
+  await expect(
+    page.getByRole("button", { name: "Continue to secure payment" }),
+  ).toBeEnabled();
+  await expect(page.locator("#main-content")).toContainText(
+    "orders@landlsourdough.com",
+  );
+});
+
+test("Bread Club enrollment fits a narrow mobile viewport", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 700 });
+  await page.goto("/bread-club?preview=1");
+
+  await expect(
+    page.getByRole("heading", {
+      name: "Fresh bread already planned for Sunday",
+    }),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: /Variety Club/i })).toBeVisible();
+  const horizontalOverflow = await page.evaluate(
+    () =>
+      document.documentElement.scrollWidth >
+      document.documentElement.clientWidth,
+  );
+  expect(horizontalOverflow).toBe(false);
+});
+
 test("customer pages avoid internal admin wording", async ({ page }) => {
   for (const path of [
     "/",
