@@ -18,7 +18,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://landlsourdough.com"),
+  metadataBase: new URL("https://www.landlsourdough.com"),
   applicationName: "Luna & Lorelai's Sourdough",
   title: {
     default:
@@ -62,7 +62,7 @@ export const metadata: Metadata = {
     title: "Luna & Lorelai's Sourdough | Canton & Woodstock, GA Local Delivery",
     description:
       "Fresh sourdough loaves and small-batch add-ons available by weekly preorder for local delivery around Canton and Woodstock, Georgia.",
-    url: "https://landlsourdough.com",
+    url: "https://www.landlsourdough.com",
     siteName: "Luna & Lorelai's Sourdough",
     images: [
       {

@@ -30,7 +30,7 @@ The app works in demo mode without secrets. Copy `.env.example` to `.env.local` 
 
 Required before live launch:
 
-- `NEXT_PUBLIC_SITE_URL` set to `https://landlsourdough.com`
+- `NEXT_PUBLIC_SITE_URL` set to `https://www.landlsourdough.com`
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY`

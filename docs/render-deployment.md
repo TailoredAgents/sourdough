@@ -24,7 +24,7 @@ Do not commit real secret values.
 | Key | Production value |
 | --- | --- |
 | `NODE_ENV` | `production` |
-| `NEXT_PUBLIC_SITE_URL` | `https://landlsourdough.com` |
+| `NEXT_PUBLIC_SITE_URL` | `https://www.landlsourdough.com` |
 | `NEXT_PUBLIC_SUPABASE_URL` | Supabase Project URL |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anon/public key |
 | `NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION` | Google Search Console verification token, blank until available |
@@ -72,11 +72,11 @@ new web services.
 2. Confirm the service is created from `render.yaml`.
 3. Enter all `sync: false` environment variables in Render.
 4. Deploy once using the default Render URL.
-5. In Supabase Auth settings, add the Render URL and later `https://landlsourdough.com` to allowed redirect URLs.
+5. In Supabase Auth settings, add the Render URL and later `https://www.landlsourdough.com` to allowed redirect URLs.
 6. After the first successful deploy, connect `landlsourdough.com` in Render custom domains.
 7. Update DNS at the domain registrar using Render's shown DNS records.
-8. Confirm `https://landlsourdough.com` loads without TLS errors and `https://www.landlsourdough.com` redirects to the apex domain.
-9. After DNS is live, confirm `NEXT_PUBLIC_SITE_URL=https://landlsourdough.com`.
+8. Confirm `https://www.landlsourdough.com` loads without TLS errors and `https://landlsourdough.com` redirects to the canonical `www` domain.
+9. After DNS is live, confirm `NEXT_PUBLIC_SITE_URL=https://www.landlsourdough.com`.
 10. Run `npm run check:prod-env`.
 11. Run `npm run smoke:live`.
 
@@ -97,8 +97,8 @@ npm run smoke:live
 ```
 
 `npm run smoke:live` runs `npm run check:domain` first, then runs Playwright
-against `https://landlsourdough.com` only after the apex domain, `www`
-redirect, health endpoint, and sitemap are ready.
+against `https://www.landlsourdough.com` only after the canonical domain,
+apex redirect, health endpoint, and sitemap are ready.
 
 If `npm run check:domain` reports TLS packet errors and diagnostics showing
 HTTP redirects to a third-party warning page such as `safebrowse.io`, fix the
@@ -120,7 +120,7 @@ PLAYWRIGHT_BASE_URL=https://your-render-service.onrender.com npm run test:e2e
 - Confirm the delivery ZIP check works.
 - While signed into admin, `POST /api/admin/email-test` and confirm Resend delivers from `orders@landlsourdough.com`.
 - Confirm the admin email smoke test fails loudly if `RESEND_API_KEY` is intentionally blank.
-- Confirm Stripe success/cancel URLs and any app-generated email links use `https://landlsourdough.com`.
+- Confirm Stripe success/cancel URLs and any app-generated email links use `https://www.landlsourdough.com`.
 - Leave Stripe keys blank until LLC/EIN/Stripe setup is ready. Production
   checkout stays unavailable while the Stripe secret key is blank.
 
@@ -130,7 +130,7 @@ When Stripe is ready:
 
 1. Add `STRIPE_SECRET_KEY` in Render.
 2. Create a Stripe webhook endpoint for:
-   - `https://landlsourdough.com/api/stripe/webhook`
+   - `https://www.landlsourdough.com/api/stripe/webhook`
 3. Listen for:
    - `checkout.session.completed`
    - `checkout.session.expired`

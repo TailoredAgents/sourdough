@@ -61,20 +61,20 @@ test("sitemap exposes customer routes with freshness metadata", async ({ request
   expect(response.ok()).toBe(true);
 
   const sitemap = await response.text();
-  expect(sitemap).toContain("<loc>https://landlsourdough.com</loc>");
+  expect(sitemap).toContain("<loc>https://www.landlsourdough.com</loc>");
   expect(sitemap).toContain(
-    "<loc>https://landlsourdough.com/sourdough-delivery-canton-ga</loc>",
+    "<loc>https://www.landlsourdough.com/sourdough-delivery-canton-ga</loc>",
   );
   expect(sitemap).toContain(
-    "<loc>https://landlsourdough.com/sourdough-delivery-woodstock-ga</loc>",
+    "<loc>https://www.landlsourdough.com/sourdough-delivery-woodstock-ga</loc>",
   );
   expect(sitemap).toContain(
-    "<loc>https://landlsourdough.com/sourdough-delivery/30188</loc>",
+    "<loc>https://www.landlsourdough.com/sourdough-delivery/30188</loc>",
   );
   expect(sitemap).toContain(
-    "<loc>https://landlsourdough.com/sourdough-delivery/30189</loc>",
+    "<loc>https://www.landlsourdough.com/sourdough-delivery/30189</loc>",
   );
-  expect(sitemap).toContain("<loc>https://landlsourdough.com/contact</loc>");
+  expect(sitemap).toContain("<loc>https://www.landlsourdough.com/contact</loc>");
   expect(sitemap).toMatch(/<lastmod>\d{4}-\d{2}-\d{2}T/);
 });
 

@@ -4,7 +4,7 @@ import { absoluteImageUrl, absoluteUrl } from "./url";
 describe("URL helpers", () => {
   it("turns app-relative paths into absolute URLs", () => {
     expect(absoluteUrl("/images/products/classic-country-loaf.webp")).toBe(
-      "https://landlsourdough.com/images/products/classic-country-loaf.webp",
+      "https://www.landlsourdough.com/images/products/classic-country-loaf.webp",
     );
   });
 
@@ -20,7 +20,7 @@ describe("URL helpers", () => {
 
   it("uses the configured fallback image when no image is present", () => {
     expect(absoluteImageUrl(null, "/images/sourdough-hero.jpg")).toBe(
-      "https://landlsourdough.com/images/sourdough-hero.jpg",
+      "https://www.landlsourdough.com/images/sourdough-hero.jpg",
     );
   });
 });

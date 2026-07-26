@@ -55,7 +55,7 @@ vi.mock("@/lib/utils", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/utils")>();
   return {
     ...actual,
-    getSiteUrl: () => "https://landlsourdough.com",
+    getSiteUrl: () => "https://www.landlsourdough.com",
   };
 });
 
@@ -182,7 +182,7 @@ beforeEach(() => {
 describe("checkout route delivery pricing", () => {
   it("recalculates delivery server-side and sends that exact fee to Stripe", async () => {
     const response = await POST(
-      new Request("https://landlsourdough.com/api/checkout", {
+      new Request("https://www.landlsourdough.com/api/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(checkoutPayload),
@@ -222,7 +222,7 @@ describe("checkout route delivery pricing", () => {
     vi.stubEnv("STRIPE_AUTOMATIC_TAX_ENABLED", "true");
 
     const response = await POST(
-      new Request("https://landlsourdough.com/api/checkout", {
+      new Request("https://www.landlsourdough.com/api/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(checkoutPayload),

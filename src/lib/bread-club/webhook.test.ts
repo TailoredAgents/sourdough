@@ -80,7 +80,7 @@ vi.mock("@/lib/utils", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/utils")>();
   return {
     ...actual,
-    getSiteUrl: () => "https://landlsourdough.com",
+    getSiteUrl: () => "https://www.landlsourdough.com",
   };
 });
 

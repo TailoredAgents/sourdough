@@ -16,7 +16,7 @@ import { isWeeklyMenuItemUnavailable } from "./menu-availability";
 
 export const bakery = {
   name: "Luna & Lorelai's Sourdough",
-  domain: "landlsourdough.com",
+  domain: "www.landlsourdough.com",
   orderEmail: "orders@landlsourdough.com",
   location: "Canton, GA",
   cutoffDay: "Thursday",

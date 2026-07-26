@@ -208,7 +208,7 @@ describe("checkout delivery eligibility", () => {
   });
 
   it("keys checkout rate limits by forwarded IP and normalized email", () => {
-    const request = new Request("https://landlsourdough.com/api/checkout", {
+    const request = new Request("https://www.landlsourdough.com/api/checkout", {
       headers: {
         "x-forwarded-for": "203.0.113.10, 198.51.100.2",
       },
@@ -221,7 +221,7 @@ describe("checkout delivery eligibility", () => {
 
   it("returns a controlled form error for malformed checkout JSON", async () => {
     const response = await POST(
-      new Request("https://landlsourdough.com/api/checkout", {
+      new Request("https://www.landlsourdough.com/api/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: "not-json",

@@ -63,7 +63,7 @@ vi.mock("@/lib/utils", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/utils")>();
   return {
     ...actual,
-    getSiteUrl: () => "https://landlsourdough.com",
+    getSiteUrl: () => "https://www.landlsourdough.com",
   };
 });
 
@@ -216,7 +216,7 @@ beforeEach(() => {
 describe("Bread Club subscription checkout", () => {
   it("rechecks the address and sends the exact two recurring Prices to Stripe", async () => {
     const response = await POST(
-      new Request("https://landlsourdough.com/api/bread-club/checkout", {
+      new Request("https://www.landlsourdough.com/api/bread-club/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -280,7 +280,7 @@ describe("Bread Club subscription checkout", () => {
       message: "This address is outside the 30-minute delivery range.",
     });
     const response = await POST(
-      new Request("https://landlsourdough.com/api/bread-club/checkout", {
+      new Request("https://www.landlsourdough.com/api/bread-club/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -295,7 +295,7 @@ describe("Bread Club subscription checkout", () => {
   it("uses the verified delivery address for recurring Stripe Tax", async () => {
     mocks.isBreadClubAutomaticTaxEnabled.mockReturnValue(true);
     const response = await POST(
-      new Request("https://landlsourdough.com/api/bread-club/checkout", {
+      new Request("https://www.landlsourdough.com/api/bread-club/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -329,7 +329,7 @@ describe("Bread Club subscription checkout", () => {
 
   it("rejects browser consent text that does not match the server total", async () => {
     const response = await POST(
-      new Request("https://landlsourdough.com/api/bread-club/checkout", {
+      new Request("https://www.landlsourdough.com/api/bread-club/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

@@ -121,8 +121,8 @@ Current status: repo is pushed, Supabase schema exists in the live database, see
 - [ ] Add search verification env vars after Search Console/Webmaster setup
 - [ ] Add analytics env vars after GA, GTM, or Plausible setup
 - [ ] Connect `landlsourdough.com`
-- [ ] Confirm `https://landlsourdough.com` loads without TLS errors
-- [ ] Redirect `https://www.landlsourdough.com` to `https://landlsourdough.com`
+- [x] Confirm `https://www.landlsourdough.com` loads without TLS errors
+- [x] Redirect `https://landlsourdough.com` to `https://www.landlsourdough.com`
 - [ ] Run `npm run smoke:live` and confirm the domain check plus live Playwright smoke suite pass
 - [ ] Configure Supabase production URL keys
 - [ ] Confirm production storefront does not show sample menu data if Supabase credentials are intentionally blank
@@ -143,8 +143,8 @@ Current status: repo is pushed, Supabase schema exists in the live database, see
 ## Troubleshooting Notes
 
 - If an active product does not appear on the storefront, add it to the current published weekly menu. Product `active` means eligible for menus; weekly-menu inclusion controls public storefront visibility.
-- If checkout or email links are not using the HTTPS apex domain, update `NEXT_PUBLIC_SITE_URL` to `https://landlsourdough.com` in Render and local env files used for testing.
-- If `npm run check:domain` reports that the apex redirects to `www`, fix DNS/hosting redirects before submitting the sitemap or running live smoke tests.
+- If checkout or email links are not using the canonical HTTPS domain, update `NEXT_PUBLIC_SITE_URL` to `https://www.landlsourdough.com` in Render and local env files used for testing.
+- If `npm run check:domain` reports that the apex does not redirect to `www`, fix DNS/hosting redirects before submitting the sitemap or running live smoke tests.
 - If `npm run check:domain` reports TLS packet errors and diagnostics showing
   HTTP redirects to `safebrowse.io` or another third-party warning page, fix
   DNS/proxy/registrar forwarding before testing checkout, sitemap submission,

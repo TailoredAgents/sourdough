@@ -9,7 +9,7 @@ import {
   getDeliverySettingsData,
 } from "@/lib/storefront-data";
 
-const baseUrl = "https://landlsourdough.com";
+const baseUrl = "https://www.landlsourdough.com";
 
 function toSitemapDate(value?: string | null) {
   const date = value ? new Date(value) : new Date();

@@ -38,7 +38,7 @@ vi.mock("@/lib/owner-alerts", () => ({
 async function postWebhook() {
   const { POST } = await import("./route");
   return POST(
-    new Request("https://landlsourdough.com/api/stripe/webhook", {
+    new Request("https://www.landlsourdough.com/api/stripe/webhook", {
       method: "POST",
       headers: { "stripe-signature": "test-signature" },
       body: JSON.stringify({ id: "evt_test" }),

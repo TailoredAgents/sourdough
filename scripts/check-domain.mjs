@@ -87,46 +87,37 @@ async function collectDiagnostics() {
   ]);
 }
 
-async function checkApex() {
+async function checkApexRedirect() {
   const { response, error } = await fetchManual(apex, { method: "GET" });
   if (error || !response) {
-    failures.push(`Apex domain did not load over HTTPS: ${error || "unknown error"}.`);
-    return;
-  }
-
-  if (response.status >= 300 && response.status < 400) {
-    failures.push(
-      `Apex domain must not redirect. It returned ${response.status} to ${normalizeLocation(
-        response.headers.get("location"),
-      ) || "an empty location"}.`,
-    );
-    return;
-  }
-
-  if (!response.ok) {
-    failures.push(`Apex domain returned HTTP ${response.status}.`);
-  }
-}
-
-async function checkWwwRedirect() {
-  const { response, error } = await fetchManual(www, { method: "GET" });
-  if (error || !response) {
-    failures.push(`WWW domain did not complete HTTPS/TLS: ${error || "unknown error"}.`);
+    failures.push(`Apex domain did not complete HTTPS/TLS: ${error || "unknown error"}.`);
     return;
   }
 
   const location = normalizeLocation(response.headers.get("location"));
-  if (![301, 302, 307, 308].includes(response.status) || location !== `${apex}/`) {
+  if (![301, 302, 307, 308].includes(response.status) || location !== `${www}/`) {
     failures.push(
-      `WWW domain must redirect to ${apex}/. It returned ${response.status} to ${
+      `Apex domain must redirect to ${www}/. It returned ${response.status} to ${
         location || "an empty location"
       }.`,
     );
   }
 }
 
+async function checkWww() {
+  const { response, error } = await fetchManual(www, { method: "GET" });
+  if (error || !response) {
+    failures.push(`Canonical WWW domain did not load: ${error || "unknown error"}.`);
+    return;
+  }
+
+  if (!response.ok) {
+    failures.push(`Canonical WWW domain returned HTTP ${response.status}.`);
+  }
+}
+
 async function checkHealth() {
-  const { response, error } = await fetchManual(`${apex}/api/health`, {
+  const { response, error } = await fetchManual(`${www}/api/health`, {
     method: "GET",
   });
   if (error || !response) {
@@ -149,7 +140,7 @@ async function checkHealth() {
 }
 
 async function checkSitemap() {
-  const { response, error } = await fetchManual(`${apex}/sitemap.xml`, {
+  const { response, error } = await fetchManual(`${www}/sitemap.xml`, {
     method: "GET",
   });
   if (error || !response) {
@@ -162,16 +153,16 @@ async function checkSitemap() {
   }
 
   const sitemap = await response.text();
-  if (!sitemap.includes("<loc>https://landlsourdough.com</loc>")) {
-    failures.push("Sitemap is missing the apex homepage URL.");
+  if (!sitemap.includes("<loc>https://www.landlsourdough.com</loc>")) {
+    failures.push("Sitemap is missing the canonical WWW homepage URL.");
   }
-  if (sitemap.includes("https://www.landlsourdough.com")) {
-    failures.push("Sitemap should not contain www URLs.");
+  if (sitemap.includes("<loc>https://landlsourdough.com")) {
+    failures.push("Sitemap should not contain apex URLs.");
   }
 }
 
-await checkApex();
-await checkWwwRedirect();
+await checkApexRedirect();
+await checkWww();
 await checkHealth();
 await checkSitemap();
 

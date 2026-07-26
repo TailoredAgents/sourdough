@@ -1,5 +1,5 @@
 const siteUrl = (
-  process.env.NEXT_PUBLIC_SITE_URL || "https://landlsourdough.com"
+  process.env.NEXT_PUBLIC_SITE_URL || "https://www.landlsourdough.com"
 ).replace(/\/+$/, "");
 const secret = process.env.CRON_SECRET;
 

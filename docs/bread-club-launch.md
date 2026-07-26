@@ -68,7 +68,7 @@ delete Stripe financial history.
 - The production webhook has no failed Bread Club events.
 - The daily cron completed once successfully.
 - Stripe business public details include the monitored support email and
-  `https://landlsourdough.com/contact` support URL.
+  `https://www.landlsourdough.com/contact` support URL.
 - Product ingredient costs are entered where contribution reporting is needed.
 - The previously exposed Stripe live secret has been rotated in Stripe,
   `.env.local`, and Render.

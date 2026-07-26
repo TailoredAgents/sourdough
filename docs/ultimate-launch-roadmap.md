@@ -26,7 +26,7 @@ The local codebase now covers the core customer journey:
 
 These items require real production accounts, live domain state, real content, or business confirmation.
 
-- **Production deployment:** `https://landlsourdough.com` loads with no TLS errors, and `https://www.landlsourdough.com` redirects to the apex domain.
+- **Production deployment:** `https://www.landlsourdough.com` loads with no TLS errors, and `https://landlsourdough.com` redirects to the canonical `www` domain.
 - **Environment variables:** Render has every required `sync: false` value from `render.yaml` and `docs/render-deployment.md`.
 - **Supabase Auth:** Owner account can sign into `/admin`; unauthorized users cannot access admin pages or admin API routes.
 - **Stripe test checkout:** A full test order succeeds, records the pending order, redirects to Stripe, marks paid on webhook completion, finalizes inventory, and shows the real success page.
@@ -77,7 +77,7 @@ These are not blockers for launch, but they would make the website more effectiv
 Call the site 10/10 only when:
 
 - `npm run validate` passes locally and in CI,
-- `npm run smoke:live` passes against `https://landlsourdough.com`,
+- `npm run smoke:live` passes against `https://www.landlsourdough.com`,
 - real product photos are live,
 - legal/compliance requirements have been confirmed,
 - payment and email flows work in production,
