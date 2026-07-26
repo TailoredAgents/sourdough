@@ -47,7 +47,7 @@ Do not commit real secret values.
 | `BREAD_CLUB_PUBLIC_ENABLED` | `false` until tax and owner smoke gates pass |
 | `BREAD_CLUB_TAX_STATUS` | `pending`, `registered`, or `exempt` |
 | `BREAD_CLUB_TEST_EMAILS` | Comma-separated owner emails allowed to run disabled-mode smoke enrollment |
-| `CRON_SECRET` | Generated and shared by the Blueprint's `landl-internal-jobs` environment group |
+| `CRON_SECRET` | The same strong secret entered on both the web and cron services |
 | `DELIVERY_FEE_CENTS` | `600` |
 | `DELIVERY_ALLOWED_POSTAL_CODES` | `30114,30115,30107,30183` fallback when Supabase is unavailable |
 | `DELIVERY_SERVICE_AREA_COPY` | Fallback service area copy when Supabase is unavailable |
@@ -80,9 +80,10 @@ new web services.
 10. Run `npm run check:prod-env`.
 11. Run `npm run smoke:live`.
 
-The Blueprint also creates `landl-bread-club-daily`, a daily cron service. The
-`landl-internal-jobs` environment group generates one `CRON_SECRET` and applies
-it to both services automatically. The cron calls the authenticated lifecycle
+The Blueprint also creates `landl-bread-club-daily`, a daily cron service.
+Enter the same `CRON_SECRET` on the web and cron services so the authenticated
+lifecycle call remains valid after every Blueprint sync. The cron calls the
+authenticated lifecycle
 endpoint at 10:00 UTC each day and handles rolling weeks, renewal reservations,
 reminders, Friday summaries, stale checkout cleanup, credit reconciliation,
 and Stripe/database reconciliation.

@@ -12,7 +12,7 @@ tests through `/bread-club?preview=1`.
 | `STRIPE_AUTOMATIC_TAX_ENABLED` | `false` until Georgia registration and the ship-from address are confirmed |
 | `BREAD_CLUB_TAX_STATUS` | `pending` until tax treatment is confirmed |
 | `BREAD_CLUB_TEST_EMAILS` | Monitored owner email used for the live smoke test |
-| `CRON_SECRET` | Generated once by the shared `landl-internal-jobs` Render environment group |
+| `CRON_SECRET` | One strong shared value, entered identically on the Render web and cron services |
 
 The checkout API enforces these controls server-side. A visible preview does
 not bypass the checkout gate unless the submitted email is explicitly listed
