@@ -13,7 +13,7 @@ services:
       - key: NODE_ENV
         value: production
       - key: NEXT_PUBLIC_SITE_URL
-        value: https://landlsourdough.com
+        value: https://www.landlsourdough.com
       - key: NEXT_PUBLIC_SUPABASE_URL
         sync: false
       - key: NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -100,6 +100,6 @@ services:
     startCommand: npm run bread-club:daily
     envVars:
       - key: NEXT_PUBLIC_SITE_URL
-        value: https://landlsourdough.com
+        value: https://www.landlsourdough.com
       - key: CRON_SECRET
         sync: false
