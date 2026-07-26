@@ -55,6 +55,7 @@ type OwnerShortAlertEmail = {
   body: string;
   orderId?: string;
   customerMessageId?: string;
+  eventKey?: string;
 };
 
 function fromAddress() {
@@ -62,6 +63,23 @@ function fromAddress() {
     process.env.RESEND_FROM ||
     "Luna & Lorelai's Sourdough <orders@landlsourdough.com>"
   );
+}
+
+function buildProviderResponse(
+  providerResponse: unknown,
+  eventKey?: string,
+) {
+  const response: Record<string, unknown> =
+    providerResponse &&
+    typeof providerResponse === "object" &&
+    !Array.isArray(providerResponse)
+      ? { ...(providerResponse as Record<string, unknown>) }
+      : providerResponse
+        ? { value: String(providerResponse) }
+        : {};
+
+  if (eventKey) response.event_key = eventKey;
+  return Object.keys(response).length ? response : null;
 }
 
 export function getMissingResendEmailError(nodeEnv = process.env.NODE_ENV) {
@@ -80,6 +98,7 @@ async function logEmailEvent({
   providerId,
   providerResponse,
   errorMessage,
+  eventKey,
 }: {
   template: EmailTemplate;
   to: string;
@@ -90,6 +109,7 @@ async function logEmailEvent({
   providerId?: string;
   providerResponse?: unknown;
   errorMessage?: string;
+  eventKey?: string;
 }) {
   const supabase = getSupabaseAdminClient();
   if (!supabase) return;
@@ -102,12 +122,7 @@ async function logEmailEvent({
     bread_club_membership_id: breadClubMembershipId || null,
     status,
     provider_id: providerId || null,
-    provider_response:
-      providerResponse && typeof providerResponse === "object"
-        ? providerResponse
-        : providerResponse
-          ? { value: String(providerResponse) }
-          : null,
+    provider_response: buildProviderResponse(providerResponse, eventKey),
     error_message: errorMessage || null,
   });
 
@@ -121,11 +136,13 @@ export async function hasSentEmailEvent({
   to,
   orderId,
   customerMessageId,
+  eventKey,
 }: {
   template: EmailTemplate;
   to: string;
   orderId?: string;
   customerMessageId?: string;
+  eventKey?: string;
 }) {
   const supabase = getSupabaseAdminClient();
   if (!supabase || (!orderId && !customerMessageId)) return false;
@@ -141,10 +158,66 @@ export async function hasSentEmailEvent({
   query = orderId
     ? query.eq("order_id", orderId)
     : query.eq("customer_message_id", customerMessageId as string);
+  if (eventKey) {
+    query = query.contains("provider_response", {
+      event_key: eventKey,
+    });
+  }
 
   const { data, error } = await query.maybeSingle();
   if (error) throw new Error(error.message);
   return Boolean(data);
+}
+
+export async function getSentEmailEventState({
+  template,
+  to,
+  orderId,
+  customerMessageId,
+}: {
+  template: EmailTemplate;
+  to: string;
+  orderId?: string;
+  customerMessageId?: string;
+}) {
+  const emptyState = {
+    hasLegacyEvent: false,
+    eventKeys: [] as string[],
+  };
+  const supabase = getSupabaseAdminClient();
+  if (!supabase || (!orderId && !customerMessageId)) return emptyState;
+
+  let query = supabase
+    .from("email_events")
+    .select("provider_response")
+    .eq("template", template)
+    .eq("recipient", to)
+    .eq("status", "sent");
+
+  query = orderId
+    ? query.eq("order_id", orderId)
+    : query.eq("customer_message_id", customerMessageId as string);
+
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+
+  const eventKeys: string[] = [];
+  let hasLegacyEvent = false;
+  for (const row of data || []) {
+    const response =
+      row.provider_response &&
+      typeof row.provider_response === "object" &&
+      !Array.isArray(row.provider_response)
+        ? (row.provider_response as Record<string, unknown>)
+        : null;
+    if (typeof response?.event_key === "string") {
+      eventKeys.push(response.event_key);
+    } else {
+      hasLegacyEvent = true;
+    }
+  }
+
+  return { hasLegacyEvent, eventKeys };
 }
 
 function renderCustomerConfirmation({
@@ -257,6 +330,7 @@ async function sendTemplatedEmail({
   subject,
   text,
   html,
+  eventKey,
 }: {
   template: EmailTemplate;
   to: string;
@@ -266,6 +340,7 @@ async function sendTemplatedEmail({
   subject: string;
   text: string;
   html?: string;
+  eventKey?: string;
 }) {
   const apiKey = process.env.RESEND_API_KEY;
 
@@ -280,6 +355,7 @@ async function sendTemplatedEmail({
         breadClubMembershipId,
         status: "failed",
         errorMessage: missingEmailError,
+        eventKey,
       });
       throw new Error(missingEmailError);
     }
@@ -293,6 +369,7 @@ async function sendTemplatedEmail({
       breadClubMembershipId,
       status: "demo",
       providerResponse: { demo: true },
+      eventKey,
     });
     return { demo: true };
   }
@@ -325,6 +402,7 @@ async function sendTemplatedEmail({
       status: "sent",
       providerId,
       providerResponse: result,
+      eventKey,
     });
 
     return result;
@@ -338,6 +416,7 @@ async function sendTemplatedEmail({
       breadClubMembershipId,
       status: "failed",
       errorMessage: message,
+      eventKey,
     });
     throw error;
   }
@@ -387,6 +466,7 @@ export async function sendOwnerShortAlert(input: OwnerShortAlertEmail) {
     customerMessageId: input.customerMessageId,
     subject: input.subject,
     text: input.body,
+    eventKey: input.eventKey,
   });
 }
 
