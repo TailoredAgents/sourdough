@@ -47,7 +47,10 @@ export async function POST(request: Request) {
 
     if (event.type === "checkout.session.completed") {
       const session = event.data.object;
-      const paidOrder = await markCheckoutSessionPaid(session.id);
+      const paidOrder = await markCheckoutSessionPaid(session.id, {
+        taxCents: session.total_details?.amount_tax,
+        totalCents: session.amount_total,
+      });
 
       if (paidOrder?.customerEmail) {
         if (paidOrder.status === "pending_approval") {

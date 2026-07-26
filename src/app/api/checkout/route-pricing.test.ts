@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   checkRateLimit: vi.fn(),
   getStripe: vi.fn(),
   stripeCreateSession: vi.fn(),
+  stripeCreateCustomer: vi.fn(),
 }));
 
 vi.mock("@/lib/delivery", () => ({
@@ -112,6 +113,8 @@ beforeEach(() => {
   mocks.checkRateLimit.mockReset();
   mocks.getStripe.mockReset();
   mocks.stripeCreateSession.mockReset();
+  mocks.stripeCreateCustomer.mockReset();
+  vi.stubEnv("STRIPE_AUTOMATIC_TAX_ENABLED", "false");
 
   mocks.checkRateLimit.mockResolvedValue({ allowed: true });
   mocks.getWeeklyMenuData.mockResolvedValue({
@@ -161,7 +164,13 @@ beforeEach(() => {
     id: "cs_test_123",
     url: "https://checkout.stripe.com/c/test",
   });
+  mocks.stripeCreateCustomer.mockResolvedValue({
+    id: "cus_tax_customer",
+  });
   mocks.getStripe.mockReturnValue({
+    customers: {
+      create: mocks.stripeCreateCustomer,
+    },
     checkout: {
       sessions: {
         create: mocks.stripeCreateSession,
@@ -207,5 +216,49 @@ describe("checkout route delivery pricing", () => {
         ]),
       }),
     );
+  });
+
+  it("uses the verified delivery address for Stripe automatic tax", async () => {
+    vi.stubEnv("STRIPE_AUTOMATIC_TAX_ENABLED", "true");
+
+    const response = await POST(
+      new Request("https://landlsourdough.com/api/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(checkoutPayload),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.stripeCreateCustomer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        email: "customer@example.com",
+        shipping: expect.objectContaining({
+          address: expect.objectContaining({
+            line1: "123 Main Street",
+            postal_code: "30114",
+            country: "US",
+          }),
+        }),
+        tax: { validate_location: "immediately" },
+      }),
+    );
+    expect(mocks.stripeCreateSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        customer: "cus_tax_customer",
+        automatic_tax: { enabled: true },
+        payment_intent_data: {
+          shipping: expect.objectContaining({
+            name: "Test Customer",
+            address: expect.objectContaining({
+              postal_code: "30114",
+            }),
+          }),
+        },
+      }),
+    );
+    expect(
+      mocks.stripeCreateSession.mock.calls[0]?.[0]?.customer_email,
+    ).toBeUndefined();
   });
 });

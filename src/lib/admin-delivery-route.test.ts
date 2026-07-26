@@ -35,6 +35,7 @@ function orderFixture(patch: Partial<AdminOrder>): AdminOrder {
     status: "paid",
     subtotalCents: 1200,
     deliveryFeeCents: 700,
+    taxCents: 0,
     totalCents: 1900,
     deliveryAddress: {
       line1: "123 Main St",

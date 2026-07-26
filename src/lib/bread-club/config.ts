@@ -1,4 +1,5 @@
 import type { BreadClubPlanSlug } from "./types";
+import { isStripeAutomaticTaxEnabled } from "@/lib/stripe-tax";
 
 export const BREAD_CLUB_CYCLE_WEEKS = 4;
 export const BREAD_CLUB_DEFAULT_MAX_LOAF_SLOTS = 10;
@@ -62,7 +63,7 @@ export function isBreadClubPublicEnabled() {
 }
 
 export function isBreadClubAutomaticTaxEnabled() {
-  return envBoolean(process.env.BREAD_CLUB_AUTOMATIC_TAX_ENABLED);
+  return isStripeAutomaticTaxEnabled();
 }
 
 export function isBreadClubTestCustomer(email: string) {

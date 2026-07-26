@@ -9,7 +9,7 @@ tests through `/bread-club?preview=1`.
 | Setting | Prelaunch value |
 | --- | --- |
 | `BREAD_CLUB_PUBLIC_ENABLED` | `false` |
-| `BREAD_CLUB_AUTOMATIC_TAX_ENABLED` | `false` until tax treatment is confirmed |
+| `STRIPE_AUTOMATIC_TAX_ENABLED` | `false` until Georgia registration and the ship-from address are confirmed |
 | `BREAD_CLUB_TAX_STATUS` | `pending` until tax treatment is confirmed |
 | `BREAD_CLUB_TEST_EMAILS` | Monitored owner email used for the live smoke test |
 | `CRON_SECRET` | Generated once by the shared `landl-internal-jobs` Render environment group |
@@ -61,7 +61,7 @@ delete Stripe financial history.
 ## Final Public Gate
 
 - Georgia sales-tax treatment is recorded as `registered` or `exempt`.
-- `BREAD_CLUB_AUTOMATIC_TAX_ENABLED` matches the tax decision.
+- `STRIPE_AUTOMATIC_TAX_ENABLED` is `true` after the Georgia registration is active in Stripe Tax.
 - The protected setup step was rerun after setting the final tax status, while
   public enrollment was still disabled.
 - The owner smoke test and cleanup passed.

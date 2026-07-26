@@ -1,5 +1,6 @@
 import { getStripe } from "./stripe";
 import { getSupabaseAdminClient } from "./supabase";
+import { getCatalogProductTaxCode } from "./stripe-tax";
 
 type ProductCatalogRow = {
   id: string;
@@ -133,12 +134,14 @@ export async function syncStripeProductCatalog(): Promise<StripeCatalogSyncItem[
     let createdProduct = false;
     let createdPrice = false;
     let stripeProductId = await findStripeProductId(product);
+    const taxCode = getCatalogProductTaxCode(product);
 
     if (!stripeProductId) {
       const created = await stripe.products.create({
         name: product.name,
         description: product.description,
         active: product.active,
+        tax_code: taxCode,
         metadata: productMetadata(product),
       });
       stripeProductId = created.id;
@@ -148,6 +151,7 @@ export async function syncStripeProductCatalog(): Promise<StripeCatalogSyncItem[
         name: product.name,
         description: product.description,
         active: product.active,
+        tax_code: taxCode,
         metadata: productMetadata(product),
       });
     }
@@ -164,6 +168,7 @@ export async function syncStripeProductCatalog(): Promise<StripeCatalogSyncItem[
           product: stripeProductId,
           currency: "usd",
           unit_amount: product.price_cents,
+          tax_behavior: "exclusive",
           nickname: product.name,
           metadata: productMetadata(product),
         });
@@ -173,6 +178,9 @@ export async function syncStripeProductCatalog(): Promise<StripeCatalogSyncItem[
     }
 
     if (product.active && stripePriceId) {
+      await stripe.prices.update(stripePriceId, {
+        tax_behavior: "exclusive",
+      });
       await stripe.products.update(stripeProductId, {
         default_price: stripePriceId,
       });

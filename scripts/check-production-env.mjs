@@ -253,6 +253,7 @@ if (hasValue("OWNER_ALERTS_ENABLED")) {
 }
 requirePrefix("STRIPE_SECRET_KEY", ["sk_test_", "sk_live_"]);
 requirePrefix("STRIPE_WEBHOOK_SECRET", ["whsec_"]);
+requireBoolean("STRIPE_AUTOMATIC_TAX_ENABLED");
 requireValue("OPENAI_MODEL");
 requireInteger("DELIVERY_FEE_CENTS", { min: 0 });
 requireZipList("DELIVERY_ALLOWED_POSTAL_CODES");
@@ -263,7 +264,6 @@ requireValue("DELIVERY_ROUTE_END_ADDRESS");
 requireInteger("DELIVERY_MAX_DRIVE_MINUTES", { min: 1 });
 requireDeliveryFeeBands("DELIVERY_FEE_BANDS");
 requireBoolean("BREAD_CLUB_PUBLIC_ENABLED");
-requireBoolean("BREAD_CLUB_AUTOMATIC_TAX_ENABLED");
 requireOneOf("BREAD_CLUB_TAX_STATUS", [
   "pending",
   "registered",
@@ -281,21 +281,27 @@ if (
   );
 }
 if (
-  valueFor("BREAD_CLUB_PUBLIC_ENABLED") === "true" &&
   valueFor("BREAD_CLUB_TAX_STATUS") === "registered" &&
-  valueFor("BREAD_CLUB_AUTOMATIC_TAX_ENABLED") !== "true"
+  valueFor("STRIPE_AUTOMATIC_TAX_ENABLED") !== "true"
 ) {
   failures.push(
-    "BREAD_CLUB_AUTOMATIC_TAX_ENABLED must be true when a registered Bread Club launch is public.",
+    "STRIPE_AUTOMATIC_TAX_ENABLED must be true when Georgia tax registration is active.",
   );
 }
 if (
-  valueFor("BREAD_CLUB_PUBLIC_ENABLED") === "true" &&
   valueFor("BREAD_CLUB_TAX_STATUS") === "exempt" &&
-  valueFor("BREAD_CLUB_AUTOMATIC_TAX_ENABLED") !== "false"
+  valueFor("STRIPE_AUTOMATIC_TAX_ENABLED") !== "false"
 ) {
   failures.push(
-    "BREAD_CLUB_AUTOMATIC_TAX_ENABLED must be false when an exempt Bread Club launch is public.",
+    "STRIPE_AUTOMATIC_TAX_ENABLED must be false when the bakery is exempt.",
+  );
+}
+if (
+  valueFor("BREAD_CLUB_TAX_STATUS") === "pending" &&
+  valueFor("STRIPE_AUTOMATIC_TAX_ENABLED") !== "false"
+) {
+  failures.push(
+    "STRIPE_AUTOMATIC_TAX_ENABLED must remain false until Georgia registration is active.",
   );
 }
 if (

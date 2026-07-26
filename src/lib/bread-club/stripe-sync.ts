@@ -1,5 +1,6 @@
 import type Stripe from "stripe";
 import { getStripe } from "@/lib/stripe";
+import { STRIPE_TAX_CODES } from "@/lib/stripe-tax";
 import { getSupabaseAdminClient } from "@/lib/supabase";
 import { getSiteUrl } from "@/lib/utils";
 import { getBreadClubTaxStatus } from "./config";
@@ -85,6 +86,7 @@ async function ensureProduct(input: {
   savedId: string | null;
   name: string;
   description: string;
+  taxCode: string;
   metadata: Record<string, string>;
 }) {
   const stripe = getStripe();
@@ -102,6 +104,7 @@ async function ensureProduct(input: {
       active: true,
       name: input.name,
       description: input.description,
+      tax_code: input.taxCode,
       metadata: input.metadata,
     });
   }
@@ -110,6 +113,7 @@ async function ensureProduct(input: {
     active: true,
     name: input.name,
     description: input.description,
+    tax_code: input.taxCode,
     metadata: input.metadata,
   });
 }
@@ -232,6 +236,7 @@ export async function syncBreadClubStripeCatalog() {
       savedId: plan.stripe_product_id,
       name: `Sunday Bread Club - ${plan.name}`,
       description: plan.description,
+      taxCode: STRIPE_TAX_CODES.foodForNonImmediateConsumption,
       metadata: {
         bread_club_plan_id: plan.id,
         bread_club_plan_slug: plan.slug,
@@ -284,6 +289,7 @@ export async function syncBreadClubStripeCatalog() {
     name: "Sunday Bread Club local delivery",
     description:
       "Four Sunday deliveries per Bread Club billing cycle, priced by verified drive-time band.",
+    taxCode: STRIPE_TAX_CODES.shipping,
     metadata: {
       bread_club_delivery_product: "true",
       billing_period: "4_weeks",

@@ -63,6 +63,8 @@ describe("Stripe approval request webhook", () => {
       data: {
         object: {
           id: "cs_approval",
+          amount_total: 3210,
+          total_details: { amount_tax: 210 },
           customer_email: "customer@example.com",
           metadata: { order_id: "order-id" },
         },
@@ -83,7 +85,10 @@ describe("Stripe approval request webhook", () => {
     const response = await postWebhook();
 
     await expect(response.json()).resolves.toEqual({ received: true });
-    expect(mocks.markCheckoutSessionPaid).toHaveBeenCalledWith("cs_approval");
+    expect(mocks.markCheckoutSessionPaid).toHaveBeenCalledWith("cs_approval", {
+      taxCents: 210,
+      totalCents: 3210,
+    });
     expect(mocks.sendCustomerApprovalRequestReceived).toHaveBeenCalledWith(
       expect.objectContaining({
         to: "customer@example.com",

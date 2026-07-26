@@ -3,6 +3,10 @@ import type Stripe from "stripe";
 import { checkDeliveryAddressWithRoutes } from "@/lib/delivery";
 import { getDeliverySettingsData } from "@/lib/storefront-data";
 import { getStripe } from "@/lib/stripe";
+import {
+  isStripeAutomaticTaxEnabled,
+  updateStripeDeliveryCustomer,
+} from "@/lib/stripe-tax";
 import { getSupabaseAdminClient } from "@/lib/supabase";
 import type { DeliveryAddress } from "@/lib/types";
 import { getSiteUrl } from "@/lib/utils";
@@ -337,7 +341,16 @@ export async function updateBreadClubAddress(
   const previousDeliveryPrice = catalog.deliveryPrices.find(
     (price) => price.bandKey === member.routeBandKey,
   );
+  let stripeAddressUpdated = false;
   try {
+    if (isStripeAutomaticTaxEnabled() && member.stripeCustomerId) {
+      await updateStripeDeliveryCustomer(stripe, member.stripeCustomerId, {
+        name: member.customerName,
+        phone: member.customerPhone || "",
+        address,
+      });
+      stripeAddressUpdated = true;
+    }
     await stripe.subscriptionItems.update(
       String(membership.stripe_delivery_subscription_item_id),
       {
@@ -369,6 +382,20 @@ export async function updateBreadClubAddress(
         );
       } catch (rollbackError) {
         console.error("[bread-club] delivery price rollback failed", {
+          membershipId,
+          rollbackError,
+        });
+      }
+    }
+    if (stripeAddressUpdated && member.stripeCustomerId) {
+      try {
+        await updateStripeDeliveryCustomer(stripe, member.stripeCustomerId, {
+          name: member.customerName,
+          phone: member.customerPhone || "",
+          address: member.deliveryAddress,
+        });
+      } catch (rollbackError) {
+        console.error("[bread-club] Stripe address rollback failed", {
           membershipId,
           rollbackError,
         });
@@ -599,6 +626,8 @@ export async function completeBreadClubAddonCheckout(
         typeof session.payment_intent === "string"
           ? session.payment_intent
           : session.payment_intent?.id || null,
+      p_tax_cents: session.total_details?.amount_tax || 0,
+      p_total_cents: session.amount_total,
     },
   );
   if (error) throw new Error(error.message);
@@ -606,7 +635,7 @@ export async function completeBreadClubAddonCheckout(
   const { data: addon, error: lookupError } = await supabase
     .from("bread_club_addon_checkouts")
     .select(
-      "membership_id, subtotal_cents, items, bread_club_memberships(customers(name, email)), bread_club_fulfillments(delivery_windows(label))",
+      "membership_id, subtotal_cents, tax_cents, total_cents, items, bread_club_memberships(customers(name, email)), bread_club_fulfillments(delivery_windows(label))",
     )
     .eq("id", addonId)
     .maybeSingle();
@@ -639,7 +668,7 @@ export async function completeBreadClubAddonCheckout(
       orderSummary: itemRows
         .map((item) => `${Number(item.quantity || 0)} x ${item.name || "Add-on"}`)
         .join("\n"),
-      totalCents: Number(addon.subtotal_cents),
+      totalCents: Number(addon.total_cents),
     });
   } catch (emailError) {
     console.error("[bread-club] add-on receipt failed", emailError);

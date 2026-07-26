@@ -42,6 +42,30 @@ function metadata(product) {
   };
 }
 
+const STRIPE_TAX_CODES = {
+  foodForNonImmediateConsumption: "txcd_40040000",
+  plainBread: "txcd_40040021",
+  specialtyBread: "txcd_40040022",
+};
+
+function productTaxCode(product) {
+  const slug = product.slug;
+  if (["classic-country", "classic-country-loaf", "sourdough-loaf"].includes(slug)) {
+    return STRIPE_TAX_CODES.plainBread;
+  }
+  if (
+    [
+      "cinnamon-swirl",
+      "cinnamon-swirl-sourdough",
+      "rosemary-garlic",
+      "rosemary-garlic-loaf",
+    ].includes(slug)
+  ) {
+    return STRIPE_TAX_CODES.specialtyBread;
+  }
+  return STRIPE_TAX_CODES.foodForNonImmediateConsumption;
+}
+
 async function findStripeProductId(stripe, product) {
   if (product.stripe_product_id) {
     try {
@@ -131,12 +155,14 @@ for (const product of products) {
   let createdProduct = false;
   let createdPrice = false;
   let stripeProductId = await findStripeProductId(stripe, product);
+  const taxCode = productTaxCode(product);
 
   if (!stripeProductId) {
     const created = await stripe.products.create({
       name: product.name,
       description: product.description,
       active: product.active,
+      tax_code: taxCode,
       metadata: metadata(product),
     });
     stripeProductId = created.id;
@@ -146,6 +172,7 @@ for (const product of products) {
       name: product.name,
       description: product.description,
       active: product.active,
+      tax_code: taxCode,
       metadata: metadata(product),
     });
   }
@@ -162,6 +189,7 @@ for (const product of products) {
         product: stripeProductId,
         currency: "usd",
         unit_amount: product.price_cents,
+        tax_behavior: "exclusive",
         nickname: product.name,
         metadata: metadata(product),
       });
@@ -171,6 +199,9 @@ for (const product of products) {
   }
 
   if (product.active && stripePriceId) {
+    await stripe.prices.update(stripePriceId, {
+      tax_behavior: "exclusive",
+    });
     await stripe.products.update(stripeProductId, {
       default_price: stripePriceId,
     });

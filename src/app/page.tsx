@@ -23,6 +23,7 @@ import {
 import { getProductGuidance } from "@/lib/product-guidance";
 import { productPath } from "@/lib/product-slugs";
 import { getStorefrontData } from "@/lib/storefront-data";
+import { isStripeAutomaticTaxEnabled } from "@/lib/stripe-tax";
 import { absoluteImageUrl } from "@/lib/url";
 import { formatCurrency } from "@/lib/utils";
 import {
@@ -40,6 +41,7 @@ export default async function Home() {
   const orderAction = "Order bread";
   const serviceZipCopy = deliverySettings.allowedPostalCodes.join(", ");
   const breadClubEnabled = isBreadClubPublicEnabled();
+  const automaticTaxEnabled = isStripeAutomaticTaxEnabled();
   const customerHighlights = [
     [
       "Naturally leavened",
@@ -607,7 +609,10 @@ export default async function Home() {
           </div>
         </section>
 
-        <OrderBuilder weeks={orderingWeeks} />
+        <OrderBuilder
+          weeks={orderingWeeks}
+          automaticTaxEnabled={automaticTaxEnabled}
+        />
 
         <section className="bg-white py-16 sm:py-20">
           <div className="mx-auto grid max-w-7xl gap-8 px-4 sm:px-6 lg:grid-cols-[0.9fr_1.1fr] lg:px-8">

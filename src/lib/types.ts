@@ -168,6 +168,7 @@ export type AdminOrder = {
   status: OrderStatus;
   subtotalCents: number;
   deliveryFeeCents: number;
+  taxCents: number;
   totalCents: number;
   deliveryAddress: DeliveryAddress & {
     email?: string;

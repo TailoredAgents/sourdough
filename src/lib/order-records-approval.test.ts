@@ -270,11 +270,22 @@ describe("same-week approval order records", () => {
   it("moves paid approval sessions into pending approval for admin review", async () => {
     setupPaidApprovalSupabaseMock();
 
-    const paidOrder = await markCheckoutSessionPaid("cs_test_approval");
+    const paidOrder = await markCheckoutSessionPaid("cs_test_approval", {
+      taxCents: 210,
+      totalCents: 3210,
+    });
 
     expect(mocks.updatedOrders).toEqual([
-      expect.objectContaining({ status: "paid" }),
-      expect.objectContaining({ status: "pending_approval" }),
+      expect.objectContaining({
+        status: "paid",
+        tax_cents: 210,
+        total_cents: 3210,
+      }),
+      expect.objectContaining({
+        status: "pending_approval",
+        tax_cents: 210,
+        total_cents: 3210,
+      }),
     ]);
     expect(paidOrder).toMatchObject({
       orderId: "order-id",

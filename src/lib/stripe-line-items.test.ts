@@ -47,8 +47,10 @@ describe("stripe line items", () => {
       price_data: {
         currency: "usd",
         unit_amount: 1200,
+        tax_behavior: "exclusive",
         product_data: {
           name: "Classic Country Loaf",
+          tax_code: "txcd_40040021",
         },
       },
     });
@@ -60,9 +62,11 @@ describe("stripe line items", () => {
       price_data: {
         currency: "usd",
         unit_amount: 600,
+        tax_behavior: "exclusive",
         product_data: {
           name: "Local delivery",
           description: "Drive-time based Sunday local delivery around Canton and Woodstock, GA",
+          tax_code: "txcd_92010001",
         },
       },
     });

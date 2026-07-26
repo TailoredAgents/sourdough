@@ -27,6 +27,11 @@ import {
 import { checkRateLimit } from "@/lib/rate-limit";
 import { getStripe } from "@/lib/stripe";
 import { buildCatalogLineItem, buildDeliveryLineItem } from "@/lib/stripe-line-items";
+import {
+  createStripeDeliveryCustomer,
+  isStripeAutomaticTaxEnabled,
+  toStripeAddress,
+} from "@/lib/stripe-tax";
 import { getSiteUrl } from "@/lib/utils";
 
 function hasMinimumPhoneDigits(value: string) {
@@ -284,10 +289,33 @@ export async function POST(request: Request) {
 
   let session;
   try {
+    const automaticTaxEnabled = isStripeAutomaticTaxEnabled();
+    const stripeCustomer = automaticTaxEnabled
+      ? await createStripeDeliveryCustomer(stripe, {
+          name: checkout.customer.name,
+          email: checkout.customer.email,
+          phone: checkout.customer.phone,
+          address: checkout.address,
+          metadata: {
+            storefront_order_id: pendingOrder.id,
+            customer_source: "storefront_checkout",
+          },
+        })
+      : null;
     session = await stripe.checkout.sessions.create({
       mode: "payment",
-      customer_email: checkout.customer.email,
+      ...(stripeCustomer
+        ? { customer: stripeCustomer.id }
+        : { customer_email: checkout.customer.email }),
       phone_number_collection: { enabled: true },
+      automatic_tax: { enabled: automaticTaxEnabled },
+      payment_intent_data: {
+        shipping: {
+          name: checkout.customer.name,
+          phone: checkout.customer.phone,
+          address: toStripeAddress(checkout.address),
+        },
+      },
       success_url: `${getSiteUrl()}/order/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${getSiteUrl()}/order/canceled?order_id=${pendingOrder.id}&token=${pendingOrder.checkoutCancelToken}`,
       line_items: [

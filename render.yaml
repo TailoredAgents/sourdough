@@ -62,9 +62,9 @@ services:
         sync: false
       - key: STRIPE_BILLING_PORTAL_CONFIGURATION_ID
         sync: false
-      - key: BREAD_CLUB_PUBLIC_ENABLED
+      - key: STRIPE_AUTOMATIC_TAX_ENABLED
         value: "false"
-      - key: BREAD_CLUB_AUTOMATIC_TAX_ENABLED
+      - key: BREAD_CLUB_PUBLIC_ENABLED
         value: "false"
       - key: BREAD_CLUB_TAX_STATUS
         value: pending

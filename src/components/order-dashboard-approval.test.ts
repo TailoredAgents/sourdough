@@ -19,6 +19,7 @@ const approvalOrder: AdminOrder = {
   status: "pending_approval",
   subtotalCents: 2400,
   deliveryFeeCents: 600,
+  taxCents: 0,
   totalCents: 3000,
   deliveryAddress: {
     line1: "123 Main Street",

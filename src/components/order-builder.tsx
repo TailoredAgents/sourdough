@@ -95,8 +95,10 @@ function normalizeStateInput(value: string) {
 
 export function OrderBuilder({
   weeks,
+  automaticTaxEnabled = false,
 }: {
   weeks: OrderingWeek[];
+  automaticTaxEnabled?: boolean;
 }) {
   const defaultWeek = getDefaultOrderingWeek(weeks);
   const [selectedWeekId, setSelectedWeekId] = useState(
@@ -966,8 +968,14 @@ export function OrderBuilder({
               <span>Delivery</span>
               <span>{deliveryFeeLabel}</span>
             </div>
+            {automaticTaxEnabled ? (
+              <div className="flex justify-between">
+                <span>Sales tax</span>
+                <span>Calculated in Stripe</span>
+              </div>
+            ) : null}
             <div className="flex justify-between text-lg font-bold text-stone-950">
-              <span>Total</span>
+              <span>{automaticTaxEnabled ? "Total before tax" : "Total"}</span>
               <span>{formatCurrency(total)}</span>
             </div>
           </div>

@@ -21,6 +21,7 @@ export type PendingOrder = {
   customerId: string;
   subtotalCents: number;
   deliveryFeeCents: number;
+  taxCents: number;
   totalCents: number;
   orderSummary: string;
   checkoutCancelToken: string;
@@ -50,6 +51,7 @@ export type OrderConfirmation = {
   deliveryInstructions: string | null;
   subtotalCents: number;
   deliveryFeeCents: number;
+  taxCents: number;
   totalCents: number;
   paidAt: string | null;
 };
@@ -147,6 +149,7 @@ export async function createPendingCheckoutOrder({
           : "pending_payment",
       subtotal_cents: subtotalCents,
       delivery_fee_cents: deliveryFeeCents,
+      tax_cents: 0,
       total_cents: totalCents,
       delivery_address: {
         ...checkout.address,
@@ -202,6 +205,7 @@ export async function createPendingCheckoutOrder({
     customerId,
     subtotalCents,
     deliveryFeeCents,
+    taxCents: 0,
     totalCents,
     orderSummary: buildOrderSummary(items),
     checkoutCancelToken,
@@ -280,17 +284,29 @@ export async function cancelPendingOrderByToken(orderId: string, token: string) 
 
 export async function markCheckoutSessionPaid(
   sessionId: string,
+  payment?: {
+    taxCents?: number | null;
+    totalCents?: number | null;
+  },
 ): Promise<PaidOrderSummary | null> {
   const supabase = getSupabaseAdminClient();
   if (!supabase) throw new Error("Supabase admin client is not configured.");
 
+  const paidUpdates: Record<string, unknown> = {
+    status: "paid",
+    paid_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+  if (typeof payment?.taxCents === "number") {
+    paidUpdates.tax_cents = Math.max(0, payment.taxCents);
+  }
+  if (typeof payment?.totalCents === "number") {
+    paidUpdates.total_cents = Math.max(0, payment.totalCents);
+  }
+
   const { data: updatedOrders, error } = await supabase
     .from("orders")
-    .update({
-      status: "paid",
-      paid_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
+    .update(paidUpdates)
     .eq("stripe_checkout_session_id", sessionId)
     .eq("status", "pending_payment")
     .select("id, customer_id, delivery_window_id, delivery_address, notes");
@@ -299,13 +315,13 @@ export async function markCheckoutSessionPaid(
   let order = updatedOrders?.[0];
   let paidStatus: OrderStatus = "paid";
   if (!order) {
+    const approvalUpdates = {
+      ...paidUpdates,
+      status: "pending_approval",
+    };
     const { data: approvalOrders, error: approvalError } = await supabase
       .from("orders")
-      .update({
-        status: "pending_approval",
-        paid_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
+      .update(approvalUpdates)
       .eq("stripe_checkout_session_id", sessionId)
       .eq("status", "pending_approval_payment")
       .select("id, customer_id, delivery_window_id, delivery_address, notes");
@@ -404,7 +420,7 @@ export async function getOrderConfirmationBySessionId(
   const { data: order, error } = await supabase
     .from("orders")
     .select(
-      "id, customers(name, email), delivery_windows(label), status, subtotal_cents, delivery_fee_cents, total_cents, delivery_address, delivery_instructions, paid_at, order_items(quantity, unit_price_cents, products(name))",
+      "id, customers(name, email), delivery_windows(label), status, subtotal_cents, delivery_fee_cents, tax_cents, total_cents, delivery_address, delivery_instructions, paid_at, order_items(quantity, unit_price_cents, products(name))",
     )
     .eq("stripe_checkout_session_id", sessionId)
     .maybeSingle();
@@ -440,6 +456,7 @@ export async function getOrderConfirmationBySessionId(
     deliveryInstructions: (order.delivery_instructions as string | null) ?? null,
     subtotalCents: Number(order.subtotal_cents || 0),
     deliveryFeeCents: Number(order.delivery_fee_cents || 0),
+    taxCents: Number(order.tax_cents || 0),
     totalCents: Number(order.total_cents || 0),
     paidAt: (order.paid_at as string | null) ?? null,
   };

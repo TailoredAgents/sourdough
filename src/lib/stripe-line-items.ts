@@ -1,4 +1,8 @@
 import type Stripe from "stripe";
+import {
+  getCatalogProductTaxCode,
+  STRIPE_TAX_CODES,
+} from "./stripe-tax";
 import type { MenuProduct } from "./types";
 
 type CheckoutProductItem = MenuProduct & {
@@ -24,9 +28,11 @@ export function buildCatalogLineItem(
     price_data: {
       currency: "usd",
       unit_amount: item.priceCents,
+      tax_behavior: "exclusive",
       product_data: {
         name: item.name,
         description: item.description,
+        tax_code: getCatalogProductTaxCode(item),
         metadata: {
           product_id: item.id,
         },
@@ -43,9 +49,11 @@ export function buildDeliveryLineItem(
     price_data: {
       currency: "usd",
       unit_amount: feeCents,
+      tax_behavior: "exclusive",
       product_data: {
         name: "Local delivery",
         description: "Drive-time based Sunday local delivery around Canton and Woodstock, GA",
+        tax_code: STRIPE_TAX_CODES.shipping,
       },
     },
   };

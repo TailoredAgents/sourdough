@@ -104,6 +104,10 @@ export default async function OrderSuccessPage({
                         <span>Delivery</span>
                         <span>{formatCurrency(order.deliveryFeeCents)}</span>
                       </div>
+                      <div className="flex justify-between">
+                        <span>Sales tax</span>
+                        <span>{formatCurrency(order.taxCents)}</span>
+                      </div>
                       <div className="flex justify-between font-bold text-stone-950">
                         <span>Total</span>
                         <span>{formatCurrency(order.totalCents)}</span>

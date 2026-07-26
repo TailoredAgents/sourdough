@@ -43,8 +43,8 @@ Do not commit real secret values.
 | `STRIPE_SECRET_KEY` | Stripe secret key before accepting paid orders; blank keeps production checkout unavailable |
 | `STRIPE_WEBHOOK_SECRET` | Stripe webhook signing secret before accepting paid orders |
 | `STRIPE_BILLING_PORTAL_CONFIGURATION_ID` | Optional Bread Club portal configuration ID; Supabase is the fallback source |
+| `STRIPE_AUTOMATIC_TAX_ENABLED` | `false` until Georgia registration and the ship-from address are confirmed, then `true` for all checkouts |
 | `BREAD_CLUB_PUBLIC_ENABLED` | `false` until tax and owner smoke gates pass |
-| `BREAD_CLUB_AUTOMATIC_TAX_ENABLED` | `false` until Georgia tax treatment is resolved |
 | `BREAD_CLUB_TAX_STATUS` | `pending`, `registered`, or `exempt` |
 | `BREAD_CLUB_TEST_EMAILS` | Comma-separated owner emails allowed to run disabled-mode smoke enrollment |
 | `CRON_SECRET` | Generated and shared by the Blueprint's `landl-internal-jobs` environment group |

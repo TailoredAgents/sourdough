@@ -46,6 +46,7 @@ type OrderRow = {
   stripe_checkout_session_id: string | null;
   subtotal_cents: number;
   delivery_fee_cents: number;
+  tax_cents: number;
   total_cents: number;
   delivery_address: DeliveryAddress & {
     email?: string;
@@ -183,6 +184,7 @@ function mapOrder(
     status: row.status,
     subtotalCents: row.subtotal_cents,
     deliveryFeeCents: row.delivery_fee_cents,
+    taxCents: row.tax_cents,
     totalCents: row.total_cents,
     deliveryAddress: row.delivery_address,
     deliveryMiles:
@@ -216,7 +218,7 @@ export async function getAdminOrdersData(): Promise<AdminOrder[]> {
   const { data: orders, error: ordersError } = await supabase
     .from("orders")
     .select(
-      "id, source, bread_club_membership_id, bread_club_fulfillment_id, stripe_invoice_id, customers(name, email, phone), delivery_windows(label, weekly_menu_id, weekly_menus(name, starts_at)), status, stripe_checkout_session_id, subtotal_cents, delivery_fee_cents, total_cents, delivery_address, delivery_miles, delivery_instructions, delivery_check, notes, next_week_ok, approval_mode, approved_at, denied_at, refunded_at, stripe_refund_id, admin_decision_note, paid_at, created_at, updated_at, checkout_cancel_token",
+      "id, source, bread_club_membership_id, bread_club_fulfillment_id, stripe_invoice_id, customers(name, email, phone), delivery_windows(label, weekly_menu_id, weekly_menus(name, starts_at)), status, stripe_checkout_session_id, subtotal_cents, delivery_fee_cents, tax_cents, total_cents, delivery_address, delivery_miles, delivery_instructions, delivery_check, notes, next_week_ok, approval_mode, approved_at, denied_at, refunded_at, stripe_refund_id, admin_decision_note, paid_at, created_at, updated_at, checkout_cancel_token",
     )
     .order("created_at", { ascending: false })
     .limit(100);

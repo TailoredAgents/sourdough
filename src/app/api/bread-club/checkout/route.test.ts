@@ -11,11 +11,14 @@ const mocks = vi.hoisted(() => ({
   attachStripeSubscriptionCheckout: vi.fn(),
   markBreadClubCheckoutIncomplete: vi.fn(),
   stripeCreateSession: vi.fn(),
+  stripeCreateCustomer: vi.fn(),
+  isBreadClubAutomaticTaxEnabled: vi.fn(),
 }));
 
 vi.mock("@/lib/bread-club/config", () => ({
   getBreadClubCheckoutGate: () => ({ allowed: true, reason: null }),
-  isBreadClubAutomaticTaxEnabled: () => false,
+  isBreadClubAutomaticTaxEnabled:
+    mocks.isBreadClubAutomaticTaxEnabled,
   isBreadClubTestCustomer: () => true,
 }));
 vi.mock("@/lib/bread-club/data", () => ({
@@ -46,6 +49,9 @@ vi.mock("@/lib/storefront-data", () => ({
 }));
 vi.mock("@/lib/stripe", () => ({
   getStripe: () => ({
+    customers: {
+      create: mocks.stripeCreateCustomer,
+    },
     checkout: {
       sessions: {
         create: mocks.stripeCreateSession,
@@ -162,6 +168,7 @@ const payload = {
 beforeEach(() => {
   for (const mock of Object.values(mocks)) mock.mockReset();
   mocks.checkRateLimit.mockResolvedValue({ allowed: true });
+  mocks.isBreadClubAutomaticTaxEnabled.mockReturnValue(false);
   mocks.getBreadClubEnrollmentData.mockResolvedValue({
     plans: [plan],
     deliveryPrices: [deliveryPrice],
@@ -200,6 +207,9 @@ beforeEach(() => {
   mocks.stripeCreateSession.mockResolvedValue({
     id: "cs_bread_club",
     url: "https://checkout.stripe.com/c/bread-club",
+  });
+  mocks.stripeCreateCustomer.mockResolvedValue({
+    id: "cus_bread_club_tax",
   });
 });
 
@@ -280,6 +290,41 @@ describe("Bread Club subscription checkout", () => {
     expect(response.status).toBe(400);
     expect(mocks.createPendingBreadClubCheckout).not.toHaveBeenCalled();
     expect(mocks.stripeCreateSession).not.toHaveBeenCalled();
+  });
+
+  it("uses the verified delivery address for recurring Stripe Tax", async () => {
+    mocks.isBreadClubAutomaticTaxEnabled.mockReturnValue(true);
+    const response = await POST(
+      new Request("https://landlsourdough.com/api/bread-club/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...payload,
+          consentText: buildBreadClubConsentText(8000, true),
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.stripeCreateCustomer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        email: "member@example.com",
+        shipping: expect.objectContaining({
+          address: expect.objectContaining({
+            line1: "123 Main Street",
+            postal_code: "30114",
+            country: "US",
+          }),
+        }),
+        tax: { validate_location: "immediately" },
+      }),
+    );
+    expect(mocks.stripeCreateSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        customer: "cus_bread_club_tax",
+        automatic_tax: { enabled: true },
+      }),
+    );
   });
 
   it("rejects browser consent text that does not match the server total", async () => {

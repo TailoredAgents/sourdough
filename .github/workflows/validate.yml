@@ -39,6 +39,7 @@ jobs:
           RESEND_FROM: "Luna & Lorelai's Sourdough <orders@landlsourdough.com>"
           STRIPE_SECRET_KEY: sk_test_ci
           STRIPE_WEBHOOK_SECRET: whsec_ci
+          STRIPE_AUTOMATIC_TAX_ENABLED: "false"
           OPENAI_MODEL: gpt-5-mini
           DELIVERY_FEE_CENTS: "600"
           DELIVERY_ALLOWED_POSTAL_CODES: 30114,30115
@@ -49,7 +50,6 @@ jobs:
           DELIVERY_MAX_DRIVE_MINUTES: "30"
           DELIVERY_FEE_BANDS: 0-10:500,11-20:700,21-30:1000
           BREAD_CLUB_PUBLIC_ENABLED: "false"
-          BREAD_CLUB_AUTOMATIC_TAX_ENABLED: "false"
           BREAD_CLUB_TAX_STATUS: pending
           CRON_SECRET: ci-cron-secret
         run: npm run check:prod-env -- --no-env-file

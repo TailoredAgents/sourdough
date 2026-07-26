@@ -23,6 +23,7 @@ import { checkDeliveryAddressWithRoutes } from "@/lib/delivery";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { getDeliverySettingsData } from "@/lib/storefront-data";
 import { getStripe } from "@/lib/stripe";
+import { createStripeDeliveryCustomer } from "@/lib/stripe-tax";
 import { getSiteUrl } from "@/lib/utils";
 
 function hasMinimumPhoneDigits(value: string) {
@@ -252,16 +253,31 @@ export async function POST(request: Request) {
   }
 
   try {
+    const automaticTaxEnabled = isBreadClubAutomaticTaxEnabled();
+    const stripeCustomer = automaticTaxEnabled
+      ? await createStripeDeliveryCustomer(stripe, {
+          name: checkout.customer.name,
+          email: checkout.customer.email,
+          phone: checkout.customer.phone,
+          address: checkout.address,
+          metadata: {
+            bread_club_membership_id: pending.membershipId,
+            customer_source: "bread_club_checkout",
+          },
+        })
+      : null;
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
-      customer_email: checkout.customer.email,
+      ...(stripeCustomer
+        ? { customer: stripeCustomer.id }
+        : { customer_email: checkout.customer.email }),
       phone_number_collection: { enabled: true },
       line_items: [
         { price: plan.stripePriceId!, quantity: 1 },
         { price: deliveryPrice.stripePriceId!, quantity: 1 },
       ],
       automatic_tax: {
-        enabled: isBreadClubAutomaticTaxEnabled(),
+        enabled: automaticTaxEnabled,
       },
       success_url: `${getSiteUrl()}/bread-club/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${getSiteUrl()}/api/bread-club/cancel-checkout?membership_id=${pending.membershipId}&token=${pending.checkoutCancelToken}`,
