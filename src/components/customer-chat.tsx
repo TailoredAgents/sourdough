@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useTransition, type FormEvent } from "react";
 import { Bot, Loader2, Send } from "lucide-react";
 import { trackEvent } from "@/lib/analytics";
@@ -35,7 +36,7 @@ export function CustomerChat() {
     setMessages((current) => [...current, { role: "user", content: question }]);
     startTransition(async () => {
       let answer =
-        "I could not answer that right now. Please include your question in the order notes and we will reply directly.";
+        "I could not answer that right now. Contact the bakery for personal help, or add the question to your order notes.";
 
       try {
         const response = await fetch("/api/chat", {
@@ -111,12 +112,14 @@ export function CustomerChat() {
               <span className="sr-only sm:not-sr-only">Send</span>
             </Button>
           </form>
-          <a
-            href="#order"
-            className="mt-3 inline-flex text-sm font-semibold text-[#23443b] underline"
-          >
-            Add a note to your order
-          </a>
+          <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-sm font-semibold text-[#23443b]">
+            <a href="#order" className="underline">
+              Add a note to your order
+            </a>
+            <Link href="/contact" className="underline">
+              Contact the bakery
+            </Link>
+          </div>
         </div>
       </div>
     </section>

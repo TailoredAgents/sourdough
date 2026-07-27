@@ -251,7 +251,7 @@ export async function createCustomerQuestionMessage(input: CustomerQuestionInput
       customer_email: null,
       subject: "Customer question from website chat",
       body: buildCustomerQuestionBody(input),
-      status: "new",
+      status: input.answer?.trim() ? "handled" : "new",
     })
     .select("id, order_id, customer_email, subject, body, status, created_at")
     .single();
@@ -261,16 +261,7 @@ export async function createCustomerQuestionMessage(input: CustomerQuestionInput
     return null;
   }
 
-  const message = mapCustomerMessage(data as CustomerMessageRow);
-  await sendOwnerAlert({
-    type: "inquiry",
-    customerName: "Website visitor",
-    orderSummary: input.question,
-    notes: input.answer || null,
-    customerMessageId: message.id,
-  });
-
-  return message;
+  return mapCustomerMessage(data as CustomerMessageRow);
 }
 
 export async function getCustomerMessagesData(): Promise<CustomerMessage[]> {

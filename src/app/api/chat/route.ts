@@ -17,8 +17,42 @@ const chatSchema = z.object({
   message: z.string().min(1).max(1000),
 });
 
+export const chatAssistantInstructions = [
+  "You are the Luna & Lorelai's Sourdough customer assistant.",
+  "Answer only from the provided bakery facts and current menu.",
+  "Do not invent ingredients, inventory, legal claims, medical advice, or allergen-free guarantees.",
+  "If the answer is not supported, say the bakery should confirm directly.",
+  "Answer in one or two short sentences using no more than 45 words.",
+  "Start with the direct answer. Do not greet, repeat the question, add a conclusion, or include unrelated details.",
+].join(" ");
+
 export function fallbackAnswer(message: string) {
   return buildChatFallbackAnswer(message);
+}
+
+export function compactChatAnswer(answer: string, fallback: string) {
+  const normalized = (answer || fallback).replace(/\s+/g, " ").trim();
+  if (!normalized) return fallback;
+
+  const sentences = normalized
+    .split(/(?<=[.!?])\s+/)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean);
+  const selected: string[] = [];
+  let wordCount = 0;
+
+  for (const sentence of sentences.slice(0, 2)) {
+    const sentenceWords = sentence.split(/\s+/).filter(Boolean);
+    if (selected.length > 0 && wordCount + sentenceWords.length > 45) break;
+    selected.push(sentence);
+    wordCount += sentenceWords.length;
+  }
+
+  const concise = selected.join(" ").trim() || normalized;
+  const words = concise.split(/\s+/).filter(Boolean);
+  if (words.length <= 45) return concise;
+
+  return `${words.slice(0, 45).join(" ").replace(/[,:;]$/, "")}...`;
 }
 
 async function saveCustomerQuestion(question: string, answer: string) {
@@ -84,8 +118,9 @@ export async function POST(request: Request) {
     });
     const openai = getOpenAI();
     if (!openai) {
-      await saveCustomerQuestion(parsed.data.message, fallback);
-      return NextResponse.json({ answer: fallback });
+      const answer = compactChatAnswer(fallback, fallback);
+      await saveCustomerQuestion(parsed.data.message, answer);
+      return NextResponse.json({ answer });
     }
 
     const menuContext = menu
@@ -99,18 +134,20 @@ export async function POST(request: Request) {
 
     const response = await openai.responses.create({
       model: aiModel,
-      instructions:
-        "You are the Luna & Lorelai's Sourdough customer assistant. Answer only from the provided bakery facts and menu. Do not invent ingredients, inventory, legal claims, medical advice, or allergen-free guarantees. If the answer is not supported, say the bakery should confirm directly. Keep answers short and friendly.",
+      instructions: chatAssistantInstructions,
+      max_output_tokens: 220,
+      text: { verbosity: "low" },
       input: `Approved bakery facts:\n${aiKnowledge.join("\n")}\n\nCurrent cutoff:\n${cutoffContext}\n\nDelivery:\n${deliveryContext}\n\nCurrent menu:\n${menuContext}\n\nCustomer question:\n${parsed.data.message}`,
     });
 
-    const answer = response.output_text || fallback;
+    const answer = compactChatAnswer(response.output_text, fallback);
     await saveCustomerQuestion(parsed.data.message, answer);
 
     return NextResponse.json({ answer });
   } catch (error) {
     console.error("[chat] failed to answer question", error);
-    await saveCustomerQuestion(parsed.data.message, fallback);
-    return NextResponse.json({ answer: fallback });
+    const answer = compactChatAnswer(fallback, fallback);
+    await saveCustomerQuestion(parsed.data.message, answer);
+    return NextResponse.json({ answer });
   }
 }
