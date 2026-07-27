@@ -23,6 +23,7 @@ const mocks = vi.hoisted(() => ({
   completeBreadClubAddonCheckout: vi.fn(),
   expireBreadClubAddonCheckout: vi.fn(),
   retrieveSubscription: vi.fn(),
+  membershipSelect: vi.fn(),
 }));
 
 vi.mock("@/lib/supabase", () => ({
@@ -207,24 +208,27 @@ beforeEach(() => {
         update: () => ({
           eq: async () => ({ error: null }),
         }),
-        select: () => ({
-          eq: () => ({
-            maybeSingle: async () => ({
-              data: {
-                id: membershipId,
-                status: "active",
-                cancel_at_period_end: false,
-                customers: {
-                  name: "Bread Club Customer",
-                  email: "member@example.com",
+        select: (columns: string) => {
+          mocks.membershipSelect(columns);
+          return {
+            eq: () => ({
+              maybeSingle: async () => ({
+                data: {
+                  id: membershipId,
+                  status: "active",
+                  cancel_at_period_end: false,
+                  customers: {
+                    name: "Bread Club Customer",
+                    email: "member@example.com",
+                  },
+                  bread_club_plans: { name: "Variety Club" },
+                  first_delivery_at: "2026-08-02T19:00:00.000Z",
                 },
-                bread_club_plans: { name: "Variety Club" },
-                first_delivery_at: "2026-08-02T19:00:00.000Z",
-              },
-              error: null,
+                error: null,
+              }),
             }),
-          }),
-        }),
+          };
+        },
       };
     }
     if (table === "bread_club_cycles") {
@@ -278,6 +282,11 @@ describe("Bread Club Stripe webhook integration", () => {
         invoiceId: "in_bread_club",
         amountPaidCents: 8000,
       }),
+    );
+    expect(mocks.membershipSelect).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "bread_club_plans!bread_club_memberships_plan_id_fkey(name)",
+      ),
     );
     expect(mocks.markInvoiceDeliveryCreditsApplied).toHaveBeenCalled();
     expect(mocks.sendBreadClubWelcome).toHaveBeenCalledWith(

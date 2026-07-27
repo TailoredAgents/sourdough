@@ -158,7 +158,7 @@ async function membershipNotificationData(
       supabase
         .from("bread_club_memberships")
         .select(
-          "id, customers(name, email), bread_club_plans(name), first_delivery_at",
+          "id, customers(name, email), bread_club_plans!bread_club_memberships_plan_id_fkey(name), first_delivery_at",
         )
         .eq("id", membershipId)
         .maybeSingle(),
