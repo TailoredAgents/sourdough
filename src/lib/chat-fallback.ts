@@ -21,8 +21,24 @@ function findPostalCode(message: string) {
 
 export function shouldUseDeterministicChatAnswer(message: string) {
   const lower = message.toLowerCase();
+  const asksMenuInventory =
+    lower.trim() === "menu" ||
+    lower.includes("current menu") ||
+    lower.includes("show me the menu") ||
+    lower.includes("what is on the menu") ||
+    lower.includes("what's on the menu") ||
+    lower.includes("what is available") ||
+    lower.includes("what's available") ||
+    lower.includes("products are available") ||
+    lower.includes("items are available") ||
+    lower.includes("loaves are available") ||
+    lower.includes("how many") ||
+    lower.includes("left") ||
+    lower.includes("sold out");
+
   return Boolean(
     findPostalCode(message) ||
+      asksMenuInventory ||
       lower.includes("medical") ||
       lower.includes("doctor") ||
       lower.includes("safe for") ||
@@ -42,10 +58,6 @@ export function shouldUseDeterministicChatAnswer(message: string) {
       lower.includes("late") ||
       lower.includes("deliver") ||
       lower.includes("zip") ||
-      lower.includes("menu") ||
-      lower.includes("available") ||
-      lower.includes("left") ||
-      lower.includes("sold out") ||
       lower.includes("custom") ||
       lower.includes("special order"),
   );

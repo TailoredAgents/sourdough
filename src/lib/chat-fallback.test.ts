@@ -98,7 +98,7 @@ describe("dynamic chat fallback", () => {
 
     expect(
       shouldUseDeterministicChatAnswer(
-        "Which loaf would be best with tomato soup?",
+        "Which available loaf would be best with tomato soup?",
       ),
     ).toBe(false);
   });
