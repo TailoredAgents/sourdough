@@ -24,6 +24,9 @@ const mocks = vi.hoisted(() => ({
   expireBreadClubAddonCheckout: vi.fn(),
   retrieveSubscription: vi.fn(),
   membershipSelect: vi.fn(),
+  notificationJobInsert: vi.fn(),
+  notificationJobSelect: vi.fn(),
+  notificationJobReclaim: vi.fn(),
 }));
 
 vi.mock("@/lib/supabase", () => ({
@@ -195,6 +198,15 @@ beforeEach(() => {
   });
   mocks.activateBreadClubCycleForInvoice.mockResolvedValue(undefined);
   mocks.markInvoiceDeliveryCreditsApplied.mockResolvedValue(undefined);
+  mocks.notificationJobInsert.mockResolvedValue({ error: null });
+  mocks.notificationJobSelect.mockResolvedValue({
+    data: { status: "completed", attempt_count: 1 },
+    error: null,
+  });
+  mocks.notificationJobReclaim.mockResolvedValue({
+    data: null,
+    error: null,
+  });
   mocks.from.mockImplementation((table: string) => {
     if (table === "processed_stripe_events") {
       return {
@@ -231,6 +243,23 @@ beforeEach(() => {
         },
       };
     }
+    if (table === "bread_club_job_events") {
+      const updateChain = {
+        eq: () => updateChain,
+        select: () => ({
+          maybeSingle: mocks.notificationJobReclaim,
+        }),
+      };
+      return {
+        insert: mocks.notificationJobInsert,
+        select: () => ({
+          eq: () => ({
+            maybeSingle: mocks.notificationJobSelect,
+          }),
+        }),
+        update: () => updateChain,
+      };
+    }
     if (table === "bread_club_cycles") {
       return {
         select: () => ({
@@ -249,6 +278,7 @@ beforeEach(() => {
           eq: () => ({
             order: async () => ({
               data: Array.from({ length: 4 }, (_, index) => ({
+                order_id: `order-${index + 1}`,
                 delivery_windows: {
                   label: `Sunday delivery ${index + 1}`,
                   starts_at: "2026-08-02T19:00:00.000Z",
@@ -288,6 +318,13 @@ describe("Bread Club Stripe webhook integration", () => {
         "bread_club_plans!bread_club_memberships_plan_id_fkey(name)",
       ),
     );
+    expect(mocks.notificationJobInsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        job_key: `paid-cycle-notification:${cycleId}`,
+        job_type: "paid_cycle_notification",
+        membership_id: membershipId,
+      }),
+    );
     expect(mocks.markInvoiceDeliveryCreditsApplied).toHaveBeenCalled();
     expect(mocks.sendBreadClubWelcome).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -313,6 +350,7 @@ describe("Bread Club Stripe webhook integration", () => {
         type: "order",
         customerName: "Bread Club Customer",
         orderSummary: "Variety Club, four Sunday deliveries",
+        orderId: "order-1",
       }),
     );
   });
@@ -326,6 +364,25 @@ describe("Bread Club Stripe webhook integration", () => {
     expect(mocks.activateBreadClubCycleForInvoice).not.toHaveBeenCalled();
     expect(mocks.sendBreadClubWelcome).not.toHaveBeenCalled();
     expect(mocks.sendBreadClubOwnerAlert).not.toHaveBeenCalled();
+  });
+
+  it("sends paid-cycle communication once when different Stripe events race", async () => {
+    mocks.notificationJobInsert
+      .mockResolvedValueOnce({ error: null })
+      .mockResolvedValueOnce({
+        error: { code: "23505", message: "duplicate job key" },
+      });
+
+    await handleBreadClubStripeEvent(
+      invoicePaidEvent("evt_paid_notification_first"),
+    );
+    await handleBreadClubStripeEvent(
+      invoicePaidEvent("evt_paid_notification_race"),
+    );
+
+    expect(mocks.sendBreadClubWelcome).toHaveBeenCalledTimes(1);
+    expect(mocks.sendBreadClubOwnerAlert).toHaveBeenCalledTimes(1);
+    expect(mocks.sendOwnerAlert).toHaveBeenCalledTimes(1);
   });
 
   it("handles invoice payment before Checkout completion without a second activation", async () => {

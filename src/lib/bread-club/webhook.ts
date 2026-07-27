@@ -169,7 +169,7 @@ async function membershipNotificationData(
         .maybeSingle(),
       supabase
         .from("bread_club_fulfillments")
-        .select("delivery_windows(label, starts_at)")
+        .select("order_id, delivery_windows(label, starts_at)")
         .eq("cycle_id", cycleId)
         .order("created_at", { ascending: true }),
     ]);
@@ -197,85 +197,171 @@ async function membershipNotificationData(
     planName: String(plan?.name || "Sunday Bread Club"),
     cycleNumber: Number(cycleResult.data?.cycle_number || 1),
     totalCents: Number(cycleResult.data?.total_cents || 0),
+    firstOrderId: String(fulfillmentResult.data?.[0]?.order_id || ""),
     sundayLabels,
   };
+}
+
+async function claimPaidCycleNotification(
+  membershipId: string,
+  cycleId: string,
+) {
+  const supabase = getSupabaseAdminClient();
+  if (!supabase) throw new Error("Supabase admin client is not configured.");
+  const jobKey = `paid-cycle-notification:${cycleId}`;
+  const now = new Date().toISOString();
+  const { error: insertError } = await supabase
+    .from("bread_club_job_events")
+    .insert({
+      job_key: jobKey,
+      job_type: "paid_cycle_notification",
+      membership_id: membershipId,
+      status: "processing",
+      payload: { cycle_id: cycleId },
+      started_at: now,
+      updated_at: now,
+    });
+  if (!insertError) return { claimed: true, jobKey };
+  if (insertError.code !== "23505") throw new Error(insertError.message);
+
+  const { data: existing, error: lookupError } = await supabase
+    .from("bread_club_job_events")
+    .select("status, attempt_count")
+    .eq("job_key", jobKey)
+    .maybeSingle();
+  if (lookupError) throw new Error(lookupError.message);
+  if (!existing || existing.status !== "failed") {
+    return { claimed: false, jobKey };
+  }
+
+  const { data: reclaimed, error: reclaimError } = await supabase
+    .from("bread_club_job_events")
+    .update({
+      status: "processing",
+      attempt_count: Number(existing.attempt_count) + 1,
+      last_error: null,
+      started_at: now,
+      updated_at: now,
+    })
+    .eq("job_key", jobKey)
+    .eq("status", "failed")
+    .select("job_key")
+    .maybeSingle();
+  if (reclaimError) throw new Error(reclaimError.message);
+  return { claimed: Boolean(reclaimed), jobKey };
+}
+
+async function finishPaidCycleNotification(
+  jobKey: string,
+  status: "completed" | "failed",
+  error?: unknown,
+) {
+  const supabase = getSupabaseAdminClient();
+  if (!supabase) return;
+  const now = new Date().toISOString();
+  const { error: updateError } = await supabase
+    .from("bread_club_job_events")
+    .update({
+      status,
+      completed_at: status === "completed" ? now : null,
+      last_error:
+        status === "failed"
+          ? error instanceof Error
+            ? error.message
+            : String(error || "Paid-cycle notification failed.")
+          : null,
+      updated_at: now,
+    })
+    .eq("job_key", jobKey);
+  if (updateError) throw new Error(updateError.message);
 }
 
 async function notifyPaidCycle(
   membershipId: string,
   cycleId: string,
 ) {
-  const notification = await membershipNotificationData(
-    membershipId,
-    cycleId,
-  );
-  if (!notification.customerEmail) return;
-  const manageUrl = `${getSiteUrl()}/bread-club/manage`;
-
-  if (notification.cycleNumber === 1) {
-    const sends: Promise<unknown>[] = [
-      sendBreadClubWelcome({
-        to: notification.customerEmail,
-        customerName: notification.customerName,
-        membershipId,
-        planName: notification.planName,
-        recurringTotalCents: notification.totalCents,
-        sundayLabels: notification.sundayLabels,
-        manageUrl,
-      }),
-      sendOwnerAlert({
-        type: "order",
-        customerName: notification.customerName,
-        orderSummary: `${notification.planName}, four Sunday deliveries`,
-        notes: `Paid Bread Club membership. First delivery: ${
-          notification.sundayLabels[0] || "Next Sunday"
-        }.`,
-      }),
-    ];
-
-    if (process.env.BAKERY_EMAIL) {
-      sends.push(
-        sendBreadClubOwnerAlert({
-          to: process.env.BAKERY_EMAIL,
-          membershipId,
-          customerName: notification.customerName,
-          planName: notification.planName,
-          amountCents: notification.totalCents,
-          firstDeliveryLabel:
-            notification.sundayLabels[0] || "Next Sunday",
-        }),
-      );
-    }
-
-    const results = await Promise.allSettled(sends);
-    results.forEach((result) => {
-      if (result.status === "rejected") {
-        console.error("[bread-club] paid-cycle email failed", {
-          membershipId,
-          cycleId,
-          error: result.reason,
-        });
-      }
-    });
-    return;
-  }
+  const claim = await claimPaidCycleNotification(membershipId, cycleId);
+  if (!claim.claimed) return;
 
   try {
-      await sendBreadClubRenewal({
-        to: notification.customerEmail,
-        customerName: notification.customerName,
+    const notification = await membershipNotificationData(
+      membershipId,
+      cycleId,
+    );
+    if (!notification.customerEmail) {
+      await finishPaidCycleNotification(claim.jobKey, "completed");
+      return;
+    }
+    const manageUrl = `${getSiteUrl()}/bread-club/manage`;
+
+    if (notification.cycleNumber === 1) {
+      const sends: Promise<unknown>[] = [
+        sendBreadClubWelcome({
+          to: notification.customerEmail,
+          customerName: notification.customerName,
+          membershipId,
+          planName: notification.planName,
+          recurringTotalCents: notification.totalCents,
+          sundayLabels: notification.sundayLabels,
+          manageUrl,
+        }),
+        sendOwnerAlert({
+          type: "order",
+          customerName: notification.customerName,
+          orderSummary: `${notification.planName}, four Sunday deliveries`,
+          notes: `Paid Bread Club membership. First delivery: ${
+            notification.sundayLabels[0] || "Next Sunday"
+          }.`,
+          orderId: notification.firstOrderId || undefined,
+        }),
+      ];
+
+      if (process.env.BAKERY_EMAIL) {
+        sends.push(
+          sendBreadClubOwnerAlert({
+            to: process.env.BAKERY_EMAIL,
+            membershipId,
+            customerName: notification.customerName,
+            planName: notification.planName,
+            amountCents: notification.totalCents,
+            firstDeliveryLabel:
+              notification.sundayLabels[0] || "Next Sunday",
+          }),
+        );
+      }
+
+      const results = await Promise.allSettled(sends);
+      results.forEach((result) => {
+        if (result.status === "rejected") {
+          console.error("[bread-club] paid-cycle email failed", {
+            membershipId,
+            cycleId,
+            error: result.reason,
+          });
+        }
+      });
+      await finishPaidCycleNotification(claim.jobKey, "completed");
+      return;
+    }
+
+    await sendBreadClubRenewal({
+      to: notification.customerEmail,
+      customerName: notification.customerName,
         membershipId,
         planName: notification.planName,
         amountCents: notification.totalCents,
-        sundayLabels: notification.sundayLabels,
-        manageUrl,
-      });
+      sundayLabels: notification.sundayLabels,
+      manageUrl,
+    });
+    await finishPaidCycleNotification(claim.jobKey, "completed");
   } catch (error) {
+    await finishPaidCycleNotification(claim.jobKey, "failed", error);
     console.error("[bread-club] paid-cycle email failed", {
       membershipId,
       cycleId,
       error,
     });
+    throw error;
   }
 }
 
