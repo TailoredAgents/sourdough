@@ -55,4 +55,28 @@ describe("dynamic chat fallback", () => {
       }),
     ).toContain("Order by");
   });
+
+  it("answers cutoff questions before generic delivery-area questions", () => {
+    expect(
+      buildChatFallbackAnswer(
+        "What is the Sunday delivery schedule and order cutoff?",
+        {
+          weeklyMenu: {
+            orderCutoffAt: "2099-07-31T04:00:00.000Z",
+          },
+        },
+      ),
+    ).toBe("Order by Thursday at 11:59 PM for Sunday 3:00-6:00 PM delivery.");
+  });
+
+  it("distinguishes delivery timing from delivery area", () => {
+    expect(buildChatFallbackAnswer("When do you deliver?")).toBe(
+      "Sunday delivery is from 3:00 PM to 6:00 PM. Order by Thursday at 11:59 PM for normal checkout.",
+    );
+    expect(
+      buildChatFallbackAnswer("Where do you deliver?", {
+        deliverySettings,
+      }),
+    ).toContain("30114, 30115");
+  });
 });

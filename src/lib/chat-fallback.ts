@@ -68,7 +68,27 @@ export function buildChatFallbackAnswer(
     return "Luna & Lorelai's Sourdough offers local Georgia delivery around Canton and Woodstock only. Shipping and out-of-state orders are not available.";
   }
 
-  if (lower.includes("deliver") || lower.includes("zip") || postalCode) {
+  if (lower.includes("cutoff") || lower.includes("deadline") || lower.includes("late")) {
+    return getCutoffMessage(context.weeklyMenu?.orderCutoffAt);
+  }
+
+  if (
+    lower.includes("delivery time") ||
+    lower.includes("delivery day") ||
+    lower.includes("delivery schedule") ||
+    lower.includes("when is delivery") ||
+    lower.includes("when do you deliver")
+  ) {
+    return "Sunday delivery is from 3:00 PM to 6:00 PM. Order by Thursday at 11:59 PM for normal checkout.";
+  }
+
+  if (
+    lower.includes("zip") ||
+    postalCode ||
+    lower.includes("delivery area") ||
+    lower.includes("where do you deliver") ||
+    lower.includes("deliver to")
+  ) {
     const allowedZips = context.deliverySettings?.allowedPostalCodes ?? [];
     if (postalCode) {
       return allowedZips.includes(postalCode)
@@ -79,8 +99,8 @@ export function buildChatFallbackAnswer(
     return `Local delivery is available around Canton and Woodstock in these ZIP codes: ${listAllowedZips(context.deliverySettings)}. Shipping and out-of-state orders are not available.`;
   }
 
-  if (lower.includes("cutoff") || lower.includes("deadline") || lower.includes("late")) {
-    return getCutoffMessage(context.weeklyMenu?.orderCutoffAt);
+  if (lower.includes("deliver")) {
+    return `Sunday delivery is from 3:00 PM to 6:00 PM around Canton and Woodstock. Eligible ZIP codes are ${listAllowedZips(context.deliverySettings)}.`;
   }
 
   if (
