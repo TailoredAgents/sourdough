@@ -35,6 +35,7 @@ describe("chat fallback guardrails", () => {
   it("instructs the model to answer directly and briefly", () => {
     expect(chatAssistantInstructions).toContain("one or two short sentences");
     expect(chatAssistantInstructions).toContain("no more than 45 words");
+    expect(chatAssistantInstructions).toContain("complete sentences");
     expect(chatAssistantInstructions).toContain("Do not greet");
   });
 
@@ -46,6 +47,12 @@ describe("chat fallback guardrails", () => {
       ),
     ).toBe(
       "Yes, we deliver there. The exact fee is checked from your full address.",
+    );
+  });
+
+  it("adds terminal punctuation to an otherwise complete short response", () => {
+    expect(compactChatAnswer("Sunday delivery is 3:00-6:00 PM", "Fallback")).toBe(
+      "Sunday delivery is 3:00-6:00 PM.",
     );
   });
 

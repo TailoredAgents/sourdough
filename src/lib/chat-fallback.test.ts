@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { buildChatFallbackAnswer } from "./chat-fallback";
+import {
+  buildChatFallbackAnswer,
+  shouldUseDeterministicChatAnswer,
+} from "./chat-fallback";
 import type { DeliverySettings } from "./delivery";
 import type { MenuProduct } from "./types";
 
@@ -78,5 +81,25 @@ describe("dynamic chat fallback", () => {
         deliverySettings,
       }),
     ).toContain("30114, 30115");
+  });
+
+  it("keeps operational and safety questions on exact local answers", () => {
+    for (const question of [
+      "When do you deliver?",
+      "What is the cutoff?",
+      "Do you deliver to 30114?",
+      "What is available?",
+      "Can you ship this?",
+      "Is this gluten-free?",
+      "Can I place a custom order?",
+    ]) {
+      expect(shouldUseDeterministicChatAnswer(question)).toBe(true);
+    }
+
+    expect(
+      shouldUseDeterministicChatAnswer(
+        "Which loaf would be best with tomato soup?",
+      ),
+    ).toBe(false);
   });
 });

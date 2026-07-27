@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { buildChatFallbackAnswer } from "@/lib/chat-fallback";
+import {
+  buildChatFallbackAnswer,
+  shouldUseDeterministicChatAnswer,
+} from "@/lib/chat-fallback";
 import { createCustomerQuestionMessage } from "@/lib/customer-messages";
 import { getCutoffMessage } from "@/lib/cutoff";
 import { getMenuProductAvailabilityLabel } from "@/lib/menu-availability";
@@ -23,6 +26,7 @@ export const chatAssistantInstructions = [
   "Do not invent ingredients, inventory, legal claims, medical advice, or allergen-free guarantees.",
   "If the answer is not supported, say the bakery should confirm directly.",
   "Answer in one or two short sentences using no more than 45 words.",
+  "Use complete sentences and include exact requested times, dates, prices, or quantities when they are provided.",
   "Start with the direct answer. Do not greet, repeat the question, add a conclusion, or include unrelated details.",
 ].join(" ");
 
@@ -50,7 +54,9 @@ export function compactChatAnswer(answer: string, fallback: string) {
 
   const concise = selected.join(" ").trim() || normalized;
   const words = concise.split(/\s+/).filter(Boolean);
-  if (words.length <= 45) return concise;
+  if (words.length <= 45) {
+    return /[.!?]$/.test(concise) ? concise : `${concise}.`;
+  }
 
   return `${words.slice(0, 45).join(" ").replace(/[,:;]$/, "")}...`;
 }
@@ -116,6 +122,12 @@ export async function POST(request: Request) {
       weeklyMenu,
       deliverySettings,
     });
+    if (shouldUseDeterministicChatAnswer(parsed.data.message)) {
+      const answer = compactChatAnswer(fallback, fallback);
+      await saveCustomerQuestion(parsed.data.message, answer);
+      return NextResponse.json({ answer });
+    }
+
     const openai = getOpenAI();
     if (!openai) {
       const answer = compactChatAnswer(fallback, fallback);
@@ -135,12 +147,14 @@ export async function POST(request: Request) {
     const response = await openai.responses.create({
       model: aiModel,
       instructions: chatAssistantInstructions,
-      max_output_tokens: 220,
       text: { verbosity: "low" },
       input: `Approved bakery facts:\n${aiKnowledge.join("\n")}\n\nCurrent cutoff:\n${cutoffContext}\n\nDelivery:\n${deliveryContext}\n\nCurrent menu:\n${menuContext}\n\nCustomer question:\n${parsed.data.message}`,
     });
 
-    const answer = compactChatAnswer(response.output_text, fallback);
+    const answer = compactChatAnswer(
+      response.status === "incomplete" ? fallback : response.output_text,
+      fallback,
+    );
     await saveCustomerQuestion(parsed.data.message, answer);
 
     return NextResponse.json({ answer });

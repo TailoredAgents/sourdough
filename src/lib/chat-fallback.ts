@@ -19,6 +19,38 @@ function findPostalCode(message: string) {
   return message.match(/\b\d{5}\b/)?.[0] ?? null;
 }
 
+export function shouldUseDeterministicChatAnswer(message: string) {
+  const lower = message.toLowerCase();
+  return Boolean(
+    findPostalCode(message) ||
+      lower.includes("medical") ||
+      lower.includes("doctor") ||
+      lower.includes("safe for") ||
+      lower.includes("celiac") ||
+      lower.includes("diabetes") ||
+      lower.includes("legal") ||
+      lower.includes("law") ||
+      lower.includes("license") ||
+      lower.includes("allergen-free") ||
+      lower.includes("gluten-free") ||
+      lower.includes("nut-free") ||
+      lower.includes("allergy") ||
+      lower.includes("shipping") ||
+      lower.includes("ship") ||
+      lower.includes("cutoff") ||
+      lower.includes("deadline") ||
+      lower.includes("late") ||
+      lower.includes("deliver") ||
+      lower.includes("zip") ||
+      lower.includes("menu") ||
+      lower.includes("available") ||
+      lower.includes("left") ||
+      lower.includes("sold out") ||
+      lower.includes("custom") ||
+      lower.includes("special order"),
+  );
+}
+
 function menuSummary(menu: MenuProduct[]) {
   const availableItems = menu.filter((item) => canOrderMenuProduct(item));
   if (!availableItems.length) {
