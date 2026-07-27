@@ -5,6 +5,10 @@ const migration = readFileSync(
   "supabase/migrations/20260726090000_bread_club.sql",
   "utf8",
 );
+const pgcryptoMigration = readFileSync(
+  "supabase/migrations/20260727020000_bread_club_pgcrypto_search_path.sql",
+  "utf8",
+);
 const schema = readFileSync("supabase/schema.sql", "utf8");
 
 describe("Bread Club transactional migration contract", () => {
@@ -38,6 +42,17 @@ describe("Bread Club transactional migration contract", () => {
     );
     expect(reservation).not.toContain(
       "reserve_bread_club_cycle.product_id",
+    );
+  });
+
+  it("resolves pgcrypto from Supabase's extensions schema", () => {
+    expect(migration).toContain("extensions.gen_random_bytes(24)");
+    expect(schema).toContain("extensions.gen_random_bytes(24)");
+    expect(pgcryptoMigration).toContain(
+      "set search_path = public, extensions",
+    );
+    expect(pgcryptoMigration).toContain(
+      "to_regprocedure('extensions.gen_random_bytes(integer)')",
     );
   });
 

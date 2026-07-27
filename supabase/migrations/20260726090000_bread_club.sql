@@ -695,7 +695,7 @@ begin
         membership_row.delivery_check
       ),
       'standard',
-      encode(gen_random_bytes(24), 'hex'),
+      encode(extensions.gen_random_bytes(24), 'hex'),
       'bread_club',
       membership_row.id,
       v_fulfillment_id
