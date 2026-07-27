@@ -233,7 +233,7 @@ const failures = [];
 const warnings = [];
 
 requireExactValue("NODE_ENV", "production");
-requireSiteUrl("NEXT_PUBLIC_SITE_URL", "landlsourdough.com");
+requireSiteUrl("NEXT_PUBLIC_SITE_URL", "www.landlsourdough.com");
 requireUrl("NEXT_PUBLIC_SUPABASE_URL");
 requireValue("NEXT_PUBLIC_SUPABASE_ANON_KEY");
 requireValue("SUPABASE_SERVICE_ROLE_KEY");
