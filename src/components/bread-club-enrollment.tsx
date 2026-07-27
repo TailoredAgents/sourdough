@@ -9,6 +9,8 @@ import {
   Minus,
   Plus,
   ShieldCheck,
+  Truck,
+  UserRound,
 } from "lucide-react";
 import { useMemo, useState, useTransition, type FormEvent } from "react";
 import type {
@@ -265,7 +267,11 @@ export function BreadClubEnrollment({
   }
 
   return (
-    <form onSubmit={beginCheckout} className="space-y-12">
+    <form
+      id="bread-club-enrollment"
+      onSubmit={beginCheckout}
+      className="scroll-mt-28 space-y-12"
+    >
       {previewEmail ? (
         <div
           className="border border-[#23443b]/25 bg-[#edf4f0] p-4 text-sm leading-6 text-[#18352e]"
@@ -487,194 +493,245 @@ export function BreadClubEnrollment({
         </div>
       </section>
 
-      <section aria-labelledby="delivery-heading">
-        <p className="text-sm font-bold uppercase text-[#a94334]">
-          4. Confirm customer and delivery details
-        </p>
-        <h2 id="delivery-heading" className="mt-2 text-2xl font-bold text-stone-950">
-          Check the address before payment
-        </h2>
-        <div className="mt-6 grid gap-5 lg:grid-cols-2">
-          <div className="space-y-4">
-            <label className="block text-sm font-bold text-stone-800">
-              Full name
-              <input
-                name="bread-club-name"
-                autoComplete="name"
-                required
-                value={customer.name}
-                onChange={(event) =>
-                  setCustomer((current) => ({
-                    ...current,
-                    name: event.target.value,
-                  }))
-                }
-                className="mt-2 h-11 w-full border border-stone-300 px-3 font-normal"
-              />
-            </label>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <label className="block text-sm font-bold text-stone-800">
-                Email
-                <input
-                  name="bread-club-email"
-                  type="email"
-                  autoComplete={previewEmail ? "off" : "email"}
-                  required
-                  value={customer.email}
-                  readOnly={Boolean(previewEmail)}
-                  aria-describedby={
-                    previewEmail ? "bread-club-preview-email-note" : undefined
-                  }
-                  onChange={(event) =>
-                    setCustomer((current) => ({
-                      ...current,
-                      email: event.target.value,
-                    }))
-                  }
-                  className="mt-2 h-11 w-full min-w-0 border border-stone-300 px-3 font-normal read-only:bg-stone-100 read-only:text-stone-600"
-                />
-                {previewEmail ? (
-                  <span
-                    id="bread-club-preview-email-note"
-                    className="mt-1 block text-xs font-normal leading-5 text-stone-600"
-                  >
-                    Locked to the signed-in owner for this checkout test.
-                  </span>
-                ) : null}
-              </label>
-              <label className="block text-sm font-bold text-stone-800">
-                Phone
-                <input
-                  name="bread-club-phone"
-                  type="tel"
-                  autoComplete="tel"
-                  required
-                  value={customer.phone}
-                  onChange={(event) =>
-                    setCustomer((current) => ({
-                      ...current,
-                      phone: event.target.value,
-                    }))
-                  }
-                  className="mt-2 h-11 w-full min-w-0 border border-stone-300 px-3 font-normal"
-                />
-              </label>
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            <label className="block text-sm font-bold text-stone-800">
-              Street address
-              <input
-                name="bread-club-address-line1"
-                autoComplete="address-line1"
-                required
-                value={address.line1}
-                onChange={(event) =>
-                  updateAddress("line1", event.target.value)
-                }
-                className="mt-2 h-11 w-full border border-stone-300 px-3 font-normal"
-              />
-            </label>
-            <label className="block text-sm font-bold text-stone-800">
-              Apartment or unit
-              <input
-                name="bread-club-address-line2"
-                autoComplete="address-line2"
-                value={address.line2}
-                onChange={(event) =>
-                  updateAddress("line2", event.target.value)
-                }
-                className="mt-2 h-11 w-full border border-stone-300 px-3 font-normal"
-              />
-            </label>
-            <div className="grid grid-cols-[1fr_76px_100px] gap-3">
-              <label className="min-w-0 text-sm font-bold text-stone-800">
-                City
-                <input
-                  name="bread-club-city"
-                  autoComplete="address-level2"
-                  required
-                  value={address.city}
-                  onChange={(event) =>
-                    updateAddress("city", event.target.value)
-                  }
-                  className="mt-2 h-11 w-full min-w-0 border border-stone-300 px-3 font-normal"
-                />
-              </label>
-              <label className="min-w-0 text-sm font-bold text-stone-800">
-                State
-                <input
-                  name="bread-club-state"
-                  autoComplete="address-level1"
-                  required
-                  value={address.state}
-                  onChange={(event) =>
-                    updateAddress("state", event.target.value)
-                  }
-                  className="mt-2 h-11 w-full min-w-0 border border-stone-300 px-3 font-normal"
-                />
-              </label>
-              <label className="min-w-0 text-sm font-bold text-stone-800">
-                ZIP
-                <input
-                  name="bread-club-postal-code"
-                  autoComplete="postal-code"
-                  inputMode="numeric"
-                  required
-                  value={address.postalCode}
-                  onChange={(event) =>
-                    updateAddress("postalCode", event.target.value)
-                  }
-                  className="mt-2 h-11 w-full min-w-0 border border-stone-300 px-3 font-normal"
-                />
-              </label>
-            </div>
-            <label className="block text-sm font-bold text-stone-800">
-              Delivery notes
-              <textarea
-                name="bread-club-delivery-instructions"
-                value={deliveryInstructions}
-                onChange={(event) =>
-                  setDeliveryInstructions(event.target.value)
-                }
-                rows={3}
-                className="mt-2 w-full border border-stone-300 p-3 font-normal"
-                placeholder="Gate, porch, or drop-off details"
-              />
-            </label>
-            <Button
-              type="button"
-              onClick={checkDelivery}
-              disabled={
-                isChecking ||
-                !address.line1 ||
-                !address.city ||
-                address.postalCode.length !== 5
-              }
-            >
-              {isChecking ? (
-                <Loader2 className="animate-spin" size={17} />
-              ) : (
-                <MapPin size={17} />
-              )}
-              {isChecking ? "Checking drive time..." : "Check delivery and total"}
-            </Button>
-          </div>
-        </div>
-
-        {deliveryResult?.eligible && deliveryPrice ? (
-          <div
-            className="mt-5 flex gap-3 border border-emerald-200 bg-emerald-50 p-4 text-sm leading-6 text-emerald-950"
-            role="status"
-          >
-            <CheckCircle2 className="mt-0.5 shrink-0" size={19} />
-            <p>
-              {deliveryResult.message} Four-week delivery total:{" "}
-              <strong>{formatCurrency(deliveryPrice.priceCents)}</strong>.
+      <section
+        aria-labelledby="delivery-heading"
+        className="overflow-hidden border-2 border-[#23443b] bg-white shadow-[0_12px_30px_rgba(35,68,59,0.12)]"
+      >
+        <div className="flex flex-col justify-between gap-4 bg-[#23443b] px-5 py-5 text-white sm:flex-row sm:items-end sm:px-7 sm:py-6">
+          <div>
+            <p className="text-sm font-bold uppercase text-[#f5c28b]">
+              4. Join Bread Club
+            </p>
+            <h2 id="delivery-heading" className="mt-2 text-3xl font-bold">
+              Enter your information
+            </h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-stone-100">
+              Your contact details create the membership account. Your full
+              address confirms delivery availability and the exact recurring
+              total.
             </p>
           </div>
-        ) : null}
+          <span className="inline-flex shrink-0 items-center gap-2 self-start border border-white/30 bg-white/10 px-3 py-2 text-sm font-bold sm:self-auto">
+            <ShieldCheck size={17} />
+            Secure enrollment
+          </span>
+        </div>
+
+        <div className="p-5 sm:p-7">
+          <div className="grid gap-8 lg:grid-cols-2 lg:gap-0">
+            <div className="lg:pr-8">
+              <div className="flex items-center gap-3">
+                <span className="flex size-10 items-center justify-center bg-[#edf4f0] text-[#23443b]">
+                  <UserRound size={19} />
+                </span>
+                <div>
+                  <h3 className="font-bold text-stone-950">Contact details</h3>
+                  <p className="mt-1 text-sm text-stone-600">
+                    Used for receipts and secure membership access.
+                  </p>
+                </div>
+              </div>
+              <div className="mt-5 space-y-4">
+                <label className="block text-sm font-bold text-stone-800">
+                  Full name
+                  <input
+                    name="bread-club-name"
+                    autoComplete="name"
+                    required
+                    value={customer.name}
+                    onChange={(event) =>
+                      setCustomer((current) => ({
+                        ...current,
+                        name: event.target.value,
+                      }))
+                    }
+                    className="mt-2 h-12 w-full border border-stone-400 bg-[#fffdf8] px-3 font-normal outline-none transition focus:border-[#23443b] focus:ring-2 focus:ring-[#23443b]/20"
+                  />
+                </label>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="block text-sm font-bold text-stone-800">
+                    Email
+                    <input
+                      name="bread-club-email"
+                      type="email"
+                      autoComplete={previewEmail ? "off" : "email"}
+                      required
+                      value={customer.email}
+                      readOnly={Boolean(previewEmail)}
+                      aria-describedby={
+                        previewEmail
+                          ? "bread-club-preview-email-note"
+                          : undefined
+                      }
+                      onChange={(event) =>
+                        setCustomer((current) => ({
+                          ...current,
+                          email: event.target.value,
+                        }))
+                      }
+                      className="mt-2 h-12 w-full min-w-0 border border-stone-400 bg-[#fffdf8] px-3 font-normal outline-none transition focus:border-[#23443b] focus:ring-2 focus:ring-[#23443b]/20 read-only:bg-stone-100 read-only:text-stone-600"
+                    />
+                    {previewEmail ? (
+                      <span
+                        id="bread-club-preview-email-note"
+                        className="mt-1 block text-xs font-normal leading-5 text-stone-600"
+                      >
+                        Locked to the signed-in owner for this checkout test.
+                      </span>
+                    ) : null}
+                  </label>
+                  <label className="block text-sm font-bold text-stone-800">
+                    Phone
+                    <input
+                      name="bread-club-phone"
+                      type="tel"
+                      autoComplete="tel"
+                      required
+                      value={customer.phone}
+                      onChange={(event) =>
+                        setCustomer((current) => ({
+                          ...current,
+                          phone: event.target.value,
+                        }))
+                      }
+                      className="mt-2 h-12 w-full min-w-0 border border-stone-400 bg-[#fffdf8] px-3 font-normal outline-none transition focus:border-[#23443b] focus:ring-2 focus:ring-[#23443b]/20"
+                    />
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <div className="border-t border-stone-200 pt-8 lg:border-l lg:border-t-0 lg:pl-8 lg:pt-0">
+              <div className="flex items-center gap-3">
+                <span className="flex size-10 items-center justify-center bg-[#fff0e4] text-[#a94334]">
+                  <Truck size={19} />
+                </span>
+                <div>
+                  <h3 className="font-bold text-stone-950">Sunday delivery</h3>
+                  <p className="mt-1 text-sm text-stone-600">
+                    Confirm your address before continuing to payment.
+                  </p>
+                </div>
+              </div>
+              <div className="mt-5 space-y-4">
+                <label className="block text-sm font-bold text-stone-800">
+                  Street address
+                  <input
+                    name="bread-club-address-line1"
+                    autoComplete="address-line1"
+                    required
+                    value={address.line1}
+                    onChange={(event) =>
+                      updateAddress("line1", event.target.value)
+                    }
+                    className="mt-2 h-12 w-full border border-stone-400 bg-[#fffdf8] px-3 font-normal outline-none transition focus:border-[#23443b] focus:ring-2 focus:ring-[#23443b]/20"
+                  />
+                </label>
+                <label className="block text-sm font-bold text-stone-800">
+                  Apartment or unit
+                  <input
+                    name="bread-club-address-line2"
+                    autoComplete="address-line2"
+                    value={address.line2}
+                    onChange={(event) =>
+                      updateAddress("line2", event.target.value)
+                    }
+                    className="mt-2 h-12 w-full border border-stone-400 bg-[#fffdf8] px-3 font-normal outline-none transition focus:border-[#23443b] focus:ring-2 focus:ring-[#23443b]/20"
+                  />
+                </label>
+                <div className="grid grid-cols-[minmax(0,1fr)_70px_92px] gap-2 sm:grid-cols-[1fr_76px_100px] sm:gap-3">
+                  <label className="min-w-0 text-sm font-bold text-stone-800">
+                    City
+                    <input
+                      name="bread-club-city"
+                      autoComplete="address-level2"
+                      required
+                      value={address.city}
+                      onChange={(event) =>
+                        updateAddress("city", event.target.value)
+                      }
+                      className="mt-2 h-12 w-full min-w-0 border border-stone-400 bg-[#fffdf8] px-3 font-normal outline-none transition focus:border-[#23443b] focus:ring-2 focus:ring-[#23443b]/20"
+                    />
+                  </label>
+                  <label className="min-w-0 text-sm font-bold text-stone-800">
+                    State
+                    <input
+                      name="bread-club-state"
+                      autoComplete="address-level1"
+                      required
+                      value={address.state}
+                      onChange={(event) =>
+                        updateAddress("state", event.target.value)
+                      }
+                      className="mt-2 h-12 w-full min-w-0 border border-stone-400 bg-[#fffdf8] px-2 font-normal outline-none transition focus:border-[#23443b] focus:ring-2 focus:ring-[#23443b]/20"
+                    />
+                  </label>
+                  <label className="min-w-0 text-sm font-bold text-stone-800">
+                    ZIP
+                    <input
+                      name="bread-club-postal-code"
+                      autoComplete="postal-code"
+                      inputMode="numeric"
+                      required
+                      value={address.postalCode}
+                      onChange={(event) =>
+                        updateAddress("postalCode", event.target.value)
+                      }
+                      className="mt-2 h-12 w-full min-w-0 border border-stone-400 bg-[#fffdf8] px-2 font-normal outline-none transition focus:border-[#23443b] focus:ring-2 focus:ring-[#23443b]/20"
+                    />
+                  </label>
+                </div>
+                <label className="block text-sm font-bold text-stone-800">
+                  Delivery notes
+                  <textarea
+                    name="bread-club-delivery-instructions"
+                    value={deliveryInstructions}
+                    onChange={(event) =>
+                      setDeliveryInstructions(event.target.value)
+                    }
+                    rows={3}
+                    className="mt-2 w-full border border-stone-400 bg-[#fffdf8] p-3 font-normal outline-none transition focus:border-[#23443b] focus:ring-2 focus:ring-[#23443b]/20"
+                    placeholder="Gate, porch, or drop-off details"
+                  />
+                </label>
+                <Button
+                  type="button"
+                  size="lg"
+                  className="w-full"
+                  onClick={checkDelivery}
+                  disabled={
+                    isChecking ||
+                    !address.line1 ||
+                    !address.city ||
+                    address.postalCode.length !== 5
+                  }
+                >
+                  {isChecking ? (
+                    <Loader2 className="animate-spin" size={18} />
+                  ) : (
+                    <MapPin size={18} />
+                  )}
+                  {isChecking
+                    ? "Checking drive time..."
+                    : "Check delivery and show my total"}
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          {deliveryResult?.eligible && deliveryPrice ? (
+            <div
+              className="mt-6 flex gap-3 border border-emerald-300 bg-emerald-50 p-4 text-sm leading-6 text-emerald-950"
+              role="status"
+            >
+              <CheckCircle2 className="mt-0.5 shrink-0" size={19} />
+              <p>
+                {deliveryResult.message} Four-week delivery total:{" "}
+                <strong>{formatCurrency(deliveryPrice.priceCents)}</strong>.
+              </p>
+            </div>
+          ) : null}
+        </div>
       </section>
 
       <section aria-labelledby="total-heading" className="border-t border-stone-300 pt-10">

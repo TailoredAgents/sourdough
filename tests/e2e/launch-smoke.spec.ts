@@ -91,16 +91,16 @@ test("Bread Club stays customer-safe while public enrollment is disabled", async
   const disabledHeading = page.getByRole("heading", {
     name: "Enrollment opens after the final billing review",
   });
+  const enrollmentHeading = page.getByRole("heading", {
+    name: "Four Sundays, one simple renewal",
+  });
+  await expect(disabledHeading.or(enrollmentHeading)).toBeVisible();
   if (await disabledHeading.isVisible()) {
     await expect(
       page.getByRole("button", { name: /Continue to secure payment/i }),
     ).toHaveCount(0);
   } else {
-    await expect(
-      page.getByRole("heading", {
-        name: "Four Sundays, one simple renewal",
-      }),
-    ).toBeVisible();
+    await expect(enrollmentHeading).toBeVisible();
   }
   const mainText = await page.locator("#main-content").innerText();
   expect(mainText).not.toMatch(/\b(owner|internal|published|draft)\b/i);
@@ -153,6 +153,9 @@ test("Bread Club preview calculates the exact recurring total and consent", asyn
   await expect(page.getByRole("button", { name: /Family Club/i })).toBeVisible();
   await expect(page.getByText("Most flexible")).toBeVisible();
   await expect(
+    page.getByRole("link", { name: "Start my membership" }),
+  ).toBeVisible();
+  await expect(
     page.getByRole("heading", { name: "Your first four delivery dates" }),
   ).toBeVisible();
   await expect(page.getByText("Delivery 4")).toBeVisible();
@@ -166,6 +169,21 @@ test("Bread Club preview calculates the exact recurring total and consent", asyn
   await expect(choices.nth(1)).toBeChecked();
   await expect(choices.first()).not.toBeChecked();
 
+  const enrollmentDetails = page.locator(
+    'section[aria-labelledby="delivery-heading"]',
+  );
+  await expect(
+    enrollmentDetails.getByRole("heading", {
+      name: "Enter your information",
+    }),
+  ).toBeVisible();
+  await expect(
+    enrollmentDetails.getByRole("heading", { name: "Contact details" }),
+  ).toBeVisible();
+  await expect(
+    enrollmentDetails.getByRole("heading", { name: "Sunday delivery" }),
+  ).toBeVisible();
+
   await page.locator('input[name="bread-club-name"]').fill("Bread Club Customer");
   const previewEmail = page.locator('input[name="bread-club-email"]');
   await expect(previewEmail).toHaveValue("member@example.com");
@@ -175,7 +193,9 @@ test("Bread Club preview calculates the exact recurring total and consent", asyn
     .locator('input[name="bread-club-address-line1"]')
     .fill("123 Main Street");
   await page.locator('input[name="bread-club-postal-code"]').fill("30114");
-  await page.getByRole("button", { name: "Check delivery and total" }).click();
+  await page
+    .getByRole("button", { name: "Check delivery and show my total" })
+    .click();
   await expect(
     page.getByRole("button", { name: "Checking drive time..." }),
   ).toBeVisible();

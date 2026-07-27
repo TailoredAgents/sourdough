@@ -498,13 +498,15 @@ export async function getApprovedAiKnowledgeData(): Promise<string[]> {
   return entries.length ? entries : fallbackAiKnowledge;
 }
 
-export async function getOrderingWeeksData(): Promise<OrderingWeek[]> {
+export async function getOrderingWeeksData(
+  preparedMenuIds?: string[],
+): Promise<OrderingWeek[]> {
   const supabase = getSupabaseAdminClient();
   if (!supabase) {
     return canUseLocalFallback() ? getFallbackOrderingWeeks() : [];
   }
 
-  const menuIds = await ensureRollingWeeklyMenus();
+  const menuIds = preparedMenuIds ?? (await ensureRollingWeeklyMenus());
   if (!menuIds.length) {
     const weeklyMenu = await getActiveWeeklyMenuData();
     if (!weeklyMenu) return [];

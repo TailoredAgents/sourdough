@@ -336,10 +336,11 @@ export async function getBreadClubCatalogData() {
 export async function getBreadClubEnrollmentData(
   now = new Date(),
 ): Promise<BreadClubEnrollmentData> {
-  await ensureRollingWeeklyMenus(now);
+  const catalogPromise = getBreadClubCatalogData();
+  const menuIds = await ensureRollingWeeklyMenus(now);
   const [catalog, orderingWeeks] = await Promise.all([
-    getBreadClubCatalogData(),
-    getOrderingWeeksData(),
+    catalogPromise,
+    getOrderingWeeksData(menuIds),
   ]);
 
   return {
