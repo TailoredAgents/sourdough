@@ -1,8 +1,8 @@
 # Sunday Bread Club Launch Runbook
 
 Public enrollment must remain disabled until every item in the final gate is
-complete. The disabled deployment still supports owner allowlisted enrollment
-tests through `/bread-club?preview=1`.
+complete. The disabled deployment still supports owner enrollment tests through
+`/bread-club?preview=1` while signed in to the admin account.
 
 ## Production Controls
 
@@ -11,12 +11,12 @@ tests through `/bread-club?preview=1`.
 | `BREAD_CLUB_PUBLIC_ENABLED` | `false` |
 | `STRIPE_AUTOMATIC_TAX_ENABLED` | `false` until Georgia registration and the ship-from address are confirmed |
 | `BREAD_CLUB_TAX_STATUS` | `pending` until tax treatment is confirmed |
-| `BREAD_CLUB_TEST_EMAILS` | Monitored owner email used for the live smoke test |
+| `ADMIN_EMAILS` | Approved owner emails that can run the live smoke test |
 | `CRON_SECRET` | One strong shared value, entered identically on the Render web and cron services |
 
-The checkout API enforces these controls server-side. A visible preview does
-not bypass the checkout gate unless the submitted email is explicitly listed
-in `BREAD_CLUB_TEST_EMAILS`.
+The checkout API enforces these controls server-side. A preview checkout
+requires an authenticated admin session, and checkout is locked to that
+signed-in email.
 
 ## Deployment Order
 
@@ -39,7 +39,7 @@ in `BREAD_CLUB_TEST_EMAILS`.
 
 ## Owner Smoke Test
 
-Use only an email in `BREAD_CLUB_TEST_EMAILS`.
+Sign in to `/admin` with an approved owner email.
 
 1. Open `/bread-club?preview=1`, select a plan, verify the address, and confirm
    the exact four-week plan and delivery total.

@@ -33,16 +33,62 @@ export function getProductsAvailableForAllWeeks(
   weeks: BreadClubEnrollmentWeek[],
 ) {
   return plan.eligibleProducts.filter((product) =>
+    isBreadClubProductAvailableForAllWeeks(product.id, weeks),
+  );
+}
+
+export function isBreadClubProductAvailableForAllWeeks(
+  productId: string,
+  weeks: BreadClubEnrollmentWeek[],
+  quantity = 1,
+) {
+  return (
+    weeks.length > 0 &&
     weeks.every((week) => {
-      const menuProduct = week.menu.find((item) => item.id === product.id);
+      const menuProduct = week.menu.find((item) => item.id === productId);
       return Boolean(
         menuProduct &&
           menuProduct.active &&
           !menuProduct.unavailable &&
-          menuProduct.remainingQuantity >= plan.loavesPerWeek,
+          menuProduct.remainingQuantity >= quantity,
       );
-    }),
+    })
   );
+}
+
+export function getDefaultBreadClubSelection(
+  plan: BreadClubPlan,
+  weeks: BreadClubEnrollmentWeek[],
+): BreadClubSelection[] {
+  const availableProducts = getProductsAvailableForAllWeeks(plan, weeks).sort(
+    (left, right) =>
+      Number(right.guaranteed) - Number(left.guaranteed) ||
+      left.name.localeCompare(right.name),
+  );
+  const selection: BreadClubSelection[] = [];
+  let remaining = plan.loavesPerWeek;
+
+  for (const product of availableProducts) {
+    if (remaining === 0) break;
+
+    let reservable = remaining;
+    while (
+      reservable > 0 &&
+      !isBreadClubProductAvailableForAllWeeks(
+        product.id,
+        weeks,
+        reservable,
+      )
+    ) {
+      reservable -= 1;
+    }
+    if (reservable === 0) continue;
+
+    selection.push({ productId: product.id, quantity: reservable });
+    remaining -= reservable;
+  }
+
+  return remaining === 0 ? selection : [];
 }
 
 export function buildCycleFulfillmentInput(

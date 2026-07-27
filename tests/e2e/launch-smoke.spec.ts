@@ -135,6 +135,19 @@ test("Bread Club preview calculates the exact recurring total and consent", asyn
   });
   await page.goto("/bread-club?preview=1");
 
+  const ownerLoginHeading = page.getByRole("heading", {
+    name: "Sign in to run the owner checkout test",
+  });
+  if (await ownerLoginHeading.isVisible()) {
+    await expect(
+      page.getByRole("link", { name: "Sign in as owner" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: /Continue to secure payment/i }),
+    ).toHaveCount(0);
+    return;
+  }
+
   await expect(page.getByRole("button", { name: /Classic Club/i })).toBeVisible();
   await expect(page.getByRole("button", { name: /Variety Club/i })).toBeVisible();
   await expect(page.getByRole("button", { name: /Family Club/i })).toBeVisible();
@@ -143,11 +156,20 @@ test("Bread Club preview calculates the exact recurring total and consent", asyn
     page.getByRole("heading", { name: "Your first four delivery dates" }),
   ).toBeVisible();
   await expect(page.getByText("Delivery 4")).toBeVisible();
+  const loafSection = page.locator('section[aria-labelledby="loaf-heading"]');
+  await expect(loafSection.getByText("Not available all four weeks")).toHaveCount(
+    0,
+  );
+  const choices = loafSection.locator('input[type="radio"]');
+  await expect(choices.first()).toBeChecked();
+  await choices.nth(1).check();
+  await expect(choices.nth(1)).toBeChecked();
+  await expect(choices.first()).not.toBeChecked();
 
   await page.locator('input[name="bread-club-name"]').fill("Bread Club Customer");
-  await page
-    .locator('input[name="bread-club-email"]')
-    .fill("member@example.com");
+  const previewEmail = page.locator('input[name="bread-club-email"]');
+  await expect(previewEmail).toHaveValue("member@example.com");
+  await expect(previewEmail).toHaveAttribute("readonly", "");
   await page.locator('input[name="bread-club-phone"]').fill("4045550100");
   await page
     .locator('input[name="bread-club-address-line1"]')
@@ -191,6 +213,16 @@ test("Bread Club enrollment fits a narrow mobile viewport", async ({ page }) => 
       name: "Fresh bread already planned for Sunday",
     }),
   ).toBeVisible();
+  if (
+    await page
+      .getByRole("heading", { name: "Sign in to run the owner checkout test" })
+      .isVisible()
+  ) {
+    await expect(
+      page.getByRole("link", { name: "Sign in as owner" }),
+    ).toBeVisible();
+    return;
+  }
   await expect(page.getByRole("button", { name: /Variety Club/i })).toBeVisible();
   const horizontalOverflow = await page.evaluate(
     () =>

@@ -46,7 +46,6 @@ Do not commit real secret values.
 | `STRIPE_AUTOMATIC_TAX_ENABLED` | `false` until Georgia registration and the ship-from address are confirmed, then `true` for all checkouts |
 | `BREAD_CLUB_PUBLIC_ENABLED` | `false` until tax and owner smoke gates pass |
 | `BREAD_CLUB_TAX_STATUS` | `pending`, `registered`, or `exempt` |
-| `BREAD_CLUB_TEST_EMAILS` | Comma-separated owner emails allowed to run disabled-mode smoke enrollment |
 | `CRON_SECRET` | The same strong secret entered on both the web and cron services |
 | `DELIVERY_FEE_CENTS` | `600` |
 | `DELIVERY_ALLOWED_POSTAL_CODES` | `30114,30115,30107,30183` fallback when Supabase is unavailable |

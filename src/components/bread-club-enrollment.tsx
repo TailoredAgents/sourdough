@@ -22,6 +22,10 @@ import {
   findBreadClubDeliveryPrice,
   getBreadClubCycleTotalCents,
 } from "@/lib/bread-club/pricing";
+import {
+  getDefaultBreadClubSelection,
+  getProductsAvailableForAllWeeks,
+} from "@/lib/bread-club/schedule";
 import { formatCurrency } from "@/lib/utils";
 import { Button } from "./button";
 
@@ -42,41 +46,11 @@ type Address = {
   postalCode: string;
 };
 
-function productIdsAvailableForAllWeeks(
-  plan: BreadClubPlan,
-  data: BreadClubEnrollmentData,
-) {
-  return new Set(
-    plan.eligibleProducts
-      .filter((product) =>
-        data.weeks.every((week) => {
-          const menuItem = week.menu.find((item) => item.id === product.id);
-          return Boolean(
-            menuItem &&
-              menuItem.active &&
-              !menuItem.unavailable &&
-              menuItem.remainingQuantity >= 1,
-          );
-        }),
-      )
-      .map((product) => product.id),
-  );
-}
-
 function defaultSelection(
   plan: BreadClubPlan,
   data: BreadClubEnrollmentData,
 ): BreadClubSelection[] {
-  const availableIds = productIdsAvailableForAllWeeks(plan, data);
-  const guaranteed = plan.eligibleProducts.find(
-    (product) => product.guaranteed && availableIds.has(product.id),
-  );
-  const first =
-    guaranteed ||
-    plan.eligibleProducts.find((product) => availableIds.has(product.id));
-  return first
-    ? [{ productId: first.id, quantity: plan.loavesPerWeek }]
-    : [];
+  return getDefaultBreadClubSelection(plan, data.weeks);
 }
 
 function formatSundayDate(date: string) {
@@ -91,9 +65,11 @@ function formatSundayDate(date: string) {
 export function BreadClubEnrollment({
   data,
   automaticTaxEnabled,
+  previewEmail,
 }: {
   data: BreadClubEnrollmentData;
   automaticTaxEnabled: boolean;
+  previewEmail?: string | null;
 }) {
   const initialPlan = data.plans[1] || data.plans[0];
   const [planId, setPlanId] = useState(initialPlan?.id || "");
@@ -102,7 +78,7 @@ export function BreadClubEnrollment({
   );
   const [customer, setCustomer] = useState({
     name: "",
-    email: "",
+    email: previewEmail || "",
     phone: "",
   });
   const [address, setAddress] = useState<Address>({
@@ -122,9 +98,8 @@ export function BreadClubEnrollment({
 
   const plan =
     data.plans.find((item) => item.id === planId) || initialPlan;
-  const availableIds = useMemo(
-    () =>
-      plan ? productIdsAvailableForAllWeeks(plan, data) : new Set<string>(),
+  const availableProducts = useMemo(
+    () => (plan ? getProductsAvailableForAllWeeks(plan, data.weeks) : []),
     [data, plan],
   );
   const selectedQuantity = selection.reduce(
@@ -184,6 +159,12 @@ export function BreadClubEnrollment({
       }));
     });
     setConsented(false);
+  }
+
+  function chooseSingleProduct(productId: string) {
+    setSelection([{ productId, quantity: 1 }]);
+    setConsented(false);
+    setError(null);
   }
 
   function updateAddress(field: keyof Address, value: string) {
@@ -285,6 +266,16 @@ export function BreadClubEnrollment({
 
   return (
     <form onSubmit={beginCheckout} className="space-y-12">
+      {previewEmail ? (
+        <div
+          className="border border-[#23443b]/25 bg-[#edf4f0] p-4 text-sm leading-6 text-[#18352e]"
+          role="status"
+        >
+          Owner checkout test is active. Checkout and membership emails will
+          use <strong>{previewEmail}</strong>. Public enrollment remains closed.
+        </div>
+      ) : null}
+
       <section aria-labelledby="plan-heading">
         <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
           <div>
@@ -387,11 +378,10 @@ export function BreadClubEnrollment({
         </p>
 
         <div className="mt-6 divide-y divide-stone-200 border border-stone-200 bg-white">
-          {plan.eligibleProducts.map((product) => {
+          {availableProducts.map((product) => {
             const quantity =
               selection.find((item) => item.productId === product.id)
                 ?.quantity || 0;
-            const available = availableIds.has(product.id);
             return (
               <div
                 key={product.id}
@@ -405,49 +395,69 @@ export function BreadClubEnrollment({
                         Guaranteed
                       </span>
                     ) : null}
-                    {!available ? (
-                      <span className="rounded-sm bg-stone-200 px-2 py-1 text-xs font-bold text-stone-600">
-                        Not available all four weeks
-                      </span>
-                    ) : null}
                   </div>
                   <p className="mt-1 text-sm leading-6 text-stone-700">
                     {product.description}
                   </p>
                 </div>
-                <div className="grid grid-cols-[40px_44px_40px] items-center">
-                  <button
-                    type="button"
-                    title={`Remove ${product.name}`}
-                    aria-label={`Remove ${product.name}`}
-                    disabled={quantity === 0}
-                    onClick={() => changeProductQuantity(product.id, -1)}
-                    className="flex size-10 items-center justify-center border border-stone-300 bg-white text-stone-800 disabled:cursor-not-allowed disabled:opacity-40"
+                {plan.loavesPerWeek === 1 ? (
+                  <label
+                    className={`inline-flex h-10 cursor-pointer items-center gap-2 border px-3 text-sm font-bold ${
+                      quantity === 1
+                        ? "border-[#23443b] bg-[#edf4f0] text-[#18352e]"
+                        : "border-stone-300 bg-white text-stone-700"
+                    }`}
                   >
-                    <Minus size={16} />
-                  </button>
-                  <output
-                    aria-label={`${product.name} quantity`}
-                    className="flex h-10 items-center justify-center border-y border-stone-300 font-bold"
-                  >
-                    {quantity}
-                  </output>
-                  <button
-                    type="button"
-                    title={`Add ${product.name}`}
-                    aria-label={`Add ${product.name}`}
-                    disabled={
-                      !available || selectedQuantity >= plan.loavesPerWeek
-                    }
-                    onClick={() => changeProductQuantity(product.id, 1)}
-                    className="flex size-10 items-center justify-center border border-stone-300 bg-white text-stone-800 disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    <Plus size={16} />
-                  </button>
-                </div>
+                    <input
+                      type="radio"
+                      name={`bread-club-${plan.slug}-default`}
+                      value={product.id}
+                      checked={quantity === 1}
+                      onChange={() => chooseSingleProduct(product.id)}
+                      className="size-4 accent-[#23443b]"
+                    />
+                    {quantity === 1 ? "Selected" : "Choose"}
+                  </label>
+                ) : (
+                  <div className="grid grid-cols-[40px_44px_40px] items-center">
+                    <button
+                      type="button"
+                      title={`Remove ${product.name}`}
+                      aria-label={`Remove ${product.name}`}
+                      disabled={quantity === 0}
+                      onClick={() => changeProductQuantity(product.id, -1)}
+                      className="flex size-10 items-center justify-center border border-stone-300 bg-white text-stone-800 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      <Minus size={16} />
+                    </button>
+                    <output
+                      aria-label={`${product.name} quantity`}
+                      className="flex h-10 items-center justify-center border-y border-stone-300 font-bold"
+                    >
+                      {quantity}
+                    </output>
+                    <button
+                      type="button"
+                      title={`Add ${product.name}`}
+                      aria-label={`Add ${product.name}`}
+                      disabled={selectedQuantity >= plan.loavesPerWeek}
+                      onClick={() => changeProductQuantity(product.id, 1)}
+                      className="flex size-10 items-center justify-center border border-stone-300 bg-white text-stone-800 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      <Plus size={16} />
+                    </button>
+                  </div>
+                )}
               </div>
             );
           })}
+          {availableProducts.length === 0 ? (
+            <div className="p-5 text-sm leading-6 text-amber-950">
+              No eligible loaves are available across all four Sundays for this
+              plan. Choose another plan or check back after the weekly menus are
+              updated.
+            </div>
+          ) : null}
         </div>
       </section>
 
@@ -508,17 +518,29 @@ export function BreadClubEnrollment({
                 <input
                   name="bread-club-email"
                   type="email"
-                  autoComplete="email"
+                  autoComplete={previewEmail ? "off" : "email"}
                   required
                   value={customer.email}
+                  readOnly={Boolean(previewEmail)}
+                  aria-describedby={
+                    previewEmail ? "bread-club-preview-email-note" : undefined
+                  }
                   onChange={(event) =>
                     setCustomer((current) => ({
                       ...current,
                       email: event.target.value,
                     }))
                   }
-                  className="mt-2 h-11 w-full min-w-0 border border-stone-300 px-3 font-normal"
+                  className="mt-2 h-11 w-full min-w-0 border border-stone-300 px-3 font-normal read-only:bg-stone-100 read-only:text-stone-600"
                 />
+                {previewEmail ? (
+                  <span
+                    id="bread-club-preview-email-note"
+                    className="mt-1 block text-xs font-normal leading-5 text-stone-600"
+                  >
+                    Locked to the signed-in owner for this checkout test.
+                  </span>
+                ) : null}
               </label>
               <label className="block text-sm font-bold text-stone-800">
                 Phone

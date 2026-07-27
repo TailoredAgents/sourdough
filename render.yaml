@@ -62,8 +62,6 @@ services:
         value: "false"
       - key: BREAD_CLUB_TAX_STATUS
         value: pending
-      - key: BREAD_CLUB_TEST_EMAILS
-        sync: false
       - key: CRON_SECRET
         sync: false
       - key: DELIVERY_CENTER_LAT

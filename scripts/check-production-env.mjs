@@ -270,7 +270,6 @@ requireOneOf("BREAD_CLUB_TAX_STATUS", [
   "exempt",
 ]);
 requireValue("CRON_SECRET");
-requireOptionalEmailList("BREAD_CLUB_TEST_EMAILS");
 
 if (
   valueFor("BREAD_CLUB_PUBLIC_ENABLED") === "true" &&
@@ -304,15 +303,6 @@ if (
     "STRIPE_AUTOMATIC_TAX_ENABLED must remain false until Georgia registration is active.",
   );
 }
-if (
-  valueFor("BREAD_CLUB_PUBLIC_ENABLED") === "true" &&
-  !hasValue("BREAD_CLUB_TEST_EMAILS")
-) {
-  warnings.push(
-    "BREAD_CLUB_TEST_EMAILS is blank; no owner allowlist remains for controlled smoke tests.",
-  );
-}
-
 warnIfMissing(
   "OPENAI_API_KEY",
   "chat and admin draft routes will use deterministic fallback replies.",

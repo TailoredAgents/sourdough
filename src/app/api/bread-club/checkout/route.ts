@@ -4,7 +4,8 @@ import { z } from "zod";
 import {
   getBreadClubCheckoutGate,
   isBreadClubAutomaticTaxEnabled,
-  isBreadClubTestCustomer,
+  isBreadClubControlledPreviewCustomer,
+  isBreadClubPublicEnabled,
 } from "@/lib/bread-club/config";
 import { getBreadClubEnrollmentData } from "@/lib/bread-club/data";
 import {
@@ -25,6 +26,7 @@ import { getDeliverySettingsData } from "@/lib/storefront-data";
 import { getStripe } from "@/lib/stripe";
 import { createStripeDeliveryCustomer } from "@/lib/stripe-tax";
 import { getSiteUrl } from "@/lib/utils";
+import { getCurrentAdmin } from "@/lib/admin-auth";
 
 function hasMinimumPhoneDigits(value: string) {
   return value.replace(/\D/g, "").length >= 7;
@@ -106,7 +108,18 @@ export async function POST(request: Request) {
     );
   }
 
-  const gate = getBreadClubCheckoutGate(checkout.customer.email);
+  const currentAdmin = isBreadClubPublicEnabled()
+    ? null
+    : await getCurrentAdmin();
+  const controlledPreviewCustomer =
+    isBreadClubControlledPreviewCustomer(
+      checkout.customer.email,
+      currentAdmin?.email,
+    );
+  const gate = getBreadClubCheckoutGate(
+    checkout.customer.email,
+    currentAdmin?.email,
+  );
   if (!gate.allowed) {
     return NextResponse.json({ error: gate.reason }, { status: 403 });
   }
@@ -117,7 +130,7 @@ export async function POST(request: Request) {
   ]);
   if (
     enrollment.settings.taxStatus === "pending" &&
-    !isBreadClubTestCustomer(checkout.customer.email)
+    !controlledPreviewCustomer
   ) {
     return NextResponse.json(
       {

@@ -49,12 +49,9 @@ export const BREAD_CLUB_PLAN_COPY: Record<
 function envBoolean(value: string | undefined) {
   return value?.trim().toLowerCase() === "true";
 }
-function normalizedEmailSet(value: string | undefined) {
-  return new Set(
-    (value || "")
-      .split(",")
-      .map((email) => email.trim().toLowerCase())
-      .filter(Boolean),
+function emailsMatch(left: string | null | undefined, right: string) {
+  return Boolean(
+    left && left.trim().toLowerCase() === right.trim().toLowerCase(),
   );
 }
 
@@ -66,11 +63,12 @@ export function isBreadClubAutomaticTaxEnabled() {
   return isStripeAutomaticTaxEnabled();
 }
 
-export function isBreadClubTestCustomer(email: string) {
+export function isBreadClubControlledPreviewCustomer(
+  email: string,
+  authenticatedAdminEmail?: string | null,
+) {
   if (process.env.NODE_ENV !== "production") return true;
-  return normalizedEmailSet(process.env.BREAD_CLUB_TEST_EMAILS).has(
-    email.trim().toLowerCase(),
-  );
+  return emailsMatch(authenticatedAdminEmail, email);
 }
 
 export function getBreadClubTaxStatus() {
@@ -78,8 +76,14 @@ export function getBreadClubTaxStatus() {
   return status === "registered" || status === "exempt" ? status : "pending";
 }
 
-export function getBreadClubCheckoutGate(email: string) {
-  const testCustomer = isBreadClubTestCustomer(email);
+export function getBreadClubCheckoutGate(
+  email: string,
+  authenticatedAdminEmail?: string | null,
+) {
+  const testCustomer = isBreadClubControlledPreviewCustomer(
+    email,
+    authenticatedAdminEmail,
+  );
   const publicEnabled = isBreadClubPublicEnabled();
   const taxStatus = getBreadClubTaxStatus();
 

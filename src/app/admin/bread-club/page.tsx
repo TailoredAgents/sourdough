@@ -28,6 +28,12 @@ export default async function BreadClubAdminPage() {
             <Link href="/admin" className="text-sm font-semibold text-stone-700">
               Main admin
             </Link>
+            <Link
+              href="/bread-club?preview=1"
+              className="text-sm font-semibold text-[#23443b]"
+            >
+              Owner checkout test
+            </Link>
             <Link href="/" className="text-sm font-semibold text-stone-700">
               Storefront
             </Link>

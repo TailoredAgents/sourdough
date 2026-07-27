@@ -13,13 +13,18 @@ const mocks = vi.hoisted(() => ({
   stripeCreateSession: vi.fn(),
   stripeCreateCustomer: vi.fn(),
   isBreadClubAutomaticTaxEnabled: vi.fn(),
+  getCurrentAdmin: vi.fn(),
 }));
 
 vi.mock("@/lib/bread-club/config", () => ({
   getBreadClubCheckoutGate: () => ({ allowed: true, reason: null }),
   isBreadClubAutomaticTaxEnabled:
     mocks.isBreadClubAutomaticTaxEnabled,
-  isBreadClubTestCustomer: () => true,
+  isBreadClubControlledPreviewCustomer: () => true,
+  isBreadClubPublicEnabled: () => false,
+}));
+vi.mock("@/lib/admin-auth", () => ({
+  getCurrentAdmin: mocks.getCurrentAdmin,
 }));
 vi.mock("@/lib/bread-club/data", () => ({
   getBreadClubEnrollmentData: mocks.getBreadClubEnrollmentData,
@@ -169,6 +174,11 @@ beforeEach(() => {
   for (const mock of Object.values(mocks)) mock.mockReset();
   mocks.checkRateLimit.mockResolvedValue({ allowed: true });
   mocks.isBreadClubAutomaticTaxEnabled.mockReturnValue(false);
+  mocks.getCurrentAdmin.mockResolvedValue({
+    id: "admin-user",
+    email: "member@example.com",
+    source: "env",
+  });
   mocks.getBreadClubEnrollmentData.mockResolvedValue({
     plans: [plan],
     deliveryPrices: [deliveryPrice],

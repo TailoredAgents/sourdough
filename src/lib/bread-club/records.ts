@@ -12,7 +12,7 @@ import {
 } from "./pricing";
 import {
   buildCycleFulfillmentInput,
-  getProductsAvailableForAllWeeks,
+  isBreadClubProductAvailableForAllWeeks,
 } from "./schedule";
 import type {
   BreadClubCheckoutRequest,
@@ -113,10 +113,16 @@ export function validateSelectionAcrossCycle(
     return "Four normally available Sunday delivery dates are required.";
   }
 
-  const availableIds = new Set(
-    getProductsAvailableForAllWeeks(plan, weeks).map((product) => product.id),
-  );
-  if (selection.some((item) => !availableIds.has(item.productId))) {
+  if (
+    selection.some(
+      (item) =>
+        !isBreadClubProductAvailableForAllWeeks(
+          item.productId,
+          weeks,
+          item.quantity,
+        ),
+    )
+  ) {
     return "One selected loaf is not available for all four Sundays.";
   }
 

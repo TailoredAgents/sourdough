@@ -214,7 +214,12 @@ function mapPlans(
         if (!product) return null;
         return productForPlan(product, row.slug, item.guaranteed);
       })
-      .filter((product): product is BreadClubPlanProduct => Boolean(product)),
+      .filter((product): product is BreadClubPlanProduct => Boolean(product))
+      .sort(
+        (left, right) =>
+          Number(right.guaranteed) - Number(left.guaranteed) ||
+          left.name.localeCompare(right.name),
+      ),
   }));
 }
 

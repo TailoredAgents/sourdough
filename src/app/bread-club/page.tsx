@@ -9,6 +9,7 @@ import {
   isBreadClubPublicEnabled,
 } from "@/lib/bread-club/config";
 import { getBreadClubEnrollmentData } from "@/lib/bread-club/data";
+import { getCurrentAdmin } from "@/lib/admin-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -33,7 +34,19 @@ export default async function BreadClubPage({
   const preview = params.preview === "1";
   const canceled = params.canceled === "1";
   const data = await getBreadClubEnrollmentData();
-  const enrollmentVisible = data.publicEnabled || preview;
+  const previewAdmin =
+    preview &&
+    !data.publicEnabled &&
+    process.env.NODE_ENV === "production"
+      ? await getCurrentAdmin()
+      : null;
+  const previewEmail =
+    preview && !data.publicEnabled
+      ? process.env.NODE_ENV !== "production"
+        ? "member@example.com"
+        : previewAdmin?.email || null
+      : null;
+  const enrollmentVisible = data.publicEnabled || Boolean(previewEmail);
 
   return (
     <>
@@ -82,27 +95,40 @@ export default async function BreadClubPage({
             <BreadClubEnrollment
               data={data}
               automaticTaxEnabled={isBreadClubAutomaticTaxEnabled()}
+              previewEmail={previewEmail}
             />
           </div>
         ) : (
           <section className="py-16 sm:py-20">
             <div className="mx-auto max-w-3xl px-4 text-center sm:px-6">
               <h2 className="text-3xl font-bold text-stone-950">
-                Enrollment opens after the final billing review
+                {preview
+                  ? "Sign in to run the owner checkout test"
+                  : "Enrollment opens after the final billing review"}
               </h2>
               <p className="mx-auto mt-4 max-w-2xl text-base leading-7 text-stone-700">
-                The four-week plans and member tools are ready, but new public
-                charges remain paused until the bakery finishes its tax and
-                final checkout verification.
+                {preview
+                  ? "The protected preview uses your approved admin email so the test checkout cannot be opened by a customer."
+                  : "The four-week plans and member tools are ready, but new public charges remain paused until the bakery finishes its tax and final checkout verification."}
               </p>
               <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
-                <Link
-                  href="/#order"
-                  className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-[#23443b] px-5 text-sm font-bold text-white"
-                >
-                  Order this Sunday
-                  <ArrowRight size={17} />
-                </Link>
+                {preview ? (
+                  <Link
+                    href="/admin/login"
+                    className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-[#23443b] px-5 text-sm font-bold text-white"
+                  >
+                    Sign in as owner
+                    <ArrowRight size={17} />
+                  </Link>
+                ) : (
+                  <Link
+                    href="/#order"
+                    className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-[#23443b] px-5 text-sm font-bold text-white"
+                  >
+                    Order this Sunday
+                    <ArrowRight size={17} />
+                  </Link>
+                )}
                 <Link
                   href="/bread-club/manage"
                   className="inline-flex h-11 items-center justify-center rounded-md border border-stone-300 bg-white px-5 text-sm font-bold text-stone-800"
