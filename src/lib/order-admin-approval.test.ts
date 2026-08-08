@@ -8,6 +8,7 @@ import {
 const mocks = vi.hoisted(() => ({
   from: vi.fn(),
   rpc: vi.fn(),
+  sendOrderCompletionThankYou: vi.fn(),
   sendOrderStatusUpdate: vi.fn(),
   retrieveSession: vi.fn(),
   createRefund: vi.fn(),
@@ -23,6 +24,7 @@ vi.mock("./supabase", () => ({
 }));
 
 vi.mock("./email", () => ({
+  sendOrderCompletionThankYou: mocks.sendOrderCompletionThankYou,
   sendOrderStatusUpdate: mocks.sendOrderStatusUpdate,
 }));
 
@@ -120,6 +122,7 @@ function adminOrdersResult(status = "paid") {
 beforeEach(() => {
   mocks.from.mockReset();
   mocks.rpc.mockReset();
+  mocks.sendOrderCompletionThankYou.mockReset();
   mocks.sendOrderStatusUpdate.mockReset();
   mocks.retrieveSession.mockReset();
   mocks.createRefund.mockReset();

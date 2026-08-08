@@ -6,7 +6,10 @@ import type {
   DeliveryAddress,
   OrderStatus,
 } from "./types";
-import { sendOrderStatusUpdate } from "./email";
+import {
+  sendOrderCompletionThankYou,
+  sendOrderStatusUpdate,
+} from "./email";
 import { isStandardSundayDeliveryWindow } from "./bake-schedule";
 import { getCustomerOrderStatusLabel } from "./order-status";
 import { getStripe } from "./stripe";
@@ -393,21 +396,36 @@ async function sendUpdatedOrderStatusEmail(orderId: string, status: OrderStatus)
   if (!updatedOrder?.customerEmail) return orders;
 
   try {
-    await sendOrderStatusUpdate({
-      to: updatedOrder.customerEmail,
-      customerName: updatedOrder.customerName,
-      orderSummary: updatedOrder.items
-        .map((item) => `${item.quantity} x ${item.productName}`)
-        .join("\n"),
-      deliveryWindow: updatedOrder.deliveryWindowLabel || "Selected window",
-      orderId: updatedOrder.id,
-      statusLabel: getCustomerOrderStatusLabel(status),
-    });
+    await sendCustomerOrderUpdateEmail(updatedOrder, status);
   } catch (emailError) {
     console.error("[orders] status email failed", emailError);
   }
 
   return orders;
+}
+
+async function sendCustomerOrderUpdateEmail(
+  order: AdminOrder,
+  status: OrderStatus,
+) {
+  const input = {
+    to: order.customerEmail,
+    customerName: order.customerName,
+    orderSummary: order.items
+      .map((item) => `${item.quantity} x ${item.productName}`)
+      .join("\n"),
+    deliveryWindow: order.deliveryWindowLabel || "Selected window",
+    orderId: order.id,
+  };
+
+  if (status === "delivered") {
+    return sendOrderCompletionThankYou(input);
+  }
+
+  return sendOrderStatusUpdate({
+    ...input,
+    statusLabel: getCustomerOrderStatusLabel(status),
+  });
 }
 
 export async function updateAdminOrderStatus(id: string, status: OrderStatus) {
@@ -496,16 +514,7 @@ export async function updateAdminOrderStatus(id: string, status: OrderStatus) {
   const updatedOrder = orders.find((order) => order.id === id);
   if (updatedOrder && existingStatus !== status && updatedOrder.customerEmail) {
     try {
-      await sendOrderStatusUpdate({
-        to: updatedOrder.customerEmail,
-        customerName: updatedOrder.customerName,
-        orderSummary: updatedOrder.items
-          .map((item) => `${item.quantity} x ${item.productName}`)
-          .join("\n"),
-        deliveryWindow: updatedOrder.deliveryWindowLabel || "Selected window",
-        orderId: updatedOrder.id,
-        statusLabel: getCustomerOrderStatusLabel(status),
-      });
+      await sendCustomerOrderUpdateEmail(updatedOrder, status);
     } catch (emailError) {
       console.error("[orders] status email failed", emailError);
     }

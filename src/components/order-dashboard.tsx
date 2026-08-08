@@ -34,7 +34,7 @@ const statusLabels: Record<OrderStatus, string> = {
   paid: "Paid",
   baking: "Baking",
   out_for_delivery: "Out for delivery",
-  delivered: "Delivered",
+  delivered: "Completed",
   canceled: "Canceled",
 };
 
@@ -123,6 +123,14 @@ export function OrderDashboard({ initialOrders }: { initialOrders: AdminOrder[] 
   const statusActions = selectedOrder
     ? getAdminOrderStatusActions(selectedOrder.status)
     : [];
+  const canUseManualStatus = Boolean(
+    selectedOrder &&
+      selectedOrder.status !== "pending_approval" &&
+      selectedOrder.status !== "pending_approval_payment",
+  );
+  const canCompleteOrder = statusActions.some(
+    (action) => action.status === "delivered",
+  );
   const selectedOrderShortId = selectedOrder ? shortId(selectedOrder.id) : "";
   const customerEmailHref = selectedOrder
     ? buildMailtoHref(
@@ -163,7 +171,7 @@ export function OrderDashboard({ initialOrders }: { initialOrders: AdminOrder[] 
         setOrders(payload.orders as AdminOrder[]);
         setSelectedId(id);
         setFilter(activeStatuses.includes(status) ? "active" : status);
-        setMessage("Order updated.");
+        setMessage(status === "delivered" ? "Order completed." : "Order updated.");
       } catch {
         setMessage("Order could not be updated. Check your connection and try again.");
       }
@@ -492,6 +500,105 @@ export function OrderDashboard({ initialOrders }: { initialOrders: AdminOrder[] 
                 </div>
               ) : null}
 
+              {statusActions.length || canUseManualStatus || message ? (
+                <div className="mt-4 rounded-md border border-[#23443b]/25 bg-white p-4">
+                  {statusActions.length || canUseManualStatus ? (
+                    <>
+                      <div>
+                        <p className="font-semibold text-stone-950">
+                          {selectedOrder.status === "delivered"
+                            ? "Order complete"
+                            : canCompleteOrder
+                              ? "Finish this order"
+                              : "Order actions"}
+                        </p>
+                        {canCompleteOrder ? (
+                          <p className="mt-1 text-sm leading-6 text-stone-600">
+                            Already delivered? Complete it here in one click. This marks it
+                            delivered, sends a thank-you email with a review link, and moves
+                            it from Active to Completed.
+                          </p>
+                        ) : selectedOrder.status === "delivered" ? (
+                          <p className="mt-1 text-sm leading-6 text-stone-600">
+                            This order is complete and no longer appears in Active.
+                          </p>
+                        ) : null}
+                      </div>
+
+                      {statusActions.length ? (
+                        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                          {statusActions.map((action) => (
+                            <Button
+                              key={action.status}
+                              type="button"
+                              variant={
+                                action.variant === "secondary"
+                                  ? "secondary"
+                                  : action.variant === "ghost"
+                                    ? "ghost"
+                                    : "primary"
+                              }
+                              disabled={isPending}
+                              onClick={() => updateStatus(selectedOrder.id, action.status)}
+                            >
+                              {isPending ? (
+                                <Loader2 className="animate-spin" size={16} />
+                              ) : action.status === "delivered" ? (
+                                <CheckCircle2 size={16} />
+                              ) : null}
+                              {action.label}
+                            </Button>
+                          ))}
+                        </div>
+                      ) : null}
+
+                      {canUseManualStatus ? (
+                        <details className="mt-3 border-t border-stone-200 pt-3 text-sm text-stone-700">
+                          <summary className="cursor-pointer font-semibold text-stone-700">
+                            More status options
+                          </summary>
+                          <label className="mt-3 grid max-w-xs gap-1 font-semibold text-stone-700">
+                            Manual status
+                            <select
+                              className="h-11 rounded-md border border-stone-300 bg-white px-3 font-normal"
+                              value={selectedOrder.status}
+                              onChange={(event) =>
+                                updateStatus(
+                                  selectedOrder.id,
+                                  event.target.value as OrderStatus,
+                                )
+                              }
+                              disabled={isPending}
+                            >
+                              {statusOptions.map((status) => (
+                                <option key={status} value={status}>
+                                  {statusLabels[status]}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        </details>
+                      ) : null}
+                    </>
+                  ) : null}
+
+                  {message ? (
+                    <span
+                      className={`mt-3 inline-flex items-center gap-2 text-sm font-semibold ${
+                        message === "Order updated." || message === "Order completed."
+                          ? "text-emerald-800"
+                          : "text-[#a94334]"
+                      }`}
+                    >
+                      {message === "Order updated." || message === "Order completed." ? (
+                        <CheckCircle2 size={16} />
+                      ) : null}
+                      {message}
+                    </span>
+                  ) : null}
+                </div>
+              ) : null}
+
               <div className="mt-4 grid gap-3 rounded-md border border-stone-200 bg-white p-4 text-sm text-stone-700">
                 <div className="flex gap-2">
                   <MapPin className="mt-0.5 text-[#a94334]" size={16} />
@@ -594,56 +701,6 @@ export function OrderDashboard({ initialOrders }: { initialOrders: AdminOrder[] 
                 </details>
               ) : null}
 
-              <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-                {statusActions.map((action) => (
-                  <Button
-                    key={action.status}
-                    type="button"
-                    variant={
-                      action.variant === "secondary"
-                        ? "secondary"
-                        : action.variant === "ghost"
-                          ? "ghost"
-                          : "primary"
-                    }
-                    disabled={isPending}
-                    onClick={() => updateStatus(selectedOrder.id, action.status)}
-                  >
-                    {isPending ? <Loader2 className="animate-spin" size={16} /> : null}
-                    {action.label}
-                  </Button>
-                ))}
-                {selectedOrder.status === "pending_approval" ||
-                selectedOrder.status === "pending_approval_payment" ? null : (
-                  <label className="grid gap-1 text-sm font-semibold text-stone-700">
-                    Manual status
-                    <select
-                      className="h-11 rounded-md border border-stone-300 bg-white px-3 font-normal"
-                      value={selectedOrder.status}
-                      onChange={(event) =>
-                        updateStatus(selectedOrder.id, event.target.value as OrderStatus)
-                      }
-                      disabled={isPending}
-                    >
-                      {statusOptions.map((status) => (
-                        <option key={status} value={status}>
-                          {statusLabels[status]}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                )}
-                {message ? (
-                  <span
-                    className={`inline-flex items-center gap-2 text-sm font-semibold ${
-                      message === "Order updated." ? "text-emerald-800" : "text-[#a94334]"
-                    }`}
-                  >
-                    {message === "Order updated." ? <CheckCircle2 size={16} /> : null}
-                    {message}
-                  </span>
-                ) : null}
-              </div>
             </>
           ) : (
             <div className="rounded-md border border-dashed border-stone-300 bg-white p-5 text-sm text-stone-700">

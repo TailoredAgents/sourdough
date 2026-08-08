@@ -89,4 +89,25 @@ describe("order dashboard approval request display", () => {
     expect(html).toContain("Stripe session: cs_approval");
     expect(html).toContain("$30.00");
   });
+
+  it("puts one-click completion before the details of an active paid order", () => {
+    const paidOrder: AdminOrder = {
+      ...approvalOrder,
+      status: "paid",
+      approvalMode: "standard",
+      nextWeekOk: false,
+      moveWindows: [],
+    };
+    const html = renderToStaticMarkup(
+      React.createElement(OrderDashboard, { initialOrders: [paidOrder] }),
+    );
+
+    expect(html).toContain("Finish this order");
+    expect(html).toContain("Complete order");
+    expect(html).toContain("sends a thank-you email with a review link");
+    expect(html).toContain("More status options");
+    expect(html.indexOf("Complete order")).toBeLessThan(
+      html.indexOf("Classic Country Loaf"),
+    );
+  });
 });

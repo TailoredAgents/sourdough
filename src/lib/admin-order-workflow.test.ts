@@ -3,12 +3,17 @@ import { getAdminOrderStatusActions } from "./admin-order-workflow";
 import { getAdminOrderInventoryAdjustment } from "./order-admin";
 
 describe("admin order workflow actions", () => {
-  it("surfaces the next owner action for active paid orders", () => {
+  it("lets the owner complete any active paid order in one step", () => {
     expect(getAdminOrderStatusActions("paid")).toEqual([
+      {
+        label: "Complete order",
+        status: "delivered",
+        variant: "primary",
+      },
       {
         label: "Start baking",
         status: "baking",
-        variant: "primary",
+        variant: "secondary",
       },
       {
         label: "Cancel & release inventory",
@@ -17,12 +22,17 @@ describe("admin order workflow actions", () => {
       },
     ]);
     expect(getAdminOrderStatusActions("baking")[0]).toEqual({
-      label: "Out for delivery",
-      status: "out_for_delivery",
+      label: "Complete order",
+      status: "delivered",
       variant: "primary",
     });
+    expect(getAdminOrderStatusActions("baking")[1]).toEqual({
+      label: "Out for delivery",
+      status: "out_for_delivery",
+      variant: "secondary",
+    });
     expect(getAdminOrderStatusActions("out_for_delivery")[0]).toEqual({
-      label: "Mark delivered",
+      label: "Complete order",
       status: "delivered",
       variant: "primary",
     });

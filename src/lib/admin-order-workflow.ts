@@ -36,9 +36,14 @@ export function getAdminOrderStatusActions(
     case "paid":
       return [
         {
+          label: "Complete order",
+          status: "delivered",
+          variant: "primary",
+        },
+        {
           label: "Start baking",
           status: "baking",
-          variant: "primary",
+          variant: "secondary",
         },
         {
           label: "Cancel & release inventory",
@@ -49,9 +54,14 @@ export function getAdminOrderStatusActions(
     case "baking":
       return [
         {
+          label: "Complete order",
+          status: "delivered",
+          variant: "primary",
+        },
+        {
           label: "Out for delivery",
           status: "out_for_delivery",
-          variant: "primary",
+          variant: "secondary",
         },
         {
           label: "Cancel & release inventory",
@@ -62,7 +72,7 @@ export function getAdminOrderStatusActions(
     case "out_for_delivery":
       return [
         {
-          label: "Mark delivered",
+          label: "Complete order",
           status: "delivered",
           variant: "primary",
         },

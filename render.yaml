@@ -40,6 +40,8 @@ services:
         value: "Luna & Lorelai's Sourdough <orders@landlsourdough.com>"
       - key: BAKERY_EMAIL
         sync: false
+      - key: BAKERY_REVIEW_URL
+        value: https://g.page/r/CQUR-EBBDOgqECA/review
       - key: OWNER_ALERTS_ENABLED
         value: "true"
       - key: OWNER_ALERT_EMAIL

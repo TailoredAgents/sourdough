@@ -242,6 +242,7 @@ requireEmailList("ADMIN_EMAILS");
 requireEmailList("BAKERY_EMAIL");
 requireValue("RESEND_API_KEY");
 requireContains("RESEND_FROM", "orders@landlsourdough.com");
+if (hasValue("BAKERY_REVIEW_URL")) requireUrl("BAKERY_REVIEW_URL");
 if (hasValue("OWNER_ALERTS_ENABLED")) {
   requireOptionalEmailList("OWNER_ALERT_EMAIL");
   requireOptionalEmailList("OWNER_ALERT_SMS_EMAIL");
@@ -314,6 +315,10 @@ warnIfMissing(
 warnIfMissing(
   "NEXT_PUBLIC_BING_SITE_VERIFICATION",
   "Bing Webmaster Tools verification will be missing.",
+);
+warnIfMissing(
+  "BAKERY_REVIEW_URL",
+  "completed-order emails will collect reviews by email instead of linking to a public review page.",
 );
 if (
   !hasValue("NEXT_PUBLIC_GA_MEASUREMENT_ID") &&

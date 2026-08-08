@@ -31,7 +31,7 @@ const requiredAssets = [
   ...[
     "classic-country-loaf",
     "rosemary-garlic-loaf",
-    "cinnamon-swirl-sourdough",
+    "cinnamon-swirl-sourdough-v2",
     "sourdough-starter-crackers",
     "whipped-honey-butter",
   ].map((slug) => ({

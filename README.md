@@ -50,6 +50,8 @@ Optional before live launch:
 
 - `NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION`
 - `NEXT_PUBLIC_BING_SITE_VERIFICATION`
+- `BAKERY_REVIEW_URL`, preconfigured to the bakery's Google review page for
+  completed-order thank-you emails
 - `NEXT_PUBLIC_GA_MEASUREMENT_ID`
 - `NEXT_PUBLIC_GTM_ID`
 - `NEXT_PUBLIC_PLAUSIBLE_DOMAIN`

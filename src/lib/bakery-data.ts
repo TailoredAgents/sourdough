@@ -80,7 +80,7 @@ export const products: Product[] = [
     ],
     allergens: ["Wheat"],
     priceCents: 1500,
-    imageUrl: "/images/products/cinnamon-swirl-sourdough.webp",
+    imageUrl: "/images/products/cinnamon-swirl-sourdough-v2.webp",
     imageStyle: "from-rose-100 via-amber-100 to-stone-100",
     active: true,
   },

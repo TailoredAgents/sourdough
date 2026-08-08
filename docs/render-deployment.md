@@ -38,6 +38,7 @@ Do not commit real secret values.
 | `RESEND_API_KEY` | Resend API key for app-sent customer and owner emails; production email sends fail closed when blank |
 | `RESEND_FROM` | `Luna & Lorelai's Sourdough <orders@landlsourdough.com>` |
 | `BAKERY_EMAIL` | `orders@landlsourdough.com` or another monitored owner/order inbox |
+| `BAKERY_REVIEW_URL` | `https://g.page/r/CQUR-EBBDOgqECA/review` |
 | `OPENAI_API_KEY` | OpenAI API key, blank to use fallback replies |
 | `OPENAI_MODEL` | `gpt-5-mini` |
 | `STRIPE_SECRET_KEY` | Stripe secret key before accepting paid orders; blank keeps production checkout unavailable |

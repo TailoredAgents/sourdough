@@ -1,4 +1,5 @@
 import { Resend } from "resend";
+import { bakery } from "./bakery-data";
 import { getSupabaseAdminClient } from "./supabase";
 
 export type EmailTemplate =
@@ -9,6 +10,7 @@ export type EmailTemplate =
   | "owner_short_alert"
   | "last_minute_request"
   | "order_status_update"
+  | "customer_order_thank_you"
   | "customer_message_reply"
   | "bread_club_magic_link"
   | "bread_club_welcome"
@@ -40,6 +42,10 @@ type OwnerEmail = BaseEmail & {
 
 type StatusEmail = BaseEmail & {
   statusLabel: string;
+};
+
+type CompletionThankYouEmail = BaseEmail & {
+  reviewUrl?: string;
 };
 
 type CustomerReplyEmail = {
@@ -299,6 +305,97 @@ function renderStatusUpdate({
   };
 }
 
+function escapeHtml(value: string) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+export function getBakeryReviewUrl(
+  configuredUrl = process.env.BAKERY_REVIEW_URL,
+) {
+  const value = configuredUrl?.trim();
+  if (value) {
+    try {
+      const url = new URL(value);
+      if (url.protocol === "https:" || url.protocol === "http:") {
+        return url.toString();
+      }
+    } catch {
+      // Fall through to a working private-feedback link.
+    }
+  }
+
+  const params = new URLSearchParams({
+    subject: `Review for ${bakery.name}`,
+    body: `I'd like to share a review of my order:\n\n`,
+  });
+  return `mailto:${bakery.orderEmail}?${params.toString()}`;
+}
+
+function renderOrderCompletionThankYou({
+  customerName,
+  orderSummary,
+  deliveryWindow,
+  reviewUrl,
+}: CompletionThankYouEmail & { reviewUrl: string }) {
+  const subject = "Thank you for your sourdough order";
+  const text = `Hi ${customerName},\n\nThank you for choosing ${bakery.name}. We hope you enjoy your order!\n\nOrder:\n${orderSummary}\n\nDelivery: ${deliveryWindow}\n\nWe'd love to hear how it went. Your honest feedback helps our small local bakery grow.\n\nLeave a review:\n${reviewUrl}\n\nIf anything wasn't right, reply to this email so we can help.\n\n${bakery.name}`;
+  const htmlOrderSummary = escapeHtml(orderSummary).replaceAll("\n", "<br>");
+
+  return {
+    subject,
+    text,
+    html: `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>${subject}</title>
+  </head>
+  <body style="margin:0;background:#f7f5f2;font-family:Arial,Helvetica,sans-serif;color:#1c1917">
+    <span style="display:none;max-height:0;overflow:hidden">Thank you for supporting our small local bakery.</span>
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f7f5f2">
+      <tr>
+        <td align="center" style="padding:24px 12px">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:620px;background:#ffffff;border:1px solid #e7e5e4">
+            <tr>
+              <td style="padding:24px;background:#23443b;color:#ffffff">
+                <p style="margin:0 0 6px;font-size:12px;font-weight:700;text-transform:uppercase">Luna &amp; Lorelai&apos;s Sourdough</p>
+                <h1 style="margin:0;font-size:26px;line-height:1.25">Thank you for your order!</h1>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:28px 24px">
+                <p style="margin:0 0 16px;color:#44403c;font-size:15px;line-height:1.65">Hi ${escapeHtml(customerName)},</p>
+                <p style="margin:0 0 16px;color:#44403c;font-size:15px;line-height:1.65">Thank you for choosing ${escapeHtml(bakery.name)}. We hope you enjoy your order!</p>
+                <div style="margin:20px 0;padding:16px;background:#fffaf2;border:1px solid #e7e5e4;color:#44403c;font-size:14px;line-height:1.7">
+                  <strong>Order</strong><br>${htmlOrderSummary}<br><br>
+                  <strong>Delivery</strong><br>${escapeHtml(deliveryWindow)}
+                </div>
+                <p style="margin:0 0 16px;color:#44403c;font-size:15px;line-height:1.65">We&apos;d love to hear how it went. Your honest feedback helps our small local bakery grow.</p>
+                <p style="margin:24px 0 18px"><a href="${escapeHtml(reviewUrl)}" style="display:inline-block;background:#a94334;color:#ffffff;text-decoration:none;font-weight:700;padding:12px 18px;border-radius:6px">Leave a review</a></p>
+                <p style="margin:0;color:#57534e;font-size:13px;line-height:1.6">If anything wasn&apos;t right, reply to this email so we can help.</p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:18px 24px;background:#fffaf2;color:#57534e;font-size:12px;line-height:1.6">
+                Luna &amp; Lorelai&apos;s Sourdough<br>
+                Canton and Woodstock, Georgia
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`,
+  };
+}
+
 function renderCustomerMessageReply({ subject, body }: CustomerReplyEmail) {
   return {
     subject,
@@ -485,6 +582,27 @@ export async function sendOrderStatusUpdate(input: StatusEmail) {
     to: input.to,
     orderId: input.orderId,
     ...renderStatusUpdate(input),
+  });
+}
+
+export async function sendOrderCompletionThankYou(input: CompletionThankYouEmail) {
+  if (
+    input.orderId &&
+    (await hasSentEmailEvent({
+      template: "customer_order_thank_you",
+      to: input.to,
+      orderId: input.orderId,
+    }))
+  ) {
+    return { skipped: true };
+  }
+
+  const reviewUrl = getBakeryReviewUrl(input.reviewUrl);
+  return sendTemplatedEmail({
+    template: "customer_order_thank_you",
+    to: input.to,
+    orderId: input.orderId,
+    ...renderOrderCompletionThankYou({ ...input, reviewUrl }),
   });
 }
 
