@@ -1,6 +1,7 @@
 import { Resend } from "resend";
 import { bakery } from "./bakery-data";
 import { getSupabaseAdminClient } from "./supabase";
+import { absoluteUrl } from "./url";
 
 export type EmailTemplate =
   | "customer_order_confirmation"
@@ -226,14 +227,125 @@ export async function getSentEmailEventState({
   return { hasLegacyEvent, eventKeys };
 }
 
+function escapeHtml(value: string) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function emailParagraph(value: string) {
+  return `<p style="margin:0 0 16px;color:#44403c;font-size:15px;line-height:1.65">${escapeHtml(value).replaceAll("\n", "<br>")}</p>`;
+}
+
+function renderOrderDetails({
+  orderId,
+  orderSummary,
+  deliveryWindow,
+}: Pick<BaseEmail, "orderId" | "orderSummary" | "deliveryWindow">) {
+  const orderReference = orderId
+    ? `<strong>Order #${escapeHtml(orderId.slice(0, 8))}</strong><br><br>`
+    : "";
+  const summary = escapeHtml(orderSummary).replaceAll("\n", "<br>");
+
+  return `<div style="margin:20px 0;padding:16px;background:#fffaf2;border:1px solid #e7e5e4;color:#44403c;font-size:14px;line-height:1.7">
+    ${orderReference}<strong>Order</strong><br>${summary}<br><br>
+    <strong>Scheduled delivery</strong><br>${escapeHtml(deliveryWindow)}
+  </div>`;
+}
+
+export function renderBrandedCustomerEmail(input: {
+  subject: string;
+  preheader: string;
+  eyebrow: string;
+  heading: string;
+  body: string;
+  action?: { label: string; href: string };
+  note?: string;
+}) {
+  const logoUrl = absoluteUrl("/images/luna-lorelais-logo-square-180.png");
+
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>${escapeHtml(input.subject)}</title>
+  </head>
+  <body style="margin:0;background:#f7f5f2;font-family:Arial,Helvetica,sans-serif;color:#1c1917">
+    <span style="display:none;max-height:0;overflow:hidden">${escapeHtml(input.preheader)}</span>
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f7f5f2">
+      <tr>
+        <td align="center" style="padding:24px 12px">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:620px;background:#ffffff;border:1px solid #e7e5e4">
+            <tr>
+              <td align="center" style="padding:24px;background:#23443b;color:#ffffff;text-align:center">
+                <img src="${escapeHtml(logoUrl)}" width="72" height="72" alt="Luna &amp; Lorelai&apos;s Sourdough logo" style="display:block;width:72px;height:72px;margin:0 auto 16px;border:3px solid #fffaf2;border-radius:999px;background:#ffffff">
+                <p style="margin:0 0 6px;font-size:12px;font-weight:700;text-transform:uppercase">${escapeHtml(input.eyebrow)}</p>
+                <h1 style="margin:0;font-size:26px;line-height:1.25">${escapeHtml(input.heading)}</h1>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:28px 24px">
+                ${input.body}
+                ${
+                  input.action
+                    ? `<p style="margin:24px 0 18px"><a href="${escapeHtml(input.action.href)}" style="display:inline-block;background:#a94334;color:#ffffff;text-decoration:none;font-weight:700;padding:12px 18px;border-radius:6px">${escapeHtml(input.action.label)}</a></p>`
+                    : ""
+                }
+                ${
+                  input.note
+                    ? `<p style="margin:0;color:#57534e;font-size:13px;line-height:1.6">${escapeHtml(input.note)}</p>`
+                    : ""
+                }
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:18px 24px;background:#fffaf2;color:#57534e;font-size:12px;line-height:1.6">
+                Luna &amp; Lorelai&apos;s Sourdough<br>
+                Canton and Woodstock, Georgia
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`;
+}
+
 function renderCustomerConfirmation({
   customerName,
   orderSummary,
   deliveryWindow,
+  orderId,
 }: BaseEmail) {
+  const subject = `Your ${bakery.name} order is confirmed`;
+  const orderReference = orderId ? `Order #${orderId.slice(0, 8)}\n\n` : "";
+
   return {
-    subject: "We received your Luna & Lorelai's Sourdough order",
-    text: `Hi ${customerName},\n\nThank you for ordering from Luna & Lorelai's Sourdough.\n\nOrder:\n${orderSummary}\n\nSunday delivery time: ${deliveryWindow}\n\nPlease reply to this email if your delivery details need a correction. We will reach out if anything needs confirmation.\n\nLuna & Lorelai's Sourdough`,
+    subject,
+    text: `Hi ${customerName},\n\nThank you for ordering from ${bakery.name}. We've received your order, and your selected Sunday delivery is set.\n\n${orderReference}Order:\n${orderSummary}\n\nScheduled delivery:\n${deliveryWindow}\n\nWhat happens next:\n- We'll prepare everything fresh for your selected delivery.\n- Watch your email for order and delivery updates.\n- Reply to this email as soon as possible if your delivery details need a correction.\n\n${bakery.name}`,
+    html: renderBrandedCustomerEmail({
+      subject,
+      preheader: "Your Sunday delivery is set—we're excited to bake for you.",
+      eyebrow: "Order confirmation",
+      heading: "Your order is confirmed!",
+      body:
+        emailParagraph(`Hi ${customerName},`) +
+        emailParagraph(
+          `Thank you for ordering from ${bakery.name}. We've received your order, and your selected Sunday delivery is set.`,
+        ) +
+        renderOrderDetails({ orderId, orderSummary, deliveryWindow }) +
+        `<h2 style="margin:24px 0 10px;font-size:17px;color:#1c1917">What happens next</h2>
+        <ul style="margin:0;padding-left:20px;color:#44403c;font-size:15px;line-height:1.8">
+          <li>We&apos;ll prepare everything fresh for your selected delivery.</li>
+          <li>Watch your email for order and delivery updates.</li>
+          <li>Reply to this email as soon as possible if your delivery details need a correction.</li>
+        </ul>`,
+    }),
   };
 }
 
@@ -241,10 +353,26 @@ function renderCustomerApprovalRequestReceived({
   customerName,
   orderSummary,
   deliveryWindow,
+  orderId,
 }: BaseEmail) {
+  const subject = `We received your ${bakery.name} approval request`;
+
   return {
-    subject: "We received your Luna & Lorelai's Sourdough approval request",
-    text: `Hi ${customerName},\n\nPayment was received for your same-week approval request. Grace will review it and either accept it, move it to next Sunday if you allowed that, or refund it if it cannot be filled.\n\nRequested order:\n${orderSummary}\n\nRequested Sunday delivery time: ${deliveryWindow}\n\nPlease reply to this email if your delivery details need a correction.\n\nLuna & Lorelai's Sourdough`,
+    subject,
+    text: `Hi ${customerName},\n\nPayment was received for your same-week approval request. Grace will review it and either accept it, move it to next Sunday if you allowed that, or refund it if it cannot be filled.\n\nRequested order:\n${orderSummary}\n\nRequested Sunday delivery time: ${deliveryWindow}\n\nPlease reply to this email if your delivery details need a correction.\n\n${bakery.name}`,
+    html: renderBrandedCustomerEmail({
+      subject,
+      preheader: "Your same-week request is waiting for bakery approval.",
+      eyebrow: "Approval request",
+      heading: "We received your request",
+      body:
+        emailParagraph(`Hi ${customerName},`) +
+        emailParagraph(
+          "Payment was received for your same-week approval request. Grace will review it and either accept it, move it to next Sunday if you allowed that, or refund it if it cannot be filled.",
+        ) +
+        renderOrderDetails({ orderId, orderSummary, deliveryWindow }),
+      note: "Reply to this email if your delivery details need a correction.",
+    }),
   };
 }
 
@@ -297,21 +425,26 @@ function renderStatusUpdate({
   customerName,
   orderSummary,
   deliveryWindow,
+  orderId,
   statusLabel,
 }: StatusEmail) {
-  return {
-    subject: `Your sourdough order is ${statusLabel.toLowerCase()}`,
-    text: `Hi ${customerName},\n\nYour Luna & Lorelai's Sourdough order status is now: ${statusLabel}.\n\nOrder:\n${orderSummary}\n\nSunday delivery time: ${deliveryWindow}\n\nReply to this email if anything needs attention.\n\nLuna & Lorelai's Sourdough`,
-  };
-}
+  const subject = `Your sourdough order is ${statusLabel.toLowerCase()}`;
 
-function escapeHtml(value: string) {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
+  return {
+    subject,
+    text: `Hi ${customerName},\n\nYour ${bakery.name} order status is now: ${statusLabel}.\n\nOrder:\n${orderSummary}\n\nSunday delivery time: ${deliveryWindow}\n\nReply to this email if anything needs attention.\n\n${bakery.name}`,
+    html: renderBrandedCustomerEmail({
+      subject,
+      preheader: `Your order status is now ${statusLabel}.`,
+      eyebrow: "Order update",
+      heading: statusLabel,
+      body:
+        emailParagraph(`Hi ${customerName},`) +
+        emailParagraph(`Your ${bakery.name} order status is now ${statusLabel}.`) +
+        renderOrderDetails({ orderId, orderSummary, deliveryWindow }),
+      note: "Reply to this email if anything needs attention.",
+    }),
+  };
 }
 
 export function getBakeryReviewUrl(
@@ -341,65 +474,49 @@ function renderOrderCompletionThankYou({
   orderSummary,
   deliveryWindow,
   reviewUrl,
+  orderId,
 }: CompletionThankYouEmail & { reviewUrl: string }) {
   const subject = "Thank you for your sourdough order";
-  const text = `Hi ${customerName},\n\nThank you for choosing ${bakery.name}. We hope you enjoy your order!\n\nOrder:\n${orderSummary}\n\nDelivery: ${deliveryWindow}\n\nWe'd love to hear how it went. Your honest feedback helps our small local bakery grow.\n\nLeave a review:\n${reviewUrl}\n\nIf anything wasn't right, reply to this email so we can help.\n\n${bakery.name}`;
-  const htmlOrderSummary = escapeHtml(orderSummary).replaceAll("\n", "<br>");
+  const orderReference = orderId ? `Order #${orderId.slice(0, 8)}\n\n` : "";
 
   return {
     subject,
-    text,
-    html: `<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>${subject}</title>
-  </head>
-  <body style="margin:0;background:#f7f5f2;font-family:Arial,Helvetica,sans-serif;color:#1c1917">
-    <span style="display:none;max-height:0;overflow:hidden">Thank you for supporting our small local bakery.</span>
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f7f5f2">
-      <tr>
-        <td align="center" style="padding:24px 12px">
-          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:620px;background:#ffffff;border:1px solid #e7e5e4">
-            <tr>
-              <td style="padding:24px;background:#23443b;color:#ffffff">
-                <p style="margin:0 0 6px;font-size:12px;font-weight:700;text-transform:uppercase">Luna &amp; Lorelai&apos;s Sourdough</p>
-                <h1 style="margin:0;font-size:26px;line-height:1.25">Thank you for your order!</h1>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:28px 24px">
-                <p style="margin:0 0 16px;color:#44403c;font-size:15px;line-height:1.65">Hi ${escapeHtml(customerName)},</p>
-                <p style="margin:0 0 16px;color:#44403c;font-size:15px;line-height:1.65">Thank you for choosing ${escapeHtml(bakery.name)}. We hope you enjoy your order!</p>
-                <div style="margin:20px 0;padding:16px;background:#fffaf2;border:1px solid #e7e5e4;color:#44403c;font-size:14px;line-height:1.7">
-                  <strong>Order</strong><br>${htmlOrderSummary}<br><br>
-                  <strong>Delivery</strong><br>${escapeHtml(deliveryWindow)}
-                </div>
-                <p style="margin:0 0 16px;color:#44403c;font-size:15px;line-height:1.65">We&apos;d love to hear how it went. Your honest feedback helps our small local bakery grow.</p>
-                <p style="margin:24px 0 18px"><a href="${escapeHtml(reviewUrl)}" style="display:inline-block;background:#a94334;color:#ffffff;text-decoration:none;font-weight:700;padding:12px 18px;border-radius:6px">Leave a review</a></p>
-                <p style="margin:0;color:#57534e;font-size:13px;line-height:1.6">If anything wasn&apos;t right, reply to this email so we can help.</p>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:18px 24px;background:#fffaf2;color:#57534e;font-size:12px;line-height:1.6">
-                Luna &amp; Lorelai&apos;s Sourdough<br>
-                Canton and Woodstock, Georgia
-              </td>
-            </tr>
-          </table>
-        </td>
-      </tr>
-    </table>
-  </body>
-</html>`,
+    text: `Hi ${customerName},\n\nThank you for choosing ${bakery.name}. We hope you enjoy your order!\n\n${orderReference}Order:\n${orderSummary}\n\nSunday delivery:\n${deliveryWindow}\n\nWe'd love to hear how it went. Your honest feedback helps our small local bakery grow.\n\nLeave a review:\n${reviewUrl}\n\nIf anything wasn't right, reply to this email so we can help.\n\n${bakery.name}`,
+    html: renderBrandedCustomerEmail({
+      subject,
+      preheader: "Thank you for supporting our small local bakery.",
+      eyebrow: bakery.name,
+      heading: "Thank you for your order!",
+      body:
+        emailParagraph(`Hi ${customerName},`) +
+        emailParagraph(
+          `Thank you for choosing ${bakery.name}. We hope you enjoy your order!`,
+        ) +
+        renderOrderDetails({
+          orderId,
+          orderSummary,
+          deliveryWindow,
+        }) +
+        emailParagraph(
+          "We'd love to hear how it went. Your honest feedback helps our small local bakery grow.",
+        ),
+      action: { label: "Leave a review", href: reviewUrl },
+      note: "If anything wasn't right, reply to this email so we can help.",
+    }),
   };
 }
 
 function renderCustomerMessageReply({ subject, body }: CustomerReplyEmail) {
   return {
     subject,
-    text: `${body}\n\nLuna & Lorelai's Sourdough`,
+    text: `${body}\n\n${bakery.name}`,
+    html: renderBrandedCustomerEmail({
+      subject,
+      preheader: "A message from Luna & Lorelai's Sourdough.",
+      eyebrow: "A note from the bakery",
+      heading: subject,
+      body: emailParagraph(body),
+    }),
   };
 }
 

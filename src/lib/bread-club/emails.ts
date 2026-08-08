@@ -1,4 +1,7 @@
-import { sendBakeryTransactionalEmail } from "@/lib/email";
+import {
+  renderBrandedCustomerEmail,
+  sendBakeryTransactionalEmail,
+} from "@/lib/email";
 import { formatCurrency } from "@/lib/utils";
 
 function escapeHtml(value: string) {
@@ -19,47 +22,14 @@ function brandedHtml(input: {
   body: string;
   action?: { label: string; href: string };
 }) {
-  return `<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>${escapeHtml(input.heading)}</title>
-  </head>
-  <body style="margin:0;background:#f7f5f2;font-family:Arial,Helvetica,sans-serif;color:#1c1917">
-    <span style="display:none;max-height:0;overflow:hidden">${escapeHtml(input.preheader)}</span>
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f7f5f2">
-      <tr>
-        <td align="center" style="padding:24px 12px">
-          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:620px;background:#ffffff;border:1px solid #e7e5e4">
-            <tr>
-              <td style="padding:24px;background:#23443b;color:#ffffff">
-                <p style="margin:0 0 6px;font-size:12px;font-weight:700;text-transform:uppercase">Sunday Bread Club</p>
-                <h1 style="margin:0;font-size:26px;line-height:1.25">${escapeHtml(input.heading)}</h1>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:28px 24px">
-                ${input.body}
-                ${
-                  input.action
-                    ? `<p style="margin:24px 0 8px"><a href="${escapeHtml(input.action.href)}" style="display:inline-block;background:#a94334;color:#ffffff;text-decoration:none;font-weight:700;padding:12px 18px;border-radius:6px">${escapeHtml(input.action.label)}</a></p>`
-                    : ""
-                }
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:18px 24px;background:#fffaf2;color:#57534e;font-size:12px;line-height:1.6">
-                Luna &amp; Lorelai&apos;s Sourdough<br>
-                Canton and Woodstock, Georgia
-              </td>
-            </tr>
-          </table>
-        </td>
-      </tr>
-    </table>
-  </body>
-</html>`;
+  return renderBrandedCustomerEmail({
+    subject: input.heading,
+    preheader: input.preheader,
+    eyebrow: "Sunday Bread Club",
+    heading: input.heading,
+    body: input.body,
+    action: input.action,
+  });
 }
 
 export function sendBreadClubMagicLink(input: {
