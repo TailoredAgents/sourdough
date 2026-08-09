@@ -13,7 +13,9 @@ export default defineConfig({
   webServer: shouldStartLocalServer
     ? {
         command: "npm run dev -- --hostname 127.0.0.1 --port 3000",
-        url: `${baseURL}/api/health`,
+        // Readiness must not depend on production-only database credentials.
+        // The health route intentionally returns 503 when Supabase is absent.
+        url: `${baseURL}/manifest.webmanifest`,
         reuseExistingServer: true,
         timeout: 120_000,
       }
