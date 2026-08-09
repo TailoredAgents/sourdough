@@ -28,13 +28,14 @@ jobs:
       - name: Check production environment contract
         env:
           NODE_ENV: production
-          NEXT_PUBLIC_SITE_URL: https://landlsourdough.com
+          NEXT_PUBLIC_SITE_URL: https://www.landlsourdough.com
           NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-anon-key
           SUPABASE_SERVICE_ROLE_KEY: ci-service-role-key
           SUPABASE_DB_URL: postgresql://user:pass@host:5432/db
           ADMIN_EMAILS: admin@landlsourdough.com
           BAKERY_EMAIL: orders@landlsourdough.com
+          BAKERY_REVIEW_URL: https://g.page/r/CQUR-EBBDOgqECA/review
           RESEND_API_KEY: re_ci_key
           RESEND_FROM: "Luna & Lorelai's Sourdough <orders@landlsourdough.com>"
           STRIPE_SECRET_KEY: sk_test_ci
@@ -51,7 +52,9 @@ jobs:
           DELIVERY_FEE_BANDS: 0-10:500,11-20:700,21-30:1000
           BREAD_CLUB_PUBLIC_ENABLED: "false"
           BREAD_CLUB_TAX_STATUS: pending
-          CRON_SECRET: ci-cron-secret
+          CRON_SECRET: ci-cron-secret-32-characters-long-0001
+          BREAD_CLUB_SETUP_SECRET: ci-bread-club-setup-secret-32-chars-0002
+          CLOUDFLARE_ORIGIN_SECRET: ci-cloudflare-origin-secret-32-chars-0003
         run: npm run check:prod-env -- --no-env-file
 
       - name: Run validation
