@@ -1,5 +1,8 @@
 import { completeStorefrontCheckoutSession } from "./order-payment";
-import { cancelExpiredCheckoutSession } from "./order-records";
+import {
+  cancelExpiredCheckoutSession,
+  cleanupAbandonedStorefrontCheckouts,
+} from "./order-records";
 import { getStripe } from "./stripe";
 import { getSupabaseAdminClient } from "./supabase";
 
@@ -12,12 +15,11 @@ export type StorefrontCheckoutReconciliationReport = {
   checked: number;
   paidOrdersRecovered: number;
   expiredOrdersReleased: number;
+  abandonedOrdersCanceled: number;
   errors: string[];
 };
 
-export async function reconcileStorefrontCheckoutSessions(
-  now = new Date(),
-): Promise<StorefrontCheckoutReconciliationReport> {
+export async function reconcileStorefrontCheckoutSessions(): Promise<StorefrontCheckoutReconciliationReport> {
   const stripe = getStripe();
   const supabase = getSupabaseAdminClient();
   if (!stripe) throw new Error("STRIPE_SECRET_KEY is not configured.");
@@ -27,18 +29,16 @@ export async function reconcileStorefrontCheckoutSessions(
     checked: 0,
     paidOrdersRecovered: 0,
     expiredOrdersReleased: 0,
+    abandonedOrdersCanceled: 0,
     errors: [],
   };
-  const createdAfter = new Date(
-    now.getTime() - 14 * 24 * 60 * 60 * 1000,
-  ).toISOString();
-
+  report.abandonedOrdersCanceled =
+    await cleanupAbandonedStorefrontCheckouts();
   const { data, error } = await supabase
     .from("orders")
     .select("id, stripe_checkout_session_id")
     .in("status", ["pending_payment", "pending_approval_payment"])
     .not("stripe_checkout_session_id", "is", null)
-    .gte("created_at", createdAfter)
     .order("created_at", { ascending: true })
     .limit(100);
 
@@ -61,7 +61,14 @@ export async function reconcileStorefrontCheckoutSessions(
       }
 
       if (session.status === "expired") {
-        const releasedOrderId = await cancelExpiredCheckoutSession(session.id);
+        const recoveryOrderId = session.metadata?.order_id;
+        const releasedOrderId =
+          typeof recoveryOrderId === "string" &&
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+            recoveryOrderId,
+          )
+            ? await cancelExpiredCheckoutSession(session.id, recoveryOrderId)
+            : await cancelExpiredCheckoutSession(session.id);
         if (releasedOrderId) report.expiredOrdersReleased += 1;
       }
     } catch (reconciliationError) {

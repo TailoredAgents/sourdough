@@ -47,7 +47,9 @@ Do not commit real secret values.
 | `STRIPE_AUTOMATIC_TAX_ENABLED` | `false` until Georgia registration and the ship-from address are confirmed, then `true` for all checkouts |
 | `BREAD_CLUB_PUBLIC_ENABLED` | `false` until tax and owner smoke gates pass |
 | `BREAD_CLUB_TAX_STATUS` | `pending`, `registered`, or `exempt` |
-| `CRON_SECRET` | The same strong secret entered on both the web and cron services |
+| `CRON_SECRET` | A unique random 32+ character secret entered identically on the web and cron services |
+| `BREAD_CLUB_SETUP_SECRET` | A different random 32+ character secret used only for Bread Club Stripe infrastructure setup |
+| `CLOUDFLARE_ORIGIN_SECRET` | A random 32+ character value also set by Cloudflare in `x-landl-origin-verify` |
 | `DELIVERY_FEE_CENTS` | `600` |
 | `DELIVERY_ALLOWED_POSTAL_CODES` | `30114,30115,30107,30183` fallback when Supabase is unavailable |
 | `DELIVERY_SERVICE_AREA_COPY` | Fallback service area copy when Supabase is unavailable |
@@ -65,6 +67,21 @@ is unavailable. Customer-facing rate limits also fail closed in production when
 Supabase rate-limit storage is unavailable. The Blueprint explicitly sets
 `plan: standard`, one tier above Render's default `starter` instance type for
 new web services.
+
+### Trusted visitor IPs through Cloudflare
+
+The custom domain is Cloudflare-proxied, while Render also exposes a public
+`onrender.com` hostname. Never trust `X-Forwarded-For`'s caller-controlled
+left-most value. Create a Cloudflare Request Header Transform Rule for the
+production hostname that **sets/overwrites** `x-landl-origin-verify` with the
+same random 32+ character value stored as `CLOUDFLARE_ORIGIN_SECRET` in Render.
+Do not commit that value. The app accepts `CF-Connecting-IP` only when this
+secret matches; direct Render traffic falls back to Render's appended peer IP.
+
+Keep the `www` DNS record proxied (orange cloud). If Render or Cloudflare later
+supports an origin-only control appropriate for this service, restrict direct
+origin access as an additional layer after confirming the Render health check
+and Stripe/cron callbacks still work.
 
 ## Deployment Steps
 
@@ -116,6 +133,8 @@ PLAYWRIGHT_BASE_URL=https://your-render-service.onrender.com npm run test:e2e
 - Visit `/` and confirm the storefront loads.
 - Visit `/policies` and confirm policy pages load.
 - Visit `/api/health` and confirm it returns JSON with `"ok": true`.
+- With `Authorization: Bearer <CRON_SECRET>`, request
+  `/api/health?deep=1` and confirm the Supabase reachability check succeeds.
 - Visit `/admin/login` and sign in with an approved Supabase Auth email/password.
 - Confirm product photos load from Supabase Storage.
 - Confirm the delivery ZIP check works.
@@ -134,6 +153,15 @@ When Stripe is ready:
    - `https://www.landlsourdough.com/api/stripe/webhook`
 3. Listen for:
    - `checkout.session.completed`
+   - `checkout.session.async_payment_succeeded`
+   - `checkout.session.async_payment_failed`
    - `checkout.session.expired`
+   - `invoice.paid`
+   - `invoice.payment_failed`
+   - `invoice.upcoming`
+   - `customer.subscription.updated`
+   - `customer.subscription.deleted`
 4. Add `STRIPE_WEBHOOK_SECRET` in Render.
-5. Run a full Stripe test checkout before switching to live keys.
+5. Rerun the protected Bread Club setup/sync operation whenever this event list
+   changes; changing application code alone does not update Stripe's endpoint.
+6. Run a full Stripe test checkout before switching to live keys.

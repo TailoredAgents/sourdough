@@ -6,6 +6,7 @@ import {
   BREAD_CLUB_SESSION_DAYS,
 } from "./config";
 import { sendBreadClubMagicLink } from "./emails";
+import { getRequestClientIp } from "@/lib/rate-limit";
 import { getSupabaseAdminClient } from "@/lib/supabase";
 import { getSiteUrl } from "@/lib/utils";
 
@@ -67,7 +68,7 @@ export async function createBreadClubMagicLink(
   const customer = customers.find(
     (item) => String(item.id) === String(membership.customer_id),
   );
-  const link = `${getSiteUrl()}/api/bread-club/auth/callback?token=${encodeURIComponent(rawToken)}`;
+  const link = `${getSiteUrl()}/bread-club/auth/confirm?token=${encodeURIComponent(rawToken)}`;
   await sendBreadClubMagicLink({
     to: normalizedEmail,
     customerName: String(customer?.name || "there"),
@@ -82,45 +83,22 @@ export async function consumeBreadClubMagicLink(rawToken: string) {
   if (!supabase) throw new Error("Supabase admin client is not configured.");
   const tokenHash = hashToken(rawToken);
 
-  const { data: magicLink, error: lookupError } = await supabase
-    .from("bread_club_magic_links")
-    .select("id, membership_id, expires_at, used_at")
-    .eq("token_hash", tokenHash)
-    .maybeSingle();
-  if (lookupError) throw new Error(lookupError.message);
-  if (
-    !magicLink ||
-    magicLink.used_at ||
-    new Date(magicLink.expires_at).getTime() <= Date.now()
-  ) {
-    return null;
-  }
-
-  const usedAt = new Date().toISOString();
-  const { data: usedRows, error: updateError } = await supabase
-    .from("bread_club_magic_links")
-    .update({ used_at: usedAt })
-    .eq("id", magicLink.id)
-    .is("used_at", null)
-    .gt("expires_at", usedAt)
-    .select("id");
-  if (updateError) throw new Error(updateError.message);
-  if (!usedRows?.length) return null;
-
   const rawSession = randomBytes(32).toString("base64url");
   const expiresAt = expiresFromNow(BREAD_CLUB_SESSION_DAYS, "days");
-  const { error: sessionError } = await supabase
-    .from("bread_club_sessions")
-    .insert({
-      membership_id: magicLink.membership_id,
-      session_hash: hashToken(rawSession),
-      expires_at: expiresAt.toISOString(),
-    });
-  if (sessionError) throw new Error(sessionError.message);
+  const { data: membershipId, error } = await supabase.rpc(
+    "consume_bread_club_magic_link",
+    {
+      p_token_hash: tokenHash,
+      p_session_hash: hashToken(rawSession),
+      p_session_expires_at: expiresAt.toISOString(),
+    },
+  );
+  if (error) throw new Error(error.message);
+  if (!membershipId) return null;
 
   return {
     rawSession,
-    membershipId: String(magicLink.membership_id),
+    membershipId: String(membershipId),
     expiresAt,
   };
 }
@@ -162,7 +140,6 @@ export async function revokeCurrentBreadClubSession() {
 }
 
 export function hashBreadClubRequestIp(request: Request) {
-  const forwarded = request.headers.get("x-forwarded-for") || "";
-  const ip = forwarded.split(",")[0]?.trim();
-  return ip ? hashToken(ip) : null;
+  const ip = getRequestClientIp(request);
+  return ip === "unknown-ip" ? null : hashToken(ip);
 }

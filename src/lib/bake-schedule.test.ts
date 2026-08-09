@@ -5,6 +5,7 @@ import {
   formatSundayDeliveryWindowLabel,
   getFirstVisibleDeliveryWeekSchedule,
   getRollingDeliveryWeekSchedules,
+  getWeeklyMenuDeliverySchedule,
   isStandardSundayDeliveryWindow,
 } from "./bake-schedule";
 
@@ -58,6 +59,19 @@ describe("Sunday bake schedule", () => {
       "Sunday, Aug 23, 3:00 PM-6:00 PM",
     ]);
     expect(DEFAULT_SUNDAY_DELIVERY_CAPACITY).toBe(20);
+  });
+
+  it("builds a new delivery slot from the selected menu week", () => {
+    const schedule = getWeeklyMenuDeliverySchedule(
+      "2026-08-10T04:00:00.000Z",
+    );
+
+    expect(schedule?.deliveryStartsAt.toISOString()).toBe(
+      "2026-08-16T19:00:00.000Z",
+    );
+    expect(schedule?.deliveryEndsAt.toISOString()).toBe(
+      "2026-08-16T22:00:00.000Z",
+    );
   });
 
   it("identifies the standard Sunday 3-6 PM delivery window", () => {

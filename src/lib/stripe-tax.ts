@@ -69,9 +69,10 @@ type StripeDeliveryCustomer = {
 export async function createStripeDeliveryCustomer(
   stripe: Stripe,
   input: StripeDeliveryCustomer,
+  requestOptions?: Stripe.RequestOptions,
 ) {
   const address = toStripeAddress(input.address);
-  return stripe.customers.create({
+  const payload = {
     name: input.name,
     email: input.email.trim().toLowerCase(),
     phone: input.phone,
@@ -85,16 +86,20 @@ export async function createStripeDeliveryCustomer(
       validate_location: "immediately",
     },
     metadata: input.metadata,
-  });
+  } satisfies Stripe.CustomerCreateParams;
+  return requestOptions
+    ? stripe.customers.create(payload, requestOptions)
+    : stripe.customers.create(payload);
 }
 
 export async function updateStripeDeliveryCustomer(
   stripe: Stripe,
   customerId: string,
   input: Omit<StripeDeliveryCustomer, "email" | "metadata">,
+  requestOptions?: Stripe.RequestOptions,
 ) {
   const address = toStripeAddress(input.address);
-  return stripe.customers.update(customerId, {
+  const payload = {
     name: input.name,
     phone: input.phone,
     address,
@@ -106,5 +111,8 @@ export async function updateStripeDeliveryCustomer(
     tax: {
       validate_location: "immediately",
     },
-  });
+  } satisfies Stripe.CustomerUpdateParams;
+  return requestOptions
+    ? stripe.customers.update(customerId, payload, requestOptions)
+    : stripe.customers.update(customerId, payload);
 }

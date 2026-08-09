@@ -8,7 +8,7 @@ import {
   normalizeBreadClubSelection,
 } from "./pricing";
 import { isBreadClubPublicEnabled } from "./config";
-import { getStripe } from "@/lib/stripe";
+import { requestBreadClubCycleRefund } from "./billing";
 import { getSupabaseAdminClient } from "@/lib/supabase";
 import type { BreadClubMemberData } from "./types";
 
@@ -19,6 +19,11 @@ export type BreadClubAdminMember = BreadClubMemberData & {
   estimatedContributionCents: number | null;
   estimatedIngredientCostCents: number | null;
   estimatedStripeFeeCents: number;
+  currentCycleRefundStatus?: string | null;
+  currentCycleRefundError?: string | null;
+  providerSyncRequired: boolean;
+  providerSyncError: string | null;
+  providerSyncAttemptedAt: string | null;
 };
 
 export type BreadClubAdminData = {
@@ -62,6 +67,9 @@ type MembershipListRow = {
   created_at: string;
   current_cycle_id: string | null;
   last_payment_failure_at: string | null;
+  provider_sync_required: boolean;
+  provider_sync_error: string | null;
+  provider_sync_attempted_at: string | null;
 };
 
 export async function getBreadClubAdminData(): Promise<BreadClubAdminData> {
@@ -109,7 +117,9 @@ export async function getBreadClubAdminData(): Promise<BreadClubAdminData> {
     await Promise.all([
       supabase
         .from("bread_club_memberships")
-        .select("id, created_at, current_cycle_id, last_payment_failure_at")
+        .select(
+          "id, created_at, current_cycle_id, last_payment_failure_at, provider_sync_required, provider_sync_error, provider_sync_attempted_at",
+        )
         .order("created_at", { ascending: false }),
       supabase
         .from("bread_club_settings")
@@ -127,7 +137,9 @@ export async function getBreadClubAdminData(): Promise<BreadClubAdminData> {
         .gt("expires_at", new Date().toISOString()),
       supabase
         .from("bread_club_cycles")
-        .select("id, stripe_invoice_id, status")
+        .select(
+          "id, stripe_invoice_id, status, stripe_refund_status, refund_last_error",
+        )
         .order("cycle_number", { ascending: false }),
       supabase
         .from("bread_club_job_events")
@@ -147,12 +159,20 @@ export async function getBreadClubAdminData(): Promise<BreadClubAdminData> {
   const memberData = await Promise.all(
     membershipRows.map((row) => getBreadClubMemberData(row.id)),
   );
-  const invoiceByCycle = new Map(
+  const billingByCycle = new Map(
     (cycleResult.data || []).map((cycle) => [
       String(cycle.id),
-      cycle.stripe_invoice_id
-        ? String(cycle.stripe_invoice_id)
-        : null,
+      {
+        invoiceId: cycle.stripe_invoice_id
+          ? String(cycle.stripe_invoice_id)
+          : null,
+        refundStatus: cycle.stripe_refund_status
+          ? String(cycle.stripe_refund_status)
+          : null,
+        refundError: cycle.refund_last_error
+          ? String(cycle.refund_last_error)
+          : null,
+      },
     ]),
   );
   const members = memberData
@@ -171,8 +191,17 @@ export async function getBreadClubAdminData(): Promise<BreadClubAdminData> {
         ...member,
         createdAt: row.created_at,
         stripeInvoiceId: member.currentCycle
-          ? invoiceByCycle.get(member.currentCycle.id) || null
+          ? billingByCycle.get(member.currentCycle.id)?.invoiceId || null
           : null,
+        currentCycleRefundStatus: member.currentCycle
+          ? billingByCycle.get(member.currentCycle.id)?.refundStatus || null
+          : null,
+        currentCycleRefundError: member.currentCycle
+          ? billingByCycle.get(member.currentCycle.id)?.refundError || null
+          : null,
+        providerSyncRequired: row.provider_sync_required,
+        providerSyncError: row.provider_sync_error,
+        providerSyncAttemptedAt: row.provider_sync_attempted_at,
         lastPaymentFailureAt: row.last_payment_failure_at,
         estimatedContributionCents: contribution.contributionCents,
         estimatedIngredientCostCents:
@@ -274,6 +303,35 @@ export async function getBreadClubAdminData(): Promise<BreadClubAdminData> {
   if (pendingRefunds) {
     urgentIssues.push(
       `${pendingRefunds} Bread Club refund${pendingRefunds === 1 ? "" : "s"} need to be resumed.`,
+    );
+  }
+  const failedRefunds = (cycleResult.data || []).filter(
+    (cycle) =>
+      cycle.status === "refund_pending" &&
+      ["failed", "canceled", "unknown"].includes(
+        String(cycle.stripe_refund_status || ""),
+      ),
+  ).length;
+  if (failedRefunds) {
+    urgentIssues.push(
+      `${failedRefunds} Bread Club refund${failedRefunds === 1 ? "" : "s"} failed or has an unknown provider result. Retry resumes the durable attempt safely.`,
+    );
+  }
+  const pendingProviderSyncs = members.filter(
+    (member) => member.providerSyncRequired,
+  );
+  if (pendingProviderSyncs.length) {
+    const failedProviderSyncs = pendingProviderSyncs.filter(
+      (member) => member.providerSyncError,
+    ).length;
+    urgentIssues.push(
+      `${pendingProviderSyncs.length} Bread Club membership change${
+        pendingProviderSyncs.length === 1 ? "" : "s"
+      } still need${pendingProviderSyncs.length === 1 ? "s" : ""} Stripe synchronization${
+        failedProviderSyncs
+          ? `; ${failedProviderSyncs} reported a provider error and will retry automatically`
+          : ""
+      }. Renewals stay blocked until the saved change is confirmed.`,
     );
   }
 
@@ -392,129 +450,22 @@ export async function refundBreadClubCycle(
   cycleId: string,
   note: string,
 ) {
-  const stripe = getStripe();
   const supabase = getSupabaseAdminClient();
-  if (!stripe) throw new Error("Stripe is not configured.");
   if (!supabase) throw new Error("Supabase admin client is not configured.");
 
   const { data: cycle, error: cycleError } = await supabase
     .from("bread_club_cycles")
-    .select("stripe_invoice_id, total_cents, status")
+    .select("id")
     .eq("id", cycleId)
     .eq("membership_id", membershipId)
     .maybeSingle();
   if (cycleError) throw new Error(cycleError.message);
-  if (
-    !cycle?.stripe_invoice_id ||
-    !["paid", "refund_pending", "refunded"].includes(String(cycle.status))
-  ) {
-    throw new Error("A paid Stripe invoice was not found for this cycle.");
-  }
-  if (cycle.status === "refunded") return getBreadClubAdminData();
+  if (!cycle) throw new Error("That Bread Club cycle was not found.");
 
-  const { data: fulfillments, error: fulfillmentError } = await supabase
-    .from("bread_club_fulfillments")
-    .select("id")
-    .eq("cycle_id", cycleId)
-    .eq("membership_id", membershipId);
-  if (fulfillmentError) throw new Error(fulfillmentError.message);
-  const fulfillmentIds = (fulfillments || []).map((item) => item.id);
-  const { data: credits, error: creditError } = fulfillmentIds.length
-    ? await supabase
-        .from("bread_club_rollover_credits")
-        .select(
-          "id, status, stripe_invoice_item_id, delivery_credit_applied_at",
-        )
-        .in("source_fulfillment_id", fulfillmentIds)
-    : { data: [], error: null };
-  if (creditError) throw new Error(creditError.message);
-  if (
-    (credits || []).some(
-      (credit) =>
-        credit.status === "redeemed" ||
-        Boolean(credit.delivery_credit_applied_at),
-    )
-  ) {
-    throw new Error(
-      "A rollover or delivery credit from this cycle was already used. Review it in Stripe before issuing a manual refund.",
-    );
-  }
-
-  const { data: previousStatus, error: beginError } = await supabase.rpc(
-    "begin_bread_club_cycle_refund",
-    { p_cycle_id: cycleId },
+  await requestBreadClubCycleRefund(
+    cycleId,
+    note || "Refund requested by owner",
   );
-  if (beginError) throw new Error(beginError.message);
-  if (previousStatus === "refunded") return getBreadClubAdminData();
-
-  for (const credit of credits || []) {
-    if (!credit.stripe_invoice_item_id) continue;
-    try {
-      await stripe.invoiceItems.del(
-        String(credit.stripe_invoice_item_id),
-      );
-    } catch (error) {
-      const code =
-        typeof error === "object" && error && "code" in error
-          ? String(error.code)
-          : "";
-      if (code === "resource_missing") continue;
-      if (previousStatus === "paid" || previousStatus === "past_due") {
-        await supabase
-          .from("bread_club_cycles")
-          .update({
-            status: previousStatus,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", cycleId)
-          .eq("status", "refund_pending");
-      }
-      throw error;
-    }
-  }
-
-  const payments = await stripe.invoicePayments.list({
-    invoice: String(cycle.stripe_invoice_id),
-    status: "paid",
-    limit: 10,
-  });
-  const payment = payments.data.find((item) => item.status === "paid");
-  const paymentIntent =
-    typeof payment?.payment.payment_intent === "string"
-      ? payment.payment.payment_intent
-      : payment?.payment.payment_intent?.id;
-  const charge =
-    typeof payment?.payment.charge === "string"
-      ? payment.payment.charge
-      : payment?.payment.charge?.id;
-  if (!paymentIntent && !charge) {
-    throw new Error("The invoice payment cannot be refunded automatically.");
-  }
-
-  const refund = await stripe.refunds.create(
-    {
-      ...(paymentIntent
-        ? { payment_intent: paymentIntent }
-        : { charge: charge! }),
-      amount: Number(cycle.total_cents),
-      reason: "requested_by_customer",
-      metadata: {
-        bread_club_membership_id: membershipId,
-        bread_club_cycle_id: cycleId,
-      },
-    },
-    { idempotencyKey: `bread-club-cycle-refund-${cycleId}` },
-  );
-
-  const { error: refundError } = await supabase.rpc(
-    "refund_bread_club_cycle",
-    {
-      p_cycle_id: cycleId,
-      p_stripe_refund_id: refund.id,
-      p_admin_note: note || "Refunded by owner",
-    },
-  );
-  if (refundError) throw new Error(refundError.message);
   return getBreadClubAdminData();
 }
 

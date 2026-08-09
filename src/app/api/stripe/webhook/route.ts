@@ -4,6 +4,15 @@ import { handleBreadClubStripeEvent } from "@/lib/bread-club/webhook";
 import { completeStorefrontCheckoutSession } from "@/lib/order-payment";
 import { getStripe } from "@/lib/stripe";
 
+function getStorefrontOrderId(value: unknown) {
+  return typeof value === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      value,
+    )
+    ? value
+    : null;
+}
+
 export async function POST(request: Request) {
   const stripe = getStripe();
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -36,15 +45,31 @@ export async function POST(request: Request) {
       return NextResponse.json({ received: true });
     }
 
-    if (event.type === "checkout.session.completed") {
+    if (
+      event.type === "checkout.session.completed" ||
+      event.type === "checkout.session.async_payment_succeeded"
+    ) {
       const session = event.data.object;
       await completeStorefrontCheckoutSession(session);
     }
 
-    if (event.type === "checkout.session.expired") {
-      const orderId = await cancelExpiredCheckoutSession(event.data.object.id);
-      console.log("[stripe:webhook] checkout expired", {
+    if (
+      event.type === "checkout.session.expired" ||
+      event.type === "checkout.session.async_payment_failed"
+    ) {
+      const checkoutSession = event.data.object;
+      const recoveryOrderId = getStorefrontOrderId(
+        checkoutSession.metadata?.order_id,
+      );
+      const orderId = recoveryOrderId
+        ? await cancelExpiredCheckoutSession(
+            checkoutSession.id,
+            recoveryOrderId,
+          )
+        : await cancelExpiredCheckoutSession(checkoutSession.id);
+      console.log("[stripe:webhook] checkout closed without payment", {
         sessionId: event.data.object.id,
+        eventType: event.type,
         orderId,
       });
     }

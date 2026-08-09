@@ -47,6 +47,7 @@ describe("Stripe order webhook", () => {
   it("routes completed Checkout Sessions through the paid-order workflow", async () => {
     const session = {
       id: "cs_approval",
+      payment_status: "paid",
       amount_total: 3210,
       total_details: { amount_tax: 210 },
       customer_email: "customer@example.com",
@@ -71,5 +72,48 @@ describe("Stripe order webhook", () => {
     ).toHaveBeenCalledWith(
       session,
     );
+  });
+
+  it("routes a delayed payment success through the same paid-order workflow", async () => {
+    const session = {
+      id: "cs_delayed",
+      payment_status: "paid",
+      amount_total: 3210,
+      total_details: { amount_tax: 210 },
+    };
+    mocks.constructEvent.mockReturnValue({
+      id: "evt_delayed_paid",
+      type: "checkout.session.async_payment_succeeded",
+      data: { object: session },
+    });
+
+    const response = await postWebhook();
+
+    expect(response.status).toBe(200);
+    expect(mocks.completeStorefrontCheckoutSession).toHaveBeenCalledWith(session);
+  });
+
+  it("releases a delayed payment that ultimately fails", async () => {
+    const orderId = "11111111-1111-4111-8111-111111111111";
+    const session = {
+      id: "cs_delayed_failed",
+      payment_status: "unpaid",
+      metadata: { order_id: orderId },
+    };
+    mocks.constructEvent.mockReturnValue({
+      id: "evt_delayed_failed",
+      type: "checkout.session.async_payment_failed",
+      data: { object: session },
+    });
+    mocks.cancelExpiredCheckoutSession.mockResolvedValue("order-id");
+
+    const response = await postWebhook();
+
+    expect(response.status).toBe(200);
+    expect(mocks.cancelExpiredCheckoutSession).toHaveBeenCalledWith(
+      "cs_delayed_failed",
+      orderId,
+    );
+    expect(mocks.completeStorefrontCheckoutSession).not.toHaveBeenCalled();
   });
 });

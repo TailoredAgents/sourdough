@@ -80,6 +80,7 @@ export type BreadClubEnrollmentData = {
 };
 
 export type BreadClubCheckoutRequest = {
+  checkoutAttemptId: string;
   planId: string;
   selection: BreadClubSelection[];
   customer: {
@@ -142,7 +143,12 @@ export type BreadClubMemberCredit = {
   id: string;
   quantity: number;
   deliveryFeeCreditCents: number;
-  status: "available" | "redeemed" | "expired" | "refunded";
+  status:
+    | "available"
+    | "redeemed"
+    | "expired"
+    | "refund_pending"
+    | "refunded";
   expiresAt: string;
 };
 

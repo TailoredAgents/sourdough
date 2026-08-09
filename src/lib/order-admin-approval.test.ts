@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   sendOrderCompletionThankYou: vi.fn(),
   sendOrderStatusUpdate: vi.fn(),
   retrieveSession: vi.fn(),
+  retrieveRefund: vi.fn(),
   createRefund: vi.fn(),
   updates: [] as unknown[],
   rpcCalls: [] as Array<{ name: string; params: unknown }>,
@@ -37,12 +38,14 @@ vi.mock("./stripe", () => ({
     },
     refunds: {
       create: mocks.createRefund,
+      retrieve: mocks.retrieveRefund,
     },
   }),
 }));
 
 const orderId = "11111111-1111-4111-8111-111111111111";
 const currentWindowId = "22222222-2222-4222-8222-222222222222";
+const currentWeeklyMenuId = "44444444-4444-4444-8444-444444444444";
 const nextWindowId = "33333333-3333-4333-8333-333333333333";
 
 const adminOrderRow = {
@@ -101,10 +104,30 @@ const orderItemRows = [
   },
 ];
 
+function adminOrdersQuery(data: unknown[]) {
+  const ordered = {
+    order: () => ({
+      limit: async () => ({ data, error: null }),
+    }),
+  };
+  return { ...ordered, eq: () => ordered };
+}
+
 function setupRpcMock() {
   mocks.rpc.mockImplementation(async (name: string, params: unknown) => {
     mocks.rpcCalls.push({ name, params });
-    return { error: null };
+    if (name === "admin_begin_approval_refund_scoped") {
+      return {
+        data: [
+          {
+            checkout_session_id: "cs_approval",
+            refund_id: null,
+          },
+        ],
+        error: null,
+      };
+    }
+    return { data: true, error: null };
   });
 }
 
@@ -125,6 +148,7 @@ beforeEach(() => {
   mocks.sendOrderCompletionThankYou.mockReset();
   mocks.sendOrderStatusUpdate.mockReset();
   mocks.retrieveSession.mockReset();
+  mocks.retrieveRefund.mockReset();
   mocks.createRefund.mockReset();
   mocks.updates.length = 0;
   mocks.rpcCalls.length = 0;
@@ -151,11 +175,7 @@ describe("admin approval request decisions", () => {
                 }),
               };
             }
-            return {
-              order: () => ({
-                limit: async () => ({ data: [adminOrdersResult("paid")], error: null }),
-              }),
-            };
+            return adminOrdersQuery([adminOrdersResult("paid")]);
           },
           update: (payload: unknown) => {
             mocks.updates.push(payload);
@@ -192,26 +212,19 @@ describe("admin approval request decisions", () => {
       throw new Error(`Unexpected table ${table}`);
     });
 
-    await acceptApprovalOrder(orderId);
+    await acceptApprovalOrder(orderId, undefined, currentWeeklyMenuId);
 
     expect(mocks.rpcCalls).toEqual([
       {
-        name: "reserve_order_inventory",
+        name: "admin_accept_approval_order_scoped",
         params: {
-          p_delivery_window_id: currentWindowId,
-          p_items: [
-            {
-              product_id: orderItemRows[0].product_id,
-              quantity: 2,
-            },
-          ],
+          p_order_id: orderId,
+          p_expected_weekly_menu_id: currentWeeklyMenuId,
+          p_target_delivery_window_id: null,
+          p_actor_email: null,
         },
       },
     ]);
-    expect(mocks.updates[0]).toMatchObject({
-      status: "paid",
-      admin_decision_note: "Accepted same-week approval request.",
-    });
     expect(mocks.sendOrderStatusUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
         to: "customer@example.com",
@@ -246,11 +259,7 @@ describe("admin approval request decisions", () => {
                 }),
               };
             }
-            return {
-              order: () => ({
-                limit: async () => ({ data: [adminOrdersResult("paid")], error: null }),
-              }),
-            };
+            return adminOrdersQuery([adminOrdersResult("paid")]);
           },
           update: (payload: unknown) => {
             mocks.updates.push(payload);
@@ -303,35 +312,35 @@ describe("admin approval request decisions", () => {
       throw new Error(`Unexpected table ${table}`);
     });
 
-    await moveApprovalOrderToNextWeek(orderId, nextWindowId);
+    await moveApprovalOrderToNextWeek(
+      orderId,
+      nextWindowId,
+      undefined,
+      currentWeeklyMenuId,
+    );
 
     expect(mocks.rpcCalls[0]).toEqual({
-      name: "reserve_order_inventory",
+      name: "admin_accept_approval_order_scoped",
       params: {
-        p_delivery_window_id: nextWindowId,
-        p_items: [
-          {
-            product_id: orderItemRows[0].product_id,
-            quantity: 2,
-          },
-        ],
+        p_order_id: orderId,
+        p_expected_weekly_menu_id: currentWeeklyMenuId,
+        p_target_delivery_window_id: nextWindowId,
+        p_actor_email: null,
       },
-    });
-    expect(mocks.updates[0]).toMatchObject({
-      delivery_window_id: nextWindowId,
-      status: "paid",
-      admin_decision_note: "Moved approval request to next delivery week.",
     });
   });
 
   it("denies and refunds a paid same-week request through Stripe", async () => {
     mocks.retrieveSession.mockResolvedValue({ payment_intent: "pi_approval" });
-    mocks.createRefund.mockResolvedValue({ id: "re_approval" });
+    mocks.createRefund.mockResolvedValue({ id: "re_approval", status: "succeeded" });
     mocks.from.mockImplementation((table: string) => {
       if (table === "orders") {
         return {
           select: (columns: string) => {
-            if (columns === "id, status, stripe_checkout_session_id") {
+            if (
+              columns ===
+              "id, status, stripe_checkout_session_id, stripe_refund_id"
+            ) {
               return {
                 eq: () => ({
                   maybeSingle: async () => ({
@@ -339,20 +348,14 @@ describe("admin approval request decisions", () => {
                       id: orderId,
                       status: "pending_approval",
                       stripe_checkout_session_id: "cs_approval",
+                      stripe_refund_id: null,
                     },
                     error: null,
                   }),
                 }),
               };
             }
-            return {
-              order: () => ({
-                limit: async () => ({
-                  data: [adminOrdersResult("canceled")],
-                  error: null,
-                }),
-              }),
-            };
+            return adminOrdersQuery([adminOrdersResult("canceled")]);
           },
           update: (payload: unknown) => {
             mocks.updates.push(payload);
@@ -376,20 +379,69 @@ describe("admin approval request decisions", () => {
       throw new Error(`Unexpected table ${table}`);
     });
 
-    await denyApprovalOrderWithRefund(orderId);
+    await denyApprovalOrderWithRefund(
+      orderId,
+      "owner@example.com",
+      currentWeeklyMenuId,
+    );
 
-    expect(mocks.retrieveSession).toHaveBeenCalledWith("cs_approval");
-    expect(mocks.createRefund).toHaveBeenCalledWith({
-      payment_intent: "pi_approval",
-      metadata: {
-        order_id: orderId,
-        reason: "after_cutoff_approval_denied",
+    expect(mocks.rpcCalls).toContainEqual({
+      name: "admin_begin_approval_refund_scoped",
+      params: {
+        p_order_id: orderId,
+        p_expected_weekly_menu_id: currentWeeklyMenuId,
+        p_actor_email: "owner@example.com",
       },
     });
-    expect(mocks.updates[0]).toMatchObject({
-      status: "canceled",
-      stripe_refund_id: "re_approval",
-      admin_decision_note: "Denied approval request and refunded payment.",
+    expect(mocks.retrieveSession).toHaveBeenCalledWith("cs_approval");
+    expect(mocks.createRefund).toHaveBeenCalledWith(
+      {
+        payment_intent: "pi_approval",
+        metadata: {
+          order_id: orderId,
+          reason: "after_cutoff_approval_denied",
+        },
+      },
+      { idempotencyKey: `order-denial-refund-${orderId}` },
+    );
+    expect(mocks.rpcCalls).toContainEqual({
+      name: "admin_finalize_approval_refund_scoped",
+      params: {
+        p_order_id: orderId,
+        p_expected_weekly_menu_id: currentWeeklyMenuId,
+        p_refund_id: "re_approval",
+        p_actor_email: "owner@example.com",
+      },
     });
+  });
+
+  it("durably records a pending refund instead of leaving an unfenced approval", async () => {
+    mocks.retrieveSession.mockResolvedValue({ payment_intent: "pi_approval" });
+    mocks.createRefund.mockResolvedValue({
+      id: "re_pending",
+      status: "pending",
+    });
+
+    await expect(
+      denyApprovalOrderWithRefund(
+        orderId,
+        "owner@example.com",
+        currentWeeklyMenuId,
+      ),
+    ).rejects.toThrow(/refund is pending/i);
+
+    expect(mocks.rpcCalls).toContainEqual({
+      name: "admin_record_approval_refund_scoped",
+      params: {
+        p_order_id: orderId,
+        p_expected_weekly_menu_id: currentWeeklyMenuId,
+        p_refund_id: "re_pending",
+        p_refund_status: "pending",
+        p_actor_email: "owner@example.com",
+      },
+    });
+    expect(mocks.rpcCalls).not.toContainEqual(
+      expect.objectContaining({ name: "admin_finalize_approval_refund_scoped" }),
+    );
   });
 });

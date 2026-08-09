@@ -30,6 +30,7 @@ const baseDeliveryCheck: DeliveryCheckResult = {
 };
 
 const baseCheckoutPayload = {
+  checkoutAttemptId: "22222222-2222-4222-8222-222222222222",
   weeklyMenuId: "11111111-1111-4111-8111-111111111111",
   cart: [{ productId: "classic-country-loaf", quantity: 1 }],
   customer: {
@@ -104,6 +105,18 @@ describe("checkout delivery eligibility", () => {
       checkoutSchema.safeParse({
         ...baseCheckoutPayload,
         address: { ...baseCheckoutPayload.address, postalCode: "30114-1234" },
+      }).success,
+    ).toBe(false);
+    expect(
+      checkoutSchema.safeParse({
+        ...baseCheckoutPayload,
+        address: { ...baseCheckoutPayload.address, line1: "x".repeat(181) },
+      }).success,
+    ).toBe(false);
+    expect(
+      checkoutSchema.safeParse({
+        ...baseCheckoutPayload,
+        customer: { ...baseCheckoutPayload.customer, email: `${"x".repeat(250)}@example.com` },
       }).success,
     ).toBe(false);
   });
@@ -215,7 +228,7 @@ describe("checkout delivery eligibility", () => {
     });
 
     expect(getCheckoutRateLimitKey(request, "Customer@Example.COM")).toBe(
-      "203.0.113.10:customer@example.com",
+      "198.51.100.2:customer@example.com",
     );
   });
 

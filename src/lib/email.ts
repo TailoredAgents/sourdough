@@ -32,6 +32,7 @@ type BaseEmail = {
   deliveryWindow: string;
   orderId?: string;
   customerMessageId?: string;
+  idempotencyKey?: string;
 };
 
 type OwnerEmail = BaseEmail & {
@@ -54,6 +55,7 @@ type CustomerReplyEmail = {
   subject: string;
   body: string;
   customerMessageId: string;
+  idempotencyKey?: string;
 };
 
 type OwnerShortAlertEmail = {
@@ -63,6 +65,7 @@ type OwnerShortAlertEmail = {
   orderId?: string;
   customerMessageId?: string;
   eventKey?: string;
+  idempotencyKey?: string;
 };
 
 function fromAddress() {
@@ -143,16 +146,23 @@ export async function hasSentEmailEvent({
   to,
   orderId,
   customerMessageId,
+  breadClubMembershipId,
   eventKey,
 }: {
   template: EmailTemplate;
   to: string;
   orderId?: string;
   customerMessageId?: string;
+  breadClubMembershipId?: string;
   eventKey?: string;
 }) {
   const supabase = getSupabaseAdminClient();
-  if (!supabase || (!orderId && !customerMessageId)) return false;
+  if (
+    !supabase ||
+    (!orderId && !customerMessageId && !breadClubMembershipId)
+  ) {
+    return false;
+  }
 
   let query = supabase
     .from("email_events")
@@ -164,7 +174,9 @@ export async function hasSentEmailEvent({
 
   query = orderId
     ? query.eq("order_id", orderId)
-    : query.eq("customer_message_id", customerMessageId as string);
+    : customerMessageId
+      ? query.eq("customer_message_id", customerMessageId)
+      : query.eq("bread_club_membership_id", breadClubMembershipId as string);
   if (eventKey) {
     query = query.contains("provider_response", {
       event_key: eventKey,
@@ -545,6 +557,7 @@ async function sendTemplatedEmail({
   text,
   html,
   eventKey,
+  idempotencyKey,
 }: {
   template: EmailTemplate;
   to: string;
@@ -555,6 +568,7 @@ async function sendTemplatedEmail({
   text: string;
   html?: string;
   eventKey?: string;
+  idempotencyKey?: string;
 }) {
   const apiKey = process.env.RESEND_API_KEY;
 
@@ -590,13 +604,16 @@ async function sendTemplatedEmail({
 
   try {
     const resend = new Resend(apiKey);
-    const result = await resend.emails.send({
+    const message = {
       from: fromAddress(),
       to,
       subject,
       text,
       ...(html ? { html } : {}),
-    });
+    };
+    const result = idempotencyKey
+      ? await resend.emails.send(message, { idempotencyKey })
+      : await resend.emails.send(message);
     const resendErrorMessage = getResendErrorMessage(result);
     if (resendErrorMessage) {
       throw new Error(resendErrorMessage);
@@ -641,6 +658,11 @@ export async function sendCustomerOrderConfirmation(input: BaseEmail) {
     template: "customer_order_confirmation",
     to: input.to,
     orderId: input.orderId,
+    idempotencyKey:
+      input.idempotencyKey ||
+      (input.orderId
+        ? `storefront-order-confirmation:${input.orderId}`
+        : undefined),
     ...renderCustomerConfirmation(input),
   });
 }
@@ -650,6 +672,11 @@ export async function sendCustomerApprovalRequestReceived(input: BaseEmail) {
     template: "customer_approval_request_received",
     to: input.to,
     orderId: input.orderId,
+    idempotencyKey:
+      input.idempotencyKey ||
+      (input.orderId
+        ? `storefront-approval-received:${input.orderId}`
+        : undefined),
     ...renderCustomerApprovalRequestReceived(input),
   });
 }
@@ -659,6 +686,11 @@ export async function sendOwnerNewOrderNotification(input: OwnerEmail) {
     template: "owner_new_order",
     to: input.to,
     orderId: input.orderId,
+    idempotencyKey:
+      input.idempotencyKey ||
+      (input.orderId
+        ? `storefront-owner-new-order:${input.orderId}`
+        : undefined),
     ...renderOwnerNewOrder(input),
   });
 }
@@ -668,6 +700,11 @@ export async function sendOwnerApprovalRequestNotification(input: OwnerEmail) {
     template: "owner_approval_request",
     to: input.to,
     orderId: input.orderId,
+    idempotencyKey:
+      input.idempotencyKey ||
+      (input.orderId
+        ? `storefront-owner-approval:${input.orderId}`
+        : undefined),
     ...renderOwnerApprovalRequest(input),
   });
 }
@@ -681,6 +718,7 @@ export async function sendOwnerShortAlert(input: OwnerShortAlertEmail) {
     subject: input.subject,
     text: input.body,
     eventKey: input.eventKey,
+    idempotencyKey: input.idempotencyKey,
   });
 }
 
@@ -719,6 +757,9 @@ export async function sendOrderCompletionThankYou(input: CompletionThankYouEmail
     template: "customer_order_thank_you",
     to: input.to,
     orderId: input.orderId,
+    idempotencyKey:
+      input.idempotencyKey ||
+      (input.orderId ? `completion-thank-you:${input.orderId}` : undefined),
     ...renderOrderCompletionThankYou({ ...input, reviewUrl }),
   });
 }
@@ -728,6 +769,7 @@ export async function sendCustomerMessageReply(input: CustomerReplyEmail) {
     template: "customer_message_reply",
     to: input.to,
     customerMessageId: input.customerMessageId,
+    idempotencyKey: input.idempotencyKey,
     ...renderCustomerMessageReply(input),
   });
 }
@@ -744,6 +786,27 @@ export async function sendBakeryTransactionalEmail(input: {
   html: string;
   orderId?: string;
   breadClubMembershipId?: string;
+  eventKey?: string;
+  idempotencyKey?: string;
 }) {
-  return sendTemplatedEmail(input);
+  if (
+    input.eventKey &&
+    input.breadClubMembershipId &&
+    (await hasSentEmailEvent({
+      template: input.template,
+      to: input.to,
+      breadClubMembershipId: input.breadClubMembershipId,
+      eventKey: input.eventKey,
+    }))
+  ) {
+    return { skipped: true };
+  }
+  return sendTemplatedEmail({
+    ...input,
+    idempotencyKey:
+      input.idempotencyKey ||
+      (input.eventKey
+        ? `bread-club:${input.template}:${input.eventKey}`
+        : undefined),
+  });
 }

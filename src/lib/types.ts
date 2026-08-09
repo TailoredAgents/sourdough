@@ -113,6 +113,7 @@ export type DeliveryAddress = {
 };
 
 export type CheckoutRequest = {
+  checkoutAttemptId: string;
   weeklyMenuId: string;
   cart: CartItem[];
   customer: CustomerDetails;
@@ -182,13 +183,13 @@ export type AdminOrder = {
   createdAt: string;
   updatedAt: string;
   stripeCheckoutSessionId: string | null;
-  checkoutCancelToken: string | null;
   nextWeekOk: boolean | null;
   approvalMode: string | null;
   approvedAt: string | null;
   deniedAt: string | null;
   refundedAt: string | null;
   stripeRefundId: string | null;
+  approvalRefundStartedAt?: string | null;
   adminDecisionNote: string | null;
   items: AdminOrderItem[];
   moveWindows: AdminOrderMoveWindow[];

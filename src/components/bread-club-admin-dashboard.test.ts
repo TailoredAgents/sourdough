@@ -134,6 +134,9 @@ const data: BreadClubAdminData = {
       ],
       createdAt: "2026-07-27T12:00:00.000Z",
       stripeInvoiceId: "in_123",
+      providerSyncRequired: false,
+      providerSyncError: null,
+      providerSyncAttemptedAt: null,
       lastPaymentFailureAt: null,
       estimatedContributionCents: 2500,
       estimatedIngredientCostCents: 1200,
@@ -163,5 +166,26 @@ describe("Bread Club admin display", () => {
     expect(html).toContain("Refund current cycle");
     expect(html).toContain("Estimated plan contribution");
     expect(html).toContain("Print Friday bake sheet");
+  });
+
+  it("makes a saved Stripe synchronization problem visible", () => {
+    const providerSyncData = structuredClone(data);
+    providerSyncData.members[0].providerSyncRequired = true;
+    providerSyncData.members[0].providerSyncError =
+      "Stripe temporarily rejected the delivery update.";
+    providerSyncData.members[0].providerSyncAttemptedAt =
+      "2026-08-02T18:00:00.000Z";
+
+    const html = renderToStaticMarkup(
+      React.createElement(BreadClubAdminDashboard, {
+        initialData: providerSyncData,
+      }),
+    );
+
+    expect(html).toContain("Saved change is waiting on Stripe");
+    expect(html).toContain(
+      "Stripe temporarily rejected the delivery update.",
+    );
+    expect(html).toContain("Last attempted");
   });
 });

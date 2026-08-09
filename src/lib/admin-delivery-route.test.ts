@@ -52,7 +52,6 @@ function orderFixture(patch: Partial<AdminOrder>): AdminOrder {
     createdAt: "2026-07-22T12:00:00.000Z",
     updatedAt: "2026-07-22T12:00:00.000Z",
     stripeCheckoutSessionId: "cs_test_123",
-    checkoutCancelToken: null,
     nextWeekOk: null,
     approvalMode: "standard",
     approvedAt: null,
@@ -97,6 +96,80 @@ describe("admin Sunday delivery route", () => {
     ]);
   });
 
+  it("never mixes orders from different Sunday delivery weeks", () => {
+    const orders = [
+      orderFixture({ id: "selected-paid", weeklyMenuId: "menu-1", status: "paid" }),
+      orderFixture({ id: "selected-baking", weeklyMenuId: "menu-1", status: "baking" }),
+      orderFixture({ id: "other-week", weeklyMenuId: "menu-2", status: "paid" }),
+    ];
+
+    expect(
+      getSundayRouteCandidateOrders(orders, "menu-1").map((order) => order.id),
+    ).toEqual(["selected-paid", "selected-baking"]);
+  });
+
+  it("combines multiple orders going to the same physical stop", async () => {
+    mocks.getOptimizedGoogleDrivingRoute.mockResolvedValue({
+      durationSeconds: 900,
+      distanceMeters: 8047,
+      optimizedIntermediateWaypointIndex: [0],
+    });
+    const route = await buildAdminSundayRoute([
+      orderFixture({ id: "base-order" }),
+      orderFixture({
+        id: "addon-order",
+        source: "bread_club_addon",
+        customerName: "Second Customer",
+        customerPhone: "7705550101",
+        items: [
+          {
+            id: "addon-item",
+            productId: "product-2",
+            productName: "Cinnamon Roll",
+            quantity: 2,
+            unitPriceCents: 500,
+          },
+        ],
+      }),
+    ]);
+
+    expect(route.stops).toHaveLength(1);
+    expect(route.stops[0]?.orderIds).toEqual(["base-order", "addon-order"]);
+    expect(route.stops[0]?.orderSummary).toContain("Classic Country Loaf");
+    expect(route.stops[0]?.orderSummary).toContain("Cinnamon Roll");
+    expect(route.stops[0]?.customerContacts).toEqual([
+      { name: "Test Customer", phone: "4045550100" },
+      { name: "Second Customer", phone: "7705550101" },
+    ]);
+  });
+
+  it("does not collapse distinct customer names that happen to overlap", async () => {
+    mocks.getOptimizedGoogleDrivingRoute.mockResolvedValue({
+      durationSeconds: 900,
+      distanceMeters: 8047,
+      optimizedIntermediateWaypointIndex: [0],
+    });
+
+    const route = await buildAdminSundayRoute([
+      orderFixture({ customerName: "Joann", customerPhone: "4045550100" }),
+      orderFixture({
+        id: "ann-order",
+        customerName: "Ann",
+        customerPhone: "7705550101",
+      }),
+    ]);
+
+    expect(route.stops[0]?.customerName).toBe("Joann / Ann");
+    expect(route.stops[0]?.customerContacts).toHaveLength(2);
+  });
+
+  it("keeps the selected week name when there are no active stops", async () => {
+    const route = await buildAdminSundayRoute([], "menu-3", "Sunday, Aug 9 delivery");
+    expect(route.weeklyMenuId).toBe("menu-3");
+    expect(route.weeklyMenuName).toBe("Sunday, Aug 9 delivery");
+    expect(route.stops).toEqual([]);
+  });
+
   it("uses Google's optimized waypoint order for the owner route", async () => {
     mocks.getOptimizedGoogleDrivingRoute.mockResolvedValue({
       durationSeconds: 3600,
@@ -120,6 +193,8 @@ describe("admin Sunday delivery route", () => {
 
     expect(route.durationMinutes).toBe(60);
     expect(route.distanceMiles).toBe(20);
+    expect(route.weeklyMenuId).toBe("menu-1");
+    expect(route.weeklyMenuName).toBe("Sunday, July 26 delivery");
     expect(route.stops.map((stop) => stop.customerName)).toEqual(["Beta", "Alpha"]);
     expect(route.mapsUrl).toContain("https://www.google.com/maps/dir/");
     expect(route.mapsUrl).toContain("waypoints=");

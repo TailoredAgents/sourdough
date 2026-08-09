@@ -71,6 +71,7 @@ export function sendBreadClubWelcome(input: {
   recurringTotalCents: number;
   sundayLabels: string[];
   manageUrl: string;
+  eventKey?: string;
 }) {
   const dates = input.sundayLabels.join("\n");
   const subject = `Welcome to ${input.planName}`;
@@ -99,6 +100,7 @@ export function sendBreadClubWelcome(input: {
     text,
     html,
     breadClubMembershipId: input.membershipId,
+    eventKey: input.eventKey,
   });
 }
 
@@ -110,6 +112,7 @@ export function sendBreadClubSelectionReminder(input: {
   selection: string;
   cutoffLabel: string;
   manageUrl: string;
+  eventKey?: string;
 }) {
   const subject = `Your ${input.deliveryLabel} Bread Club selection`;
   const text = `Hi ${input.customerName},\n\nCurrent selection: ${input.selection}\nDelivery: ${input.deliveryLabel}\nChange or skip by: ${input.cutoffLabel}\n\n${input.manageUrl}`;
@@ -130,6 +133,7 @@ export function sendBreadClubSelectionReminder(input: {
     text,
     html,
     breadClubMembershipId: input.membershipId,
+    eventKey: input.eventKey,
   });
 }
 
@@ -142,6 +146,7 @@ export function sendBreadClubSkipCredit(input: {
   deliveryCreditCents: number;
   expiresLabel: string;
   manageUrl: string;
+  eventKey?: string;
 }) {
   const subject = "Your Bread Club skip and rollover credit";
   const text = `Hi ${input.customerName},\n\n${input.skippedDelivery} was skipped. ${input.loafQuantity} loaf credit is available through ${input.expiresLabel}. A ${formatCurrency(input.deliveryCreditCents)} delivery credit will be applied to your next invoice.\n\n${input.manageUrl}`;
@@ -163,6 +168,7 @@ export function sendBreadClubSkipCredit(input: {
     text,
     html,
     breadClubMembershipId: input.membershipId,
+    eventKey: input.eventKey,
   });
 }
 
@@ -173,6 +179,7 @@ export function sendBreadClubAddonReceipt(input: {
   deliveryLabel: string;
   orderSummary: string;
   totalCents: number;
+  eventKey?: string;
 }) {
   const subject = "Bread Club add-ons confirmed";
   const text = `Hi ${input.customerName},\n\nYour add-ons are attached to ${input.deliveryLabel} with no second delivery fee.\n\n${input.orderSummary}\nTotal: ${formatCurrency(input.totalCents)}`;
@@ -193,6 +200,7 @@ export function sendBreadClubAddonReceipt(input: {
     text,
     html,
     breadClubMembershipId: input.membershipId,
+    eventKey: input.eventKey,
   });
 }
 
@@ -204,6 +212,7 @@ export function sendBreadClubRenewal(input: {
   amountCents: number;
   sundayLabels: string[];
   manageUrl: string;
+  eventKey?: string;
 }) {
   const subject = "Your Sunday Bread Club renewed";
   const text = `Hi ${input.customerName},\n\n${input.planName} renewed for ${formatCurrency(input.amountCents)}. Your next four Sundays are reserved:\n${input.sundayLabels.join("\n")}\n\n${input.manageUrl}`;
@@ -227,6 +236,7 @@ export function sendBreadClubRenewal(input: {
     text,
     html,
     breadClubMembershipId: input.membershipId,
+    eventKey: input.eventKey,
   });
 }
 
@@ -235,6 +245,7 @@ export function sendBreadClubPaymentFailure(input: {
   customerName: string;
   membershipId: string;
   portalUrl: string;
+  eventKey?: string;
 }) {
   const subject = "Action needed for your Sunday Bread Club payment";
   const text = `Hi ${input.customerName},\n\nStripe could not complete your Bread Club renewal. Update your payment method here:\n${input.portalUrl}\n\nGrace will not bake an unpaid renewal cycle.`;
@@ -256,6 +267,7 @@ export function sendBreadClubPaymentFailure(input: {
     text,
     html,
     breadClubMembershipId: input.membershipId,
+    eventKey: input.eventKey,
   });
 }
 
@@ -292,6 +304,7 @@ export function sendBreadClubCancellation(input: {
   customerName: string;
   membershipId: string;
   finalDeliveryLabel: string;
+  eventKey?: string;
 }) {
   const subject = "Your Sunday Bread Club cancellation is confirmed";
   const text = `Hi ${input.customerName},\n\nYour membership will not renew again. Already-paid deliveries remain scheduled through ${input.finalDeliveryLabel}. Reply to this email if you need cancellation help.`;
@@ -314,6 +327,7 @@ export function sendBreadClubCancellation(input: {
     text,
     html,
     breadClubMembershipId: input.membershipId,
+    eventKey: input.eventKey,
   });
 }
 
@@ -324,6 +338,7 @@ export function sendBreadClubOwnerAlert(input: {
   planName: string;
   amountCents: number;
   firstDeliveryLabel: string;
+  eventKey?: string;
 }) {
   const subject = `New Bread Club member: ${input.customerName}`;
   const text = `New paid Bread Club membership.\n\nCustomer: ${input.customerName}\nPlan: ${input.planName}\nCycle total: ${formatCurrency(input.amountCents)}\nFirst delivery: ${input.firstDeliveryLabel}\n\nOpen /admin/bread-club for all four reservations.`;
@@ -343,6 +358,7 @@ export function sendBreadClubOwnerAlert(input: {
     text,
     html,
     breadClubMembershipId: input.membershipId,
+    eventKey: input.eventKey,
   });
 }
 
@@ -351,6 +367,7 @@ export function sendBreadClubFridaySummary(input: {
   deliveryLabel: string;
   productionLines: string[];
   memberCount: number;
+  eventKey?: string;
 }) {
   const subject = `Friday Bread Club bake sheet: ${input.deliveryLabel}`;
   const text = `${input.deliveryLabel}\n${input.memberCount} member deliveries\n\n${input.productionLines.join("\n")}`;
@@ -370,5 +387,6 @@ export function sendBreadClubFridaySummary(input: {
     subject,
     text,
     html,
+    eventKey: input.eventKey,
   });
 }

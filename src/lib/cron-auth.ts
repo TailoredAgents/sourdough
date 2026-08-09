@@ -1,7 +1,6 @@
 import { timingSafeEqual } from "crypto";
 
-export function isCronRequestAuthorized(request: Request) {
-  const secret = process.env.CRON_SECRET;
+function isBearerRequestAuthorized(request: Request, secret: string | undefined) {
   const authorization = request.headers.get("authorization");
   if (!secret || !authorization?.startsWith("Bearer ")) return false;
   const supplied = authorization.slice("Bearer ".length);
@@ -10,5 +9,16 @@ export function isCronRequestAuthorized(request: Request) {
   return (
     expectedBuffer.length === suppliedBuffer.length &&
     timingSafeEqual(expectedBuffer, suppliedBuffer)
+  );
+}
+
+export function isCronRequestAuthorized(request: Request) {
+  return isBearerRequestAuthorized(request, process.env.CRON_SECRET);
+}
+
+export function isBreadClubSetupRequestAuthorized(request: Request) {
+  return isBearerRequestAuthorized(
+    request,
+    process.env.BREAD_CLUB_SETUP_SECRET,
   );
 }

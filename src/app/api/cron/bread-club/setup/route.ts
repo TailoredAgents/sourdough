@@ -4,13 +4,13 @@ import {
   syncBreadClubStripeCatalog,
 } from "@/lib/bread-club/stripe-sync";
 import { isBreadClubPublicEnabled } from "@/lib/bread-club/config";
-import { isCronRequestAuthorized } from "@/lib/cron-auth";
+import { isBreadClubSetupRequestAuthorized } from "@/lib/cron-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  if (!isCronRequestAuthorized(request)) {
+  if (!isBreadClubSetupRequestAuthorized(request)) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
   if (isBreadClubPublicEnabled()) {

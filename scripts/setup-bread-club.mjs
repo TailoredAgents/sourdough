@@ -1,10 +1,10 @@
 const setupUrl =
   process.env.BREAD_CLUB_SETUP_URL ||
   "http://localhost:3000/api/cron/bread-club/setup";
-const secret = process.env.CRON_SECRET;
+const secret = process.env.BREAD_CLUB_SETUP_SECRET;
 
 if (!secret) {
-  throw new Error("CRON_SECRET is required.");
+  throw new Error("BREAD_CLUB_SETUP_SECRET is required.");
 }
 
 const response = await fetch(setupUrl, {

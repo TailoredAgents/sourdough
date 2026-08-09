@@ -63,6 +63,7 @@ const deliveryPrice: BreadClubDeliveryPrice = {
   stripeLookupKey: "bread_club_delivery_11_20_4week_v1",
 };
 const checkout: BreadClubCheckoutRequest = {
+  checkoutAttemptId: "90000000-0000-4000-8000-000000000001",
   planId: plan.id,
   selection: [{ productId, quantity: 1 }],
   customer: {
@@ -127,10 +128,20 @@ beforeEach(() => {
   mocks.memberships.length = 0;
   mocks.cycles.length = 0;
   mocks.rpc.mockResolvedValue({
-    data: Array.from({ length: 4 }, (_, index) => ({
-      fulfillment_id: `fulfillment-${index + 1}`,
-      order_id: `order-${index + 1}`,
-    })),
+    data: {
+      membership_id: "60000000-0000-4000-8000-000000000001",
+      cycle_id: "70000000-0000-4000-8000-000000000001",
+      customer_id: "50000000-0000-4000-8000-000000000001",
+      checkout_cancel_token: "a".repeat(48),
+      first_delivery_at: weeks[0].deliveryWindow.startsAt,
+      cycle_total_cents: 8000,
+      checkout_expires_at: "2026-07-27T13:00:00.000Z",
+      checkout_automatic_tax_enabled: false,
+      plan_stripe_price_id: "price_variety",
+      delivery_stripe_price_id: "price_delivery",
+      route_band_key: "11-20",
+      replayed: false,
+    },
     error: null,
   });
   mocks.from.mockImplementation((table: string) => {
@@ -196,6 +207,8 @@ describe("Bread Club checkout persistence", () => {
       checkout,
       consentIpHash: "hashed-ip",
       consentVersion: "2026-07-26",
+      checkoutRequestHash: "b".repeat(64),
+      automaticTaxEnabled: false,
       deliveryCheck: {
         eligible: true,
         preliminary: false,
@@ -216,31 +229,20 @@ describe("Bread Club checkout persistence", () => {
       plan,
       selection: checkout.selection,
       weeks,
-      now: new Date("2026-07-27T12:00:00.000Z"),
     });
 
     expect(result.cycleTotalCents).toBe(8000);
-    expect(mocks.memberships[0]).toMatchObject({
-      plan_id: plan.id,
-      status: "pending_checkout",
-      default_selection: [{ product_id: productId, quantity: 1 }],
-      route_fee_cents: 700,
-      route_band_key: "11-20",
-      consent_version: "2026-07-26",
-      consent_ip_hash: "hashed-ip",
-    });
-    expect(mocks.cycles[0]).toMatchObject({
-      cycle_number: 1,
-      status: "pending_payment",
-      plan_price_cents: 5200,
-      delivery_price_cents: 2800,
-      total_cents: 8000,
-    });
     expect(mocks.rpc).toHaveBeenCalledWith(
-      "reserve_bread_club_cycle",
+      "create_bread_club_subscription_checkout",
       expect.objectContaining({
-        p_membership_id: result.membershipId,
-        p_cycle_id: result.cycleId,
+        p_checkout_attempt_id: checkout.checkoutAttemptId,
+        p_checkout_request_hash: "b".repeat(64),
+        p_plan_id: plan.id,
+        p_delivery_price_id: deliveryPrice.id,
+        p_expected_plan_price_cents: 5200,
+        p_expected_delivery_price_cents: 2800,
+        p_automatic_tax_enabled: false,
+        p_default_selection: [{ product_id: productId, quantity: 1 }],
         p_fulfillments: expect.arrayContaining([
           expect.objectContaining({
             weekly_menu_id: weeks[0].weeklyMenu.id,

@@ -2,10 +2,8 @@ import { randomBytes } from "crypto";
 import type { DeliveryCheckResult } from "@/lib/delivery";
 import { ensureRollingWeeklyMenus } from "@/lib/rolling-weeks";
 import { getSupabaseAdminClient } from "@/lib/supabase";
-import type { DeliveryAddress } from "@/lib/types";
 import { getBreadClubEnrollmentData } from "./data";
 import {
-  getBreadClubCycleTotalCents,
   getBreadClubRenewalPricing,
   normalizeBreadClubSelection,
   validateBreadClubSelection,
@@ -31,7 +29,8 @@ type CreatePendingBreadClubInput = {
   weeks: BreadClubEnrollmentWeek[];
   consentIpHash: string | null;
   consentVersion: string;
-  now?: Date;
+  checkoutRequestHash: string;
+  automaticTaxEnabled: boolean;
 };
 
 export type PendingBreadClubCheckout = {
@@ -41,6 +40,32 @@ export type PendingBreadClubCheckout = {
   checkoutCancelToken: string;
   firstDeliveryAt: string;
   cycleTotalCents: number;
+  checkoutExpiresAt: string;
+  planStripePriceId: string;
+  deliveryStripePriceId: string;
+  routeBandKey: string;
+  automaticTaxEnabled: boolean;
+};
+
+export type ExistingBreadClubCheckoutAttempt = {
+  pending: PendingBreadClubCheckout;
+  planId: string;
+  routeBandKey: string;
+  consentVersion: string;
+  status: string;
+  stripeCheckoutSessionId: string | null;
+};
+
+type PendingBreadClubCycleRecord = {
+  id: string;
+  cycleNumber: number;
+  status: string;
+  periodStart: string;
+  periodEnd: string;
+  planPriceCents: number;
+  deliveryPriceCents: number;
+  totalCents: number;
+  fulfillments: Array<{ id: string; orderId: string | null }>;
 };
 
 function normalizedEmail(email: string) {
@@ -49,57 +74,6 @@ function normalizedEmail(email: string) {
 
 function cycleEndFrom(date: Date) {
   return new Date(date.getTime() + 28 * 24 * 60 * 60 * 1000);
-}
-
-function addressWithContact(
-  address: DeliveryAddress,
-  email: string,
-  phone: string,
-) {
-  return {
-    ...address,
-    email: normalizedEmail(email),
-    phone,
-  };
-}
-
-async function findOrCreateCustomer(checkout: BreadClubCheckoutRequest) {
-  const supabase = getSupabaseAdminClient();
-  if (!supabase) throw new Error("Supabase admin client is not configured.");
-
-  const email = normalizedEmail(checkout.customer.email);
-  const { data: existing, error: lookupError } = await supabase
-    .from("customers")
-    .select("id")
-    .eq("email", email)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (lookupError) throw new Error(lookupError.message);
-  if (existing?.id) {
-    const { error } = await supabase
-      .from("customers")
-      .update({
-        name: checkout.customer.name,
-        phone: checkout.customer.phone,
-      })
-      .eq("id", existing.id);
-    if (error) throw new Error(error.message);
-    return String(existing.id);
-  }
-
-  const { data, error } = await supabase
-    .from("customers")
-    .insert({
-      name: checkout.customer.name,
-      email,
-      phone: checkout.customer.phone,
-    })
-    .select("id")
-    .single();
-  if (error) throw new Error(error.message);
-  return String(data.id);
 }
 
 export function validateSelectionAcrossCycle(
@@ -131,6 +105,8 @@ export function validateSelectionAcrossCycle(
 
 export async function createPendingBreadClubCheckout({
   checkout,
+  checkoutRequestHash,
+  automaticTaxEnabled,
   consentIpHash,
   consentVersion,
   deliveryCheck,
@@ -138,7 +114,6 @@ export async function createPendingBreadClubCheckout({
   plan,
   selection,
   weeks,
-  now = new Date(),
 }: CreatePendingBreadClubInput): Promise<PendingBreadClubCheckout> {
   const supabase = getSupabaseAdminClient();
   if (!supabase) throw new Error("Supabase admin client is not configured.");
@@ -151,99 +126,140 @@ export async function createPendingBreadClubCheckout({
   );
   if (selectionError) throw new Error(selectionError);
 
-  const customerId = await findOrCreateCustomer(checkout);
   const checkoutCancelToken = randomBytes(24).toString("hex");
-  const firstDeliveryAt = weeks[0].deliveryWindow.startsAt;
-  const cycleTotalCents = getBreadClubCycleTotalCents(
-    plan.priceCents,
-    deliveryPrice.priceCents,
-  );
-  const address = addressWithContact(
-    checkout.address,
-    checkout.customer.email,
-    checkout.customer.phone,
-  );
-
-  const { data: membership, error: membershipError } = await supabase
-    .from("bread_club_memberships")
-    .insert({
-      customer_id: customerId,
-      plan_id: plan.id,
-      status: "pending_checkout",
-      default_selection: normalizedSelection.map((item) => ({
+  const { data, error } = await supabase.rpc(
+    "create_bread_club_subscription_checkout",
+    {
+      p_checkout_attempt_id: checkout.checkoutAttemptId,
+      p_checkout_request_hash: checkoutRequestHash,
+      p_automatic_tax_enabled: automaticTaxEnabled,
+      p_customer_name: checkout.customer.name,
+      p_customer_email: normalizedEmail(checkout.customer.email),
+      p_customer_phone: checkout.customer.phone,
+      p_plan_id: plan.id,
+      p_delivery_price_id: deliveryPrice.id,
+      p_expected_plan_price_cents: plan.priceCents,
+      p_expected_delivery_price_cents: deliveryPrice.priceCents,
+      p_default_selection: normalizedSelection.map((item) => ({
         product_id: item.productId,
         quantity: item.quantity,
       })),
-      delivery_address: address,
-      delivery_instructions: checkout.deliveryInstructions || null,
-      delivery_check: deliveryCheck,
-      route_fee_cents: Math.round(deliveryPrice.priceCents / 4),
-      route_band_key: deliveryPrice.bandKey,
-      first_delivery_at: firstDeliveryAt,
-      checkout_cancel_token: checkoutCancelToken,
-      consent_version: consentVersion,
-      consent_text: checkout.consentText,
-      consented_at: now.toISOString(),
-      consent_ip_hash: consentIpHash,
-    })
-    .select("id")
-    .single();
-
-  if (membershipError) throw new Error(membershipError.message);
-  const membershipId = String(membership.id);
-
-  const { data: cycle, error: cycleError } = await supabase
-    .from("bread_club_cycles")
-    .insert({
-      membership_id: membershipId,
-      cycle_number: 1,
-      status: "pending_payment",
-      period_start: now.toISOString(),
-      period_end: cycleEndFrom(now).toISOString(),
-      plan_price_cents: plan.priceCents,
-      delivery_price_cents: deliveryPrice.priceCents,
-      tax_cents: 0,
-      total_cents: cycleTotalCents,
-    })
-    .select("id")
-    .single();
-
-  if (cycleError) {
-    await supabase
-      .from("bread_club_memberships")
-      .delete()
-      .eq("id", membershipId);
-    throw new Error(cycleError.message);
-  }
-  const cycleId = String(cycle.id);
-
-  const { error: reservationError } = await supabase.rpc(
-    "reserve_bread_club_cycle",
-    {
-      p_membership_id: membershipId,
-      p_cycle_id: cycleId,
+      p_delivery_address: {
+        ...checkout.address,
+        email: normalizedEmail(checkout.customer.email),
+        phone: checkout.customer.phone,
+      },
+      p_delivery_instructions: checkout.deliveryInstructions || null,
+      p_delivery_check: deliveryCheck,
+      p_consent_version: consentVersion,
+      p_consent_text: checkout.consentText,
+      p_consent_ip_hash: consentIpHash,
+      p_checkout_cancel_token: checkoutCancelToken,
       p_fulfillments: buildCycleFulfillmentInput(
         weeks,
         normalizedSelection,
       ),
     },
   );
+  if (error) throw new Error(error.message);
 
-  if (reservationError) {
-    await supabase
-      .from("bread_club_memberships")
-      .delete()
-      .eq("id", membershipId);
-    throw new Error(reservationError.message);
+  const result = Array.isArray(data) ? data[0] : data;
+  if (
+    !result?.membership_id ||
+    !result.cycle_id ||
+    !result.customer_id ||
+    typeof result.checkout_cancel_token !== "string" ||
+    typeof result.first_delivery_at !== "string" ||
+    typeof result.cycle_total_cents !== "number" ||
+    typeof result.checkout_expires_at !== "string" ||
+    typeof result.plan_stripe_price_id !== "string" ||
+    typeof result.delivery_stripe_price_id !== "string" ||
+    typeof result.route_band_key !== "string" ||
+    typeof result.checkout_automatic_tax_enabled !== "boolean"
+  ) {
+    throw new Error("Bread Club checkout command returned an invalid result.");
   }
 
   return {
-    membershipId,
-    cycleId,
-    customerId,
-    checkoutCancelToken,
-    firstDeliveryAt,
-    cycleTotalCents,
+    membershipId: String(result.membership_id),
+    cycleId: String(result.cycle_id),
+    customerId: String(result.customer_id),
+    checkoutCancelToken: result.checkout_cancel_token,
+    firstDeliveryAt: result.first_delivery_at,
+    cycleTotalCents: result.cycle_total_cents,
+    checkoutExpiresAt: result.checkout_expires_at,
+    planStripePriceId: result.plan_stripe_price_id,
+    deliveryStripePriceId: result.delivery_stripe_price_id,
+    routeBandKey: result.route_band_key,
+    automaticTaxEnabled: result.checkout_automatic_tax_enabled,
+  };
+}
+
+export async function getExistingBreadClubCheckoutAttempt(
+  checkoutAttemptId: string,
+  checkoutRequestHash: string,
+): Promise<ExistingBreadClubCheckoutAttempt | null> {
+  const supabase = getSupabaseAdminClient();
+  if (!supabase) throw new Error("Supabase admin client is not configured.");
+
+  const { data: membership, error } = await supabase
+    .from("bread_club_memberships")
+    .select(
+      "id, customer_id, plan_id, status, current_cycle_id, route_band_key, first_delivery_at, checkout_cancel_token, checkout_request_hash, checkout_expires_at, checkout_plan_stripe_price_id, checkout_delivery_stripe_price_id, checkout_automatic_tax_enabled, stripe_checkout_session_id, consent_version",
+    )
+    .eq("checkout_attempt_id", checkoutAttemptId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!membership) return null;
+  if (membership.checkout_request_hash !== checkoutRequestHash) {
+    throw new Error(
+      "Checkout attempt was already used with different Bread Club details.",
+    );
+  }
+  if (
+    !membership.current_cycle_id ||
+    !membership.checkout_cancel_token ||
+    !membership.checkout_expires_at ||
+    !membership.checkout_plan_stripe_price_id ||
+    !membership.checkout_delivery_stripe_price_id
+  ) {
+    throw new Error("Bread Club checkout attempt is incomplete.");
+  }
+
+  const { data: cycle, error: cycleError } = await supabase
+    .from("bread_club_cycles")
+    .select("id, total_cents")
+    .eq("id", membership.current_cycle_id)
+    .eq("membership_id", membership.id)
+    .maybeSingle();
+  if (cycleError) throw new Error(cycleError.message);
+  if (!cycle) throw new Error("Bread Club checkout cycle was not found.");
+
+  return {
+    pending: {
+      membershipId: String(membership.id),
+      cycleId: String(cycle.id),
+      customerId: String(membership.customer_id),
+      checkoutCancelToken: String(membership.checkout_cancel_token),
+      firstDeliveryAt: String(membership.first_delivery_at),
+      cycleTotalCents: Number(cycle.total_cents),
+      checkoutExpiresAt: String(membership.checkout_expires_at),
+      planStripePriceId: String(membership.checkout_plan_stripe_price_id),
+      deliveryStripePriceId: String(
+        membership.checkout_delivery_stripe_price_id,
+      ),
+      routeBandKey: String(membership.route_band_key),
+      automaticTaxEnabled: Boolean(
+        membership.checkout_automatic_tax_enabled,
+      ),
+    },
+    planId: String(membership.plan_id),
+    routeBandKey: String(membership.route_band_key),
+    consentVersion: String(membership.consent_version),
+    status: String(membership.status),
+    stripeCheckoutSessionId: membership.stripe_checkout_session_id
+      ? String(membership.stripe_checkout_session_id)
+      : null,
   };
 }
 
@@ -254,15 +270,15 @@ export async function attachStripeSubscriptionCheckout(
   const supabase = getSupabaseAdminClient();
   if (!supabase) throw new Error("Supabase admin client is not configured.");
 
-  const { error } = await supabase
-    .from("bread_club_memberships")
-    .update({
-      stripe_checkout_session_id: sessionId,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", membershipId)
-    .eq("status", "pending_checkout");
+  const { data, error } = await supabase.rpc(
+    "attach_bread_club_subscription_checkout",
+    {
+      p_membership_id: membershipId,
+      p_session_id: sessionId,
+    },
+  );
   if (error) throw new Error(error.message);
+  if (!data) throw new Error("Bread Club checkout could not be attached.");
 }
 
 export async function releaseBreadClubPendingCycle(cycleId: string) {
@@ -281,46 +297,78 @@ export async function markBreadClubCheckoutIncomplete(
 ) {
   const supabase = getSupabaseAdminClient();
   if (!supabase) throw new Error("Supabase admin client is not configured.");
-  await releaseBreadClubPendingCycle(cycleId);
-  const { error } = await supabase
-    .from("bread_club_memberships")
-    .update({
-      status: "incomplete",
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", membershipId)
-    .eq("status", "pending_checkout");
+  const { data, error } = await supabase.rpc(
+    "cancel_bread_club_subscription_checkout",
+    {
+      p_membership_id: membershipId,
+      p_cycle_id: cycleId,
+      p_session_id: null,
+      p_checkout_cancel_token: null,
+      p_reason: "No Stripe Checkout Session was attached before expiration.",
+    },
+  );
   if (error) throw new Error(error.message);
+  return Boolean(data);
 }
 
-export async function cancelBreadClubCheckoutByToken(
+export async function getBreadClubCheckoutForCancellation(
   membershipId: string,
   token: string,
 ) {
   const supabase = getSupabaseAdminClient();
   if (!supabase) throw new Error("Supabase admin client is not configured.");
 
-  const { data: membership, error } = await supabase
+  const { data, error } = await supabase
     .from("bread_club_memberships")
-    .select("id, current_cycle_id")
+    .select("id, current_cycle_id, stripe_checkout_session_id")
     .eq("id", membershipId)
     .eq("checkout_cancel_token", token)
     .eq("status", "pending_checkout")
     .maybeSingle();
   if (error) throw new Error(error.message);
-  if (!membership?.current_cycle_id) return false;
-
-  await markBreadClubCheckoutIncomplete(
-    membershipId,
-    String(membership.current_cycle_id),
-  );
-  return true;
+  if (!data?.current_cycle_id) return null;
+  return {
+    membershipId: String(data.id),
+    cycleId: String(data.current_cycle_id),
+    sessionId: data.stripe_checkout_session_id
+      ? String(data.stripe_checkout_session_id)
+      : null,
+  };
 }
 
-export async function expireBreadClubCheckoutSession(sessionId: string) {
+export async function cancelBreadClubCheckoutByToken(
+  membershipId: string,
+  token: string,
+  sessionId: string | null,
+  cycleId?: string | null,
+) {
   const supabase = getSupabaseAdminClient();
   if (!supabase) throw new Error("Supabase admin client is not configured.");
 
+  const { data, error } = await supabase.rpc(
+    "cancel_bread_club_subscription_checkout",
+    {
+      p_membership_id: membershipId,
+      p_cycle_id: cycleId || null,
+      p_session_id: sessionId,
+      p_checkout_cancel_token: token,
+      p_reason: "Stripe Checkout was canceled by the customer.",
+    },
+  );
+  if (error) throw new Error(error.message);
+  return Boolean(data);
+}
+
+export async function expireBreadClubCheckoutSession(
+  sessionId: string,
+  recoveryMembershipId?: string | null,
+) {
+  const supabase = getSupabaseAdminClient();
+  if (!supabase) throw new Error("Supabase admin client is not configured.");
+
+  if (recoveryMembershipId) {
+    await attachStripeSubscriptionCheckout(recoveryMembershipId, sessionId);
+  }
   const { data: membership, error } = await supabase
     .from("bread_club_memberships")
     .select("id, current_cycle_id")
@@ -330,11 +378,18 @@ export async function expireBreadClubCheckoutSession(sessionId: string) {
   if (error) throw new Error(error.message);
   if (!membership?.current_cycle_id) return null;
 
-  await markBreadClubCheckoutIncomplete(
-    String(membership.id),
-    String(membership.current_cycle_id),
+  const { data, error: cancelError } = await supabase.rpc(
+    "cancel_bread_club_subscription_checkout",
+    {
+      p_membership_id: membership.id,
+      p_cycle_id: membership.current_cycle_id,
+      p_session_id: sessionId,
+      p_checkout_cancel_token: null,
+      p_reason: "Stripe Checkout Session expired before payment.",
+    },
   );
-  return String(membership.id);
+  if (cancelError) throw new Error(cancelError.message);
+  return data ? String(membership.id) : null;
 }
 
 export async function recordBreadClubCheckoutCompleted(input: {
@@ -349,21 +404,23 @@ export async function recordBreadClubCheckoutCompleted(input: {
   const supabase = getSupabaseAdminClient();
   if (!supabase) throw new Error("Supabase admin client is not configured.");
 
-  const { error } = await supabase
-    .from("bread_club_memberships")
-    .update({
-      stripe_checkout_session_id: input.sessionId,
-      stripe_customer_id: input.stripeCustomerId,
-      stripe_subscription_id: input.stripeSubscriptionId,
-      stripe_plan_subscription_item_id:
-        input.planSubscriptionItemId || null,
-      stripe_delivery_subscription_item_id:
+  const { data, error } = await supabase.rpc(
+    "record_bread_club_subscription_checkout_completed",
+    {
+      p_membership_id: input.membershipId,
+      p_session_id: input.sessionId,
+      p_stripe_customer_id: input.stripeCustomerId,
+      p_stripe_subscription_id: input.stripeSubscriptionId,
+      p_plan_subscription_item_id: input.planSubscriptionItemId || null,
+      p_delivery_subscription_item_id:
         input.deliverySubscriptionItemId || null,
-      stripe_current_period_end: input.currentPeriodEnd || null,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", input.membershipId);
+      p_current_period_end: input.currentPeriodEnd || null,
+    },
+  );
   if (error) throw new Error(error.message);
+  if (!data) {
+    throw new Error("Bread Club checkout completion was not recorded.");
+  }
 }
 
 export async function activateBreadClubCycleForInvoice(input: {
@@ -421,22 +478,100 @@ export async function activateBreadClubCycleForInvoice(input: {
   if (membershipError) throw new Error(membershipError.message);
 }
 
-export async function findPendingCycleForMembership(membershipId: string) {
+async function getPendingCycleRecord(
+  membershipId: string,
+): Promise<PendingBreadClubCycleRecord | null> {
   const supabase = getSupabaseAdminClient();
   if (!supabase) throw new Error("Supabase admin client is not configured.");
 
   const { data, error } = await supabase
     .from("bread_club_cycles")
-    .select("id, cycle_number")
+    .select(
+      "id, cycle_number, status, period_start, period_end, plan_price_cents, delivery_price_cents, total_cents",
+    )
     .eq("membership_id", membershipId)
     .in("status", ["pending_payment", "past_due"])
     .order("cycle_number", { ascending: false })
     .limit(1)
     .maybeSingle();
   if (error) throw new Error(error.message);
-  return data
-    ? { id: String(data.id), cycleNumber: Number(data.cycle_number) }
-    : null;
+  if (!data) return null;
+
+  const { data: fulfillmentRows, error: fulfillmentError } = await supabase
+    .from("bread_club_fulfillments")
+    .select("id, order_id")
+    .eq("cycle_id", data.id);
+  if (fulfillmentError) throw new Error(fulfillmentError.message);
+
+  return {
+    id: String(data.id),
+    cycleNumber: Number(data.cycle_number),
+    status: String(data.status),
+    periodStart: String(data.period_start),
+    periodEnd: String(data.period_end),
+    planPriceCents: Number(data.plan_price_cents),
+    deliveryPriceCents: Number(data.delivery_price_cents),
+    totalCents: Number(data.total_cents),
+    fulfillments: (fulfillmentRows || []).map((fulfillment) => ({
+      id: String(fulfillment.id),
+      orderId: fulfillment.order_id ? String(fulfillment.order_id) : null,
+    })),
+  };
+}
+
+async function ensureAtomicBreadClubRenewalCycle(input: {
+  membershipId: string;
+  cycleNumber: number;
+  periodStart: string;
+  periodEnd: string;
+  planPriceCents: number;
+  deliveryPriceCents: number;
+  totalCents: number;
+  fulfillments: ReturnType<typeof buildCycleFulfillmentInput> | null;
+}) {
+  const supabase = getSupabaseAdminClient();
+  if (!supabase) throw new Error("Supabase admin client is not configured.");
+
+  const { data, error } = await supabase.rpc(
+    "ensure_atomic_bread_club_renewal_cycle",
+    {
+      p_membership_id: input.membershipId,
+      p_cycle_number: input.cycleNumber,
+      p_period_start: input.periodStart,
+      p_period_end: input.periodEnd,
+      p_plan_price_cents: input.planPriceCents,
+      p_delivery_price_cents: input.deliveryPriceCents,
+      p_total_cents: input.totalCents,
+      p_fulfillments: input.fulfillments,
+    },
+  );
+  if (error) throw new Error(error.message);
+
+  const result = Array.isArray(data) ? data[0] : data;
+  if (
+    !result?.renewal_cycle_id ||
+    !Number.isInteger(Number(result.renewal_cycle_number))
+  ) {
+    throw new Error("Bread Club renewal command returned an invalid result.");
+  }
+  return {
+    id: String(result.renewal_cycle_id),
+    cycleNumber: Number(result.renewal_cycle_number),
+  };
+}
+
+export async function findPendingCycleForMembership(membershipId: string) {
+  const pending = await getPendingCycleRecord(membershipId);
+  if (!pending) return null;
+  if (
+    pending.fulfillments.length !== 4 ||
+    pending.fulfillments.some((fulfillment) => !fulfillment.orderId)
+  ) {
+    throw new Error(
+      "Pending Bread Club renewal does not have four complete fulfillment orders.",
+    );
+  }
+  return { id: pending.id, cycleNumber: pending.cycleNumber };
 }
 
 export async function findBreadClubCycleByInvoiceId(invoiceId: string) {
@@ -466,8 +601,19 @@ export async function prepareNextBreadClubCycle(
   const supabase = getSupabaseAdminClient();
   if (!supabase) throw new Error("Supabase admin client is not configured.");
 
-  const pending = await findPendingCycleForMembership(membershipId);
-  if (pending) return pending;
+  const pending = await getPendingCycleRecord(membershipId);
+  if (pending && pending.fulfillments.length > 0) {
+    return ensureAtomicBreadClubRenewalCycle({
+      membershipId,
+      cycleNumber: pending.cycleNumber,
+      periodStart: pending.periodStart,
+      periodEnd: pending.periodEnd,
+      planPriceCents: pending.planPriceCents,
+      deliveryPriceCents: pending.deliveryPriceCents,
+      totalCents: pending.totalCents,
+      fulfillments: null,
+    });
+  }
 
   await ensureRollingWeeklyMenus(now);
   const enrollment = await getBreadClubEnrollmentData(now);
@@ -521,66 +667,67 @@ export async function prepareNextBreadClubCycle(
   );
   if (!deliveryPrice) throw new Error("The delivery renewal price is not ready.");
 
-  const { data: latestCycle, error: latestCycleError } = await supabase
-    .from("bread_club_cycles")
-    .select("cycle_number, plan_price_cents, delivery_price_cents")
-    .eq("membership_id", membershipId)
-    .order("cycle_number", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (latestCycleError) throw new Error(latestCycleError.message);
-  const cycleNumber = Number(latestCycle?.cycle_number || 0) + 1;
-  const renewalPricing = getBreadClubRenewalPricing({
-    currentPlanPriceCents: plan.priceCents,
-    currentDeliveryPriceCents: deliveryPrice.priceCents,
-    previousPlanPriceCents: latestCycle?.plan_price_cents,
-    previousDeliveryPriceCents: latestCycle?.delivery_price_cents,
-    applyCurrentPlanPrice: Boolean(membership.pending_plan_id),
-    applyCurrentDeliveryPrice:
-      membership.pending_route_fee_cents !== null &&
-      membership.pending_route_fee_cents !== undefined,
-  });
+  let latestCycle:
+    | {
+        cycle_number: number;
+        plan_price_cents: number;
+        delivery_price_cents: number;
+      }
+    | null = null;
+  if (!pending) {
+    const { data, error: latestCycleError } = await supabase
+      .from("bread_club_cycles")
+      .select("cycle_number, plan_price_cents, delivery_price_cents")
+      .eq("membership_id", membershipId)
+      .order("cycle_number", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (latestCycleError) throw new Error(latestCycleError.message);
+    latestCycle = data;
+  }
+
+  const cycleNumber = pending
+    ? pending.cycleNumber
+    : Number(latestCycle?.cycle_number || 0) + 1;
+  const renewalPricing = pending
+    ? {
+        planPriceCents: pending.planPriceCents,
+        deliveryPriceCents: pending.deliveryPriceCents,
+        totalCents: pending.totalCents,
+      }
+    : getBreadClubRenewalPricing({
+        currentPlanPriceCents: plan.priceCents,
+        currentDeliveryPriceCents: deliveryPrice.priceCents,
+        previousPlanPriceCents: latestCycle?.plan_price_cents,
+        previousDeliveryPriceCents: latestCycle?.delivery_price_cents,
+        applyCurrentPlanPrice: Boolean(membership.pending_plan_id),
+        applyCurrentDeliveryPrice:
+          membership.pending_route_fee_cents !== null &&
+          membership.pending_route_fee_cents !== undefined,
+      });
   const stripePeriodStart = membership.stripe_current_period_end
     ? new Date(membership.stripe_current_period_end)
     : now;
-  const periodStart =
-    Number.isFinite(stripePeriodStart.getTime()) &&
-    stripePeriodStart.getTime() > now.getTime()
+  const periodStart = pending
+    ? new Date(pending.periodStart)
+    : Number.isFinite(stripePeriodStart.getTime()) &&
+        stripePeriodStart.getTime() > now.getTime()
       ? stripePeriodStart
       : now;
+  const periodEnd = pending
+    ? new Date(pending.periodEnd)
+    : cycleEndFrom(periodStart);
 
-  const { data: cycle, error: cycleError } = await supabase
-    .from("bread_club_cycles")
-    .insert({
-      membership_id: membershipId,
-      cycle_number: cycleNumber,
-      status: "pending_payment",
-      period_start: periodStart.toISOString(),
-      period_end: cycleEndFrom(periodStart).toISOString(),
-      plan_price_cents: renewalPricing.planPriceCents,
-      delivery_price_cents: renewalPricing.deliveryPriceCents,
-      tax_cents: 0,
-      total_cents: renewalPricing.totalCents,
-    })
-    .select("id")
-    .single();
-  if (cycleError) throw new Error(cycleError.message);
-
-  const cycleId = String(cycle.id);
-  const { error: reservationError } = await supabase.rpc(
-    "reserve_bread_club_cycle",
-    {
-      p_membership_id: membershipId,
-      p_cycle_id: cycleId,
-      p_fulfillments: buildCycleFulfillmentInput(weeks, selection),
-    },
-  );
-  if (reservationError) {
-    await supabase.from("bread_club_cycles").delete().eq("id", cycleId);
-    throw new Error(reservationError.message);
-  }
-
-  return { id: cycleId, cycleNumber };
+  return ensureAtomicBreadClubRenewalCycle({
+    membershipId,
+    cycleNumber,
+    periodStart: periodStart.toISOString(),
+    periodEnd: periodEnd.toISOString(),
+    planPriceCents: renewalPricing.planPriceCents,
+    deliveryPriceCents: renewalPricing.deliveryPriceCents,
+    totalCents: renewalPricing.totalCents,
+    fulfillments: buildCycleFulfillmentInput(weeks, selection),
+  });
 }
 
 export async function markBreadClubInvoiceFailed(

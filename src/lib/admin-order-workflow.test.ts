@@ -15,11 +15,6 @@ describe("admin order workflow actions", () => {
         status: "baking",
         variant: "secondary",
       },
-      {
-        label: "Cancel & release inventory",
-        status: "canceled",
-        variant: "ghost",
-      },
     ]);
     expect(getAdminOrderStatusActions("baking")[0]).toEqual({
       label: "Complete order",
@@ -46,13 +41,7 @@ describe("admin order workflow actions", () => {
         variant: "secondary",
       },
     ]);
-    expect(getAdminOrderStatusActions("canceled")).toEqual([
-      {
-        label: "Restore & reserve inventory",
-        status: "paid",
-        variant: "secondary",
-      },
-    ]);
+    expect(getAdminOrderStatusActions("canceled")).toEqual([]);
   });
 
   it("keeps paid approval requests on the dedicated approval workflow", () => {
@@ -64,6 +53,13 @@ describe("admin order workflow actions", () => {
         variant: "ghost",
       },
     ]);
+  });
+
+  it("does not expose generic cancel or restore controls for Bread Club orders", () => {
+    expect(getAdminOrderStatusActions("paid", "bread_club")).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ status: "canceled" })]),
+    );
+    expect(getAdminOrderStatusActions("canceled", "bread_club")).toEqual([]);
   });
 
   it("identifies when admin status changes must adjust inventory reservations", () => {

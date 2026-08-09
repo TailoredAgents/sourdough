@@ -13,6 +13,7 @@ complete. The disabled deployment still supports owner enrollment tests through
 | `BREAD_CLUB_TAX_STATUS` | `pending` until tax treatment is confirmed |
 | `ADMIN_EMAILS` | Approved owner emails that can run the live smoke test |
 | `CRON_SECRET` | One strong shared value, entered identically on the Render web and cron services |
+| `BREAD_CLUB_SETUP_SECRET` | A different strong value used only for the one-time Stripe infrastructure setup endpoint |
 
 The checkout API enforces these controls server-side. A preview checkout
 requires an authenticated admin session, and checkout is locked to that
@@ -26,8 +27,11 @@ signed-in email.
 3. Run the Bread Club Stripe synchronization. Confirm three plan Products,
    three recurring plan Prices, one delivery Product, and three recurring
    delivery Prices. All recurring Prices must use a four-week interval.
-4. Run the protected setup endpoint to create or update the production webhook
+4. Run the protected setup endpoint with `BREAD_CLUB_SETUP_SECRET` to create or update the production webhook
    and Billing Portal. This also records `BREAD_CLUB_TAX_STATUS` in Supabase.
+   Confirm the endpoint includes immediate and delayed Checkout payment events,
+   invoice events, and subscription update/delete events. Rerun this setup after
+   deploying any webhook event-list change.
 5. Put the newly returned webhook signing secret in Render as
    `STRIPE_WEBHOOK_SECRET`. Never commit it.
 6. Confirm the deployed webhook accepts a signed Stripe test event after

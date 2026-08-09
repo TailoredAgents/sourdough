@@ -1,3 +1,4 @@
+import { createHash } from "crypto";
 import { z } from "zod";
 import type {
   CheckoutRequest,
@@ -30,6 +31,12 @@ type CustomerMessageReplyRow = {
   provider_id: string | null;
   error_message: string | null;
   created_at: string;
+};
+
+export type CustomerMessagesPage = {
+  messages: CustomerMessage[];
+  hasMore: boolean;
+  total: number;
 };
 
 type LastMinuteRequestInput = {
@@ -264,22 +271,85 @@ export async function createCustomerQuestionMessage(input: CustomerQuestionInput
   return mapCustomerMessage(data as CustomerMessageRow);
 }
 
-export async function getCustomerMessagesData(): Promise<CustomerMessage[]> {
+export async function getCustomerMessagesPageData({
+  offset = 0,
+  limit = 100,
+}: {
+  offset?: number;
+  limit?: number;
+} = {}): Promise<CustomerMessagesPage> {
   const supabase = getSupabaseAdminClient();
-  if (!supabase) return [];
+  if (!supabase) return { messages: [], hasMore: false, total: 0 };
 
-  const { data, error } = await supabase
-    .from("customer_messages")
-    .select("id, order_id, customer_email, subject, body, status, created_at")
-    .order("created_at", { ascending: false })
-    .limit(100);
+  const safeOffset = Math.max(0, Math.floor(offset));
+  const safeLimit = Math.min(100, Math.max(1, Math.floor(limit)));
+  const [totalResult, openCountResult] = await Promise.all([
+    supabase
+      .from("customer_messages")
+      .select("id", { count: "exact", head: true }),
+    supabase
+      .from("customer_messages")
+      .select("id", { count: "exact", head: true })
+      .in("status", ["new", "in_progress"]),
+  ]);
 
-  if (error) {
-    console.error("[supabase] customer messages lookup failed", error.message);
-    return [];
+  if (totalResult.error || openCountResult.error) {
+    console.error(
+      "[supabase] customer message count failed",
+      totalResult.error?.message || openCountResult.error?.message,
+    );
+    return { messages: [], hasMore: false, total: 0 };
   }
 
-  return (data as CustomerMessageRow[]).map(mapCustomerMessage);
+  const total = totalResult.count || 0;
+  const openCount = openCountResult.count || 0;
+  if (safeOffset >= total) return { messages: [], hasMore: false, total };
+
+  const openOffset = Math.min(safeOffset, openCount);
+  const openLimit = safeOffset < openCount ? safeLimit : 0;
+  const { data: openRows, error: openError } = openLimit
+    ? await supabase
+        .from("customer_messages")
+        .select("id, order_id, customer_email, subject, body, status, created_at")
+        .in("status", ["new", "in_progress"])
+        .order("created_at", { ascending: false })
+        .range(openOffset, openOffset + openLimit - 1)
+    : { data: [], error: null };
+
+  if (openError) {
+    console.error("[supabase] open customer messages lookup failed", openError.message);
+    return { messages: [], hasMore: false, total: 0 };
+  }
+
+  const remaining = safeLimit - ((openRows as CustomerMessageRow[] | null) || []).length;
+  const closedOffset = Math.max(safeOffset - openCount, 0);
+  const { data: resolvedRows, error: resolvedError } = remaining
+    ? await supabase
+        .from("customer_messages")
+        .select("id, order_id, customer_email, subject, body, status, created_at")
+        .not("status", "in", '("new","in_progress")')
+        .order("created_at", { ascending: false })
+        .range(closedOffset, closedOffset + remaining - 1)
+    : { data: [], error: null };
+
+  if (resolvedError) {
+    console.error("[supabase] resolved customer messages lookup failed", resolvedError.message);
+    return { messages: [], hasMore: false, total: 0 };
+  }
+
+  const rows = [
+    ...((openRows as CustomerMessageRow[] | null) || []),
+    ...((resolvedRows as CustomerMessageRow[] | null) || []),
+  ];
+  return {
+    messages: rows.map(mapCustomerMessage),
+    hasMore: safeOffset + rows.length < total,
+    total,
+  };
+}
+
+export async function getCustomerMessagesData(): Promise<CustomerMessage[]> {
+  return (await getCustomerMessagesPageData()).messages;
 }
 
 export async function updateCustomerMessageStatus(id: string, status: string) {
@@ -292,7 +362,7 @@ export async function updateCustomerMessageStatus(id: string, status: string) {
     .eq("id", id);
 
   if (error) throw new Error(error.message);
-  return getCustomerMessagesData();
+  return getCustomerMessagesPageData();
 }
 
 export async function sendCustomerMessageReply({
@@ -336,11 +406,22 @@ export async function sendCustomerMessageReply({
   const replyRow = reply as CustomerMessageReplyRow;
 
   try {
+    const replyFingerprint = createHash("sha256")
+      .update(
+        JSON.stringify({
+          customerMessageId: id,
+          recipient: recipient.toLowerCase(),
+          subject,
+          body,
+        }),
+      )
+      .digest("hex");
     const result = await sendCustomerMessageReplyEmail({
       to: recipient,
       subject,
       body,
       customerMessageId: id,
+      idempotencyKey: `customer-message-reply:${replyFingerprint}`,
     });
     const providerId = getProviderId(result);
     const { error: updateReplyError } = await supabase
@@ -372,7 +453,7 @@ export async function sendCustomerMessageReply({
   }
 
   return {
-    messages: await getCustomerMessagesData(),
+    ...(await getCustomerMessagesPageData()),
     reply: mapCustomerMessageReply({
       ...replyRow,
       status: "sent",

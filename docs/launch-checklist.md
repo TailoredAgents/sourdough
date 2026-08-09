@@ -60,9 +60,11 @@ Current status: repo is pushed, Supabase schema exists in the live database, see
 - [ ] Configure local webhook testing with Stripe CLI
 - [ ] Configure deployed webhook URL
 - [x] On `checkout.session.completed`: mark order paid, finalize inventory, send customer email
+- [x] Handle delayed Checkout payment success and failure events
 - [x] On `checkout.session.expired`: release inventory and mark order canceled/expired
 - [x] Make webhook handling idempotent so duplicate Stripe events are safe
 - [x] Add logging for failed webhook handling
+- [x] Fence webhook and scheduled-job claims with expiring lease tokens
 
 ## Phase 6: Delivery
 
@@ -95,6 +97,7 @@ Current status: repo is pushed, Supabase schema exists in the live database, see
 - [x] Create last-minute request notification template
 - [x] Create order status update template
 - [x] Add email failure logging
+- [x] Queue delivered-order thank-you emails transactionally with automatic retry
 
 ## Phase 9: Compliance And Business Readiness
 
@@ -139,6 +142,8 @@ Current status: repo is pushed, Supabase schema exists in the live database, see
 - [ ] Run failed payment/canceled checkout test
 - [ ] Run sold-out inventory test
 - [ ] Run expired checkout inventory-release test
+- [ ] Apply the 2026-08-08 hardening migrations in timestamp order and rerun the Stripe endpoint sync
+- [ ] Complete the backup/restore and monitoring gate in `docs/admin-operations-and-hardening.md`
 
 ## Troubleshooting Notes
 

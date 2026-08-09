@@ -4,6 +4,7 @@ import { POST } from "./route";
 const mocks = vi.hoisted(() => ({
   checkDeliveryAddressWithRoutes: vi.fn(),
   createPendingCheckoutOrder: vi.fn(),
+  getExistingCheckoutAttempt: vi.fn(),
   attachStripeSessionToOrder: vi.fn(),
   releasePendingOrder: vi.fn(),
   getDeliverySettingsData: vi.fn(),
@@ -13,6 +14,8 @@ const mocks = vi.hoisted(() => ({
   checkRateLimit: vi.fn(),
   getStripe: vi.fn(),
   stripeCreateSession: vi.fn(),
+  stripeRetrieveSession: vi.fn(),
+  stripeExpireSession: vi.fn(),
   stripeCreateCustomer: vi.fn(),
 }));
 
@@ -29,6 +32,7 @@ vi.mock("@/lib/order-records", () => ({
   buildOrderSummary: (items: Array<{ quantity: number; name: string }>) =>
     items.map((item) => `${item.quantity} x ${item.name}`).join("\n"),
   createPendingCheckoutOrder: mocks.createPendingCheckoutOrder,
+  getExistingCheckoutAttempt: mocks.getExistingCheckoutAttempt,
   releasePendingOrder: mocks.releasePendingOrder,
 }));
 
@@ -44,7 +48,8 @@ vi.mock("@/lib/storefront-data", () => ({
 }));
 
 vi.mock("@/lib/rate-limit", () => ({
-  checkRateLimit: mocks.checkRateLimit,
+  checkRateLimitChain: mocks.checkRateLimit,
+  getRequestClientIp: () => "203.0.113.10",
 }));
 
 vi.mock("@/lib/stripe", () => ({
@@ -60,6 +65,7 @@ vi.mock("@/lib/utils", async (importOriginal) => {
 });
 
 const checkoutPayload = {
+  checkoutAttemptId: "33333333-3333-4333-8333-333333333333",
   weeklyMenuId: "11111111-1111-4111-8111-111111111111",
   cart: [{ productId: "product-1", quantity: 1 }],
   customer: {
@@ -104,6 +110,7 @@ const menuProduct = {
 beforeEach(() => {
   mocks.checkDeliveryAddressWithRoutes.mockReset();
   mocks.createPendingCheckoutOrder.mockReset();
+  mocks.getExistingCheckoutAttempt.mockReset();
   mocks.attachStripeSessionToOrder.mockReset();
   mocks.releasePendingOrder.mockReset();
   mocks.getDeliverySettingsData.mockReset();
@@ -113,6 +120,8 @@ beforeEach(() => {
   mocks.checkRateLimit.mockReset();
   mocks.getStripe.mockReset();
   mocks.stripeCreateSession.mockReset();
+  mocks.stripeRetrieveSession.mockReset();
+  mocks.stripeExpireSession.mockReset();
   mocks.stripeCreateCustomer.mockReset();
   vi.stubEnv("STRIPE_AUTOMATIC_TAX_ENABLED", "false");
 
@@ -159,11 +168,14 @@ beforeEach(() => {
     checkoutCancelToken: "cancel-token",
     approvalMode: "standard",
     orderSummary: "1 x Classic Country Loaf",
+    checkoutExpiresAt: "2099-07-24T13:00:00.000Z",
   });
+  mocks.getExistingCheckoutAttempt.mockResolvedValue(null);
   mocks.stripeCreateSession.mockResolvedValue({
     id: "cs_test_123",
     url: "https://checkout.stripe.com/c/test",
   });
+  mocks.stripeExpireSession.mockResolvedValue({ id: "cs_test_123" });
   mocks.stripeCreateCustomer.mockResolvedValue({
     id: "cus_tax_customer",
   });
@@ -174,6 +186,8 @@ beforeEach(() => {
     checkout: {
       sessions: {
         create: mocks.stripeCreateSession,
+        retrieve: mocks.stripeRetrieveSession,
+        expire: mocks.stripeExpireSession,
       },
     },
   });
@@ -204,6 +218,7 @@ describe("checkout route delivery pricing", () => {
     );
     expect(mocks.stripeCreateSession).toHaveBeenCalledWith(
       expect.objectContaining({
+        expires_at: 4088581200,
         line_items: expect.arrayContaining([
           expect.objectContaining({
             price_data: expect.objectContaining({
@@ -215,6 +230,10 @@ describe("checkout route delivery pricing", () => {
           }),
         ]),
       }),
+      {
+        idempotencyKey:
+          "storefront-checkout-33333333-3333-4333-8333-333333333333",
+      },
     );
   });
 
@@ -242,6 +261,10 @@ describe("checkout route delivery pricing", () => {
         }),
         tax: { validate_location: "immediately" },
       }),
+      {
+        idempotencyKey:
+          "storefront-customer-33333333-3333-4333-8333-333333333333",
+      },
     );
     expect(mocks.stripeCreateSession).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -256,9 +279,95 @@ describe("checkout route delivery pricing", () => {
           }),
         },
       }),
+      {
+        idempotencyKey:
+          "storefront-checkout-33333333-3333-4333-8333-333333333333",
+      },
     );
     expect(
       mocks.stripeCreateSession.mock.calls[0]?.[0]?.customer_email,
     ).toBeUndefined();
+  });
+
+  it("never releases inventory after a conflicting Stripe attachment", async () => {
+    mocks.attachStripeSessionToOrder.mockRejectedValue(
+      new Error("Order is already attached to another session."),
+    );
+
+    const response = await POST(
+      new Request("https://www.landlsourdough.com/api/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(checkoutPayload),
+      }),
+    );
+
+    expect(response.status).toBe(502);
+    expect(mocks.stripeExpireSession).toHaveBeenCalledWith("cs_test_123");
+    expect(mocks.attachStripeSessionToOrder).toHaveBeenCalledTimes(2);
+    expect(mocks.releasePendingOrder).not.toHaveBeenCalled();
+  });
+
+  it("resumes an existing open Stripe session before reading mutable availability", async () => {
+    mocks.getExistingCheckoutAttempt.mockResolvedValue({
+      pendingOrder: {
+        id: "order-id",
+        customerId: "customer-id",
+        subtotalCents: 1200,
+        deliveryFeeCents: 1000,
+        taxCents: 0,
+        totalCents: 2200,
+        orderSummary: "1 x Classic Country Loaf",
+        checkoutCancelToken: "cancel-token",
+        checkoutExpiresAt: "2099-07-24T13:00:00.000Z",
+        approvalMode: "standard",
+      },
+      items: [{ ...menuProduct, quantity: 1 }],
+      deliveryCheck: {
+        eligible: true,
+        preliminary: false,
+        provider: "google_routes",
+        providerStatus: "ok",
+        needsReview: false,
+        miles: 8.7,
+        durationMinutes: 21,
+        distanceMeters: 14000,
+        distanceMiles: 8.7,
+        pricingBand: "21-30",
+        message: "Delivery is available.",
+        feeCents: 1000,
+        postalCode: "30114",
+        allowedPostalCodes: ["30114"],
+      },
+      deliveryWindowLabel: "Sunday, July 26, 2099, 3:00 PM-6:00 PM",
+      weeklyMenuId: checkoutPayload.weeklyMenuId,
+      status: "pending_payment",
+      stripeCheckoutSessionId: "cs_existing_open",
+    });
+    mocks.stripeRetrieveSession.mockResolvedValue({
+      id: "cs_existing_open",
+      status: "open",
+      url: "https://checkout.stripe.com/c/existing",
+    });
+
+    const response = await POST(
+      new Request("https://www.landlsourdough.com/api/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(checkoutPayload),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      url: "https://checkout.stripe.com/c/existing",
+    });
+    expect(mocks.stripeRetrieveSession).toHaveBeenCalledWith(
+      "cs_existing_open",
+    );
+    expect(mocks.getWeeklyMenuData).not.toHaveBeenCalled();
+    expect(mocks.getDeliveryWindowForMenuData).not.toHaveBeenCalled();
+    expect(mocks.checkDeliveryAddressWithRoutes).not.toHaveBeenCalled();
+    expect(mocks.createPendingCheckoutOrder).not.toHaveBeenCalled();
   });
 });

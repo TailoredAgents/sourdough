@@ -1,6 +1,13 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, CheckCircle2, Copy, Loader2, Save } from "lucide-react";
 import {
@@ -86,17 +93,35 @@ function getInventoryWarning(item: MenuItemForm, productName: string) {
   return null;
 }
 
+function getFormFingerprint(form: WeeklyMenuForm) {
+  return JSON.stringify(form);
+}
+
+export function getWeeklyMenuSwitchConfirmation(isDirty: boolean) {
+  return isDirty
+    ? "You have unsaved weekly-menu edits. Switch Sundays and discard those changes?"
+    : null;
+}
+
+type WeeklyMenuLoadResult = "loaded" | "failed" | "stale";
+
 export function WeeklyMenuEditor({
   initialWeeklyMenu,
   initialWeeklyMenus,
+  onDirtyChange,
+  onRequestWeeklyMenuIdChange,
   onSelectedWeeklyMenuIdChange,
+  onSelectedWeeklyMenuChange,
   onWeeklyMenusChange,
   products,
   selectedWeeklyMenuId,
 }: {
   initialWeeklyMenu: WeeklyMenu | null;
   initialWeeklyMenus: WeeklyMenuSummary[];
+  onDirtyChange?: (dirty: boolean) => void;
+  onRequestWeeklyMenuIdChange?: (id: string) => void;
   onSelectedWeeklyMenuIdChange: (id: string) => void;
+  onSelectedWeeklyMenuChange?: (menu: WeeklyMenu) => void;
   onWeeklyMenusChange: (menus: WeeklyMenuSummary[]) => void;
   products: Product[];
   selectedWeeklyMenuId: string;
@@ -115,11 +140,30 @@ export function WeeklyMenuEditor({
       },
     [initialWeeklyMenu],
   );
-  const [form, setForm] = useState(() => buildForm(fallbackWeeklyMenu, products));
+  const initialForm = useMemo(
+    () => buildForm(fallbackWeeklyMenu, products),
+    [fallbackWeeklyMenu, products],
+  );
+  const [form, setForm] = useState(() => initialForm);
   const [weeklyMenus, setWeeklyMenus] = useState(initialWeeklyMenus);
+  const [loadedWeeklyMenuId, setLoadedWeeklyMenuId] = useState(
+    fallbackWeeklyMenu.id,
+  );
+  const [cleanFormFingerprint, setCleanFormFingerprint] = useState(() =>
+    getFormFingerprint(initialForm),
+  );
   const [isUnsavedClone, setIsUnsavedClone] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const loadRequestIdRef = useRef(0);
+  const loadAbortControllerRef = useRef<AbortController | null>(null);
+  const isDirty =
+    isUnsavedClone || getFormFingerprint(form) !== cleanFormFingerprint;
+  const isSwitchingWeek =
+    Boolean(selectedWeeklyMenuId) &&
+    selectedWeeklyMenuId !== loadedWeeklyMenuId;
+  const isBusy = isPending || isLoading || isSwitchingWeek;
   const includedItems = form.items.filter((item) => item.included);
   const summary = includedItems.reduce(
     (current, item) => ({
@@ -133,6 +177,138 @@ export function WeeklyMenuEditor({
   );
   const includedItemCount = includedItems.length;
 
+  useEffect(() => {
+    onDirtyChange?.(isDirty);
+  }, [isDirty, onDirtyChange]);
+
+  useEffect(
+    () => () => {
+      onDirtyChange?.(false);
+    },
+    [onDirtyChange],
+  );
+
+  const applyLoadedWeeklyMenu = useCallback(
+    (weeklyMenu: WeeklyMenu) => {
+      const nextForm = buildForm(weeklyMenu, products);
+      setForm(nextForm);
+      setCleanFormFingerprint(getFormFingerprint(nextForm));
+      setLoadedWeeklyMenuId(weeklyMenu.id);
+      setIsUnsavedClone(false);
+      onSelectedWeeklyMenuChange?.(weeklyMenu);
+    },
+    [onSelectedWeeklyMenuChange, products],
+  );
+
+  const loadWeeklyMenu = useCallback(
+    async (id: string): Promise<WeeklyMenuLoadResult> => {
+      const requestId = ++loadRequestIdRef.current;
+      loadAbortControllerRef.current?.abort();
+      const controller = new AbortController();
+      loadAbortControllerRef.current = controller;
+      setIsLoading(true);
+      setMessage(null);
+
+      try {
+        const response = await fetch(
+          `/api/admin/weekly-menu?id=${encodeURIComponent(id)}`,
+          { signal: controller.signal },
+        );
+        const payload = await readAdminJsonResponse(response);
+        if (
+          controller.signal.aborted ||
+          requestId !== loadRequestIdRef.current
+        ) {
+          return "stale";
+        }
+
+        if (
+          !response.ok ||
+          !hasAdminKeys(payload, ["selectedWeeklyMenu"]) ||
+          !payload.selectedWeeklyMenu
+        ) {
+          setMessage(
+            getAdminPayloadError(payload) || "Weekly menu could not be loaded.",
+          );
+          return "failed";
+        }
+
+        const selectedWeeklyMenu = payload.selectedWeeklyMenu as WeeklyMenu;
+        if (selectedWeeklyMenu.id !== id) {
+          setMessage("Weekly menu response did not match the selected Sunday.");
+          return "failed";
+        }
+
+        if (
+          hasAdminKeys(payload, ["weeklyMenus"]) &&
+          Array.isArray(payload.weeklyMenus)
+        ) {
+          const nextWeeklyMenus = payload.weeklyMenus as WeeklyMenuSummary[];
+          setWeeklyMenus(nextWeeklyMenus);
+          onWeeklyMenusChange(nextWeeklyMenus);
+        }
+        applyLoadedWeeklyMenu(selectedWeeklyMenu);
+        return "loaded";
+      } catch (error) {
+        if (
+          controller.signal.aborted ||
+          requestId !== loadRequestIdRef.current
+        ) {
+          return "stale";
+        }
+        setMessage(
+          error instanceof Error && error.name === "AbortError"
+            ? "Weekly menu loading was canceled."
+            : "Weekly menu could not be loaded. Check your connection and try again.",
+        );
+        return "failed";
+      } finally {
+        if (requestId === loadRequestIdRef.current) {
+          setIsLoading(false);
+        }
+      }
+    },
+    [applyLoadedWeeklyMenu, onWeeklyMenusChange],
+  );
+
+  useEffect(() => {
+    if (
+      !selectedWeeklyMenuId ||
+      selectedWeeklyMenuId === loadedWeeklyMenuId
+    ) {
+      return;
+    }
+
+    let canceled = false;
+    async function synchronizeSelectedWeeklyMenu() {
+      await Promise.resolve();
+      if (canceled) return;
+
+      const result = await loadWeeklyMenu(selectedWeeklyMenuId);
+      if (!canceled && result === "failed" && loadedWeeklyMenuId) {
+        onSelectedWeeklyMenuIdChange(loadedWeeklyMenuId);
+      }
+    }
+
+    void synchronizeSelectedWeeklyMenu();
+    return () => {
+      canceled = true;
+      loadAbortControllerRef.current?.abort();
+    };
+  }, [
+    loadWeeklyMenu,
+    loadedWeeklyMenuId,
+    onSelectedWeeklyMenuIdChange,
+    selectedWeeklyMenuId,
+  ]);
+
+  useEffect(
+    () => () => {
+      loadAbortControllerRef.current?.abort();
+    },
+    [],
+  );
+
   function updateItem(productId: string, patch: Partial<MenuItemForm>) {
     setForm((current) => ({
       ...current,
@@ -145,6 +321,18 @@ export function WeeklyMenuEditor({
   function updateItemUnavailable(product: Product, unavailable: boolean) {
     const currentItem = form.items.find((item) => item.productId === product.id);
     if (!currentItem) return;
+
+    if (form.id) {
+      const confirmation = getWeeklyMenuSwitchConfirmation(isDirty);
+      if (
+        confirmation &&
+        !window.confirm(
+          "Changing availability saves immediately and replaces other unsaved weekly-menu edits. Continue?",
+        )
+      ) {
+        return;
+      }
+    }
 
     updateItem(product.id, {
       unavailable,
@@ -189,7 +377,7 @@ export function WeeklyMenuEditor({
         }
 
         const selectedWeeklyMenu = payload.selectedWeeklyMenu as WeeklyMenu;
-        setForm(buildForm(selectedWeeklyMenu, products));
+        applyLoadedWeeklyMenu(selectedWeeklyMenu);
         setMessage(
           unavailable
             ? `${product.name} marked currently unavailable.`
@@ -232,32 +420,7 @@ export function WeeklyMenuEditor({
 
   function selectWeeklyMenu(id: string) {
     if (!id || id === "unsaved-clone") return;
-    setMessage(null);
-    setIsUnsavedClone(false);
-    onSelectedWeeklyMenuIdChange(id);
-    startTransition(async () => {
-      try {
-        const response = await fetch(`/api/admin/weekly-menu?id=${encodeURIComponent(id)}`);
-        const payload = await readAdminJsonResponse(response);
-
-        if (
-          !response.ok ||
-          !hasAdminKeys(payload, ["selectedWeeklyMenu"]) ||
-          !payload.selectedWeeklyMenu
-        ) {
-          setMessage(getAdminPayloadError(payload) || "Weekly menu could not be loaded.");
-          return;
-        }
-
-        if (hasAdminKeys(payload, ["weeklyMenus"]) && Array.isArray(payload.weeklyMenus)) {
-          setWeeklyMenus(payload.weeklyMenus as WeeklyMenuSummary[]);
-          onWeeklyMenusChange(payload.weeklyMenus as WeeklyMenuSummary[]);
-        }
-        setForm(buildForm(payload.selectedWeeklyMenu as WeeklyMenu, products));
-      } catch {
-        setMessage("Weekly menu could not be loaded. Check your connection and try again.");
-      }
-    });
+    (onRequestWeeklyMenuIdChange || onSelectedWeeklyMenuIdChange)(id);
   }
 
   function saveWeeklyMenu() {
@@ -314,8 +477,7 @@ export function WeeklyMenuEditor({
         const unavailableCount = selectedWeeklyMenu.items.filter((item) => item.unavailable)
           .length;
         onSelectedWeeklyMenuIdChange(selectedWeeklyMenu.id);
-        setIsUnsavedClone(false);
-        setForm(buildForm(selectedWeeklyMenu, products));
+        applyLoadedWeeklyMenu(selectedWeeklyMenu);
         setMessage(
           unavailableCount
             ? `Weekly menu saved. ${unavailableCount} item${unavailableCount === 1 ? "" : "s"} unavailable.`
@@ -338,15 +500,15 @@ export function WeeklyMenuEditor({
           </p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row">
-          <Button type="button" onClick={saveWeeklyMenu} disabled={isPending}>
-            {isPending ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
+          <Button type="button" onClick={saveWeeklyMenu} disabled={isBusy}>
+            {isBusy ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
             {form.id ? "Save Sunday menu" : "Create Sunday menu"}
           </Button>
           <Button
             type="button"
             variant="secondary"
             onClick={cloneAsNewMenu}
-            disabled={isPending}
+            disabled={isBusy}
           >
             <Copy size={16} />
             Clone as new
@@ -354,13 +516,17 @@ export function WeeklyMenuEditor({
         </div>
       </div>
 
+      <fieldset
+        disabled={isBusy}
+        className="m-0 min-w-0 border-0 p-0 disabled:opacity-75"
+      >
       <label className="mt-5 grid gap-1 text-sm font-semibold text-stone-700">
         Edit bake drop
         <select
           className="h-11 rounded-md border border-stone-300 bg-white px-3 font-normal"
           value={isUnsavedClone ? "unsaved-clone" : form.id || selectedWeeklyMenuId || ""}
           onChange={(event) => selectWeeklyMenu(event.target.value)}
-          disabled={isPending || !weeklyMenus.length}
+          disabled={isBusy || !weeklyMenus.length}
         >
           {!weeklyMenus.length ? <option value="">No menus yet</option> : null}
           {isUnsavedClone ? (
@@ -373,6 +539,17 @@ export function WeeklyMenuEditor({
           ))}
         </select>
       </label>
+
+      {isLoading || isSwitchingWeek ? (
+        <p className="mt-2 inline-flex items-center gap-2 text-sm font-semibold text-stone-700">
+          <Loader2 className="animate-spin" size={15} />
+          Loading selected Sunday menu...
+        </p>
+      ) : isDirty ? (
+        <p className="mt-2 text-sm font-semibold text-amber-900">
+          Unsaved weekly-menu changes
+        </p>
+      ) : null}
 
       <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(220px,1fr)_minmax(230px,260px)_minmax(230px,260px)_max-content]">
         <label className="grid gap-1 text-sm font-semibold text-stone-700">
@@ -567,22 +744,13 @@ export function WeeklyMenuEditor({
                     />
                   </label>
                   <label className="grid gap-1 text-sm font-semibold text-stone-700">
-                    Sold
-                    <input
-                      className="h-10 min-w-0 rounded-md border border-stone-300 bg-white px-3 font-normal disabled:bg-stone-100"
+                    Sold (automatic)
+                    <div
+                      className="flex h-10 items-center rounded-md border border-stone-200 bg-stone-100 px-3 font-bold text-stone-700"
                       aria-label={`${product.name} sold quantity`}
-                      disabled={!item.included || item.unavailable}
-                      inputMode="numeric"
-                      min={0}
-                      step={1}
-                      type="number"
-                      value={item.soldQuantity}
-                      onChange={(event) =>
-                        updateItem(product.id, {
-                          soldQuantity: Number(event.target.value),
-                        })
-                      }
-                    />
+                    >
+                      {item.included ? item.soldQuantity : "-"}
+                    </div>
                   </label>
                   <div className="grid gap-1 text-sm font-semibold text-stone-700">
                     Left
@@ -600,6 +768,7 @@ export function WeeklyMenuEditor({
           );
         })}
       </div>
+      </fieldset>
 
       {message ? (
         <p

@@ -13,7 +13,7 @@ import {
   Save,
   TriangleAlert,
 } from "lucide-react";
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
 import type {
   BreadClubMemberData,
   BreadClubMemberFulfillment,
@@ -140,6 +140,10 @@ export function BreadClubMemberDashboard({
   const [addonQuantities, setAddonQuantities] = useState<
     Record<string, number>
   >({});
+  const addonCheckoutAttemptRef = useRef<{
+    fingerprint: string;
+    id: string;
+  } | null>(null);
   const [planId, setPlanId] = useState(member.plan.id);
   const [planSelectionSlots, setPlanSelectionSlots] = useState(() =>
     selectionSlots(
@@ -197,8 +201,15 @@ export function BreadClubMemberDashboard({
           url?: string;
           error?: string;
           billingCreditPending?: boolean;
+          resetCheckoutAttempt?: boolean;
         };
         if (!response.ok) {
+          if (
+            body.action === "addon_checkout" &&
+            payload.resetCheckoutAttempt
+          ) {
+            addonCheckoutAttemptRef.current = null;
+          }
           setError(payload.error || "Bread Club could not be updated.");
           return;
         }
@@ -216,6 +227,33 @@ export function BreadClubMemberDashboard({
         setError("Bread Club could not be updated. Please try again.");
       }
     });
+  }
+
+  function startAddonCheckout() {
+    if (!nextSunday) return;
+    const items = Object.entries(addonQuantities)
+      .filter(([, quantity]) => quantity > 0)
+      .map(([productId, quantity]) => ({ productId, quantity }))
+      .sort((left, right) => left.productId.localeCompare(right.productId));
+    const fingerprint = JSON.stringify({
+      fulfillmentId: nextSunday.id,
+      items,
+    });
+    if (addonCheckoutAttemptRef.current?.fingerprint !== fingerprint) {
+      addonCheckoutAttemptRef.current = {
+        fingerprint,
+        id: crypto.randomUUID(),
+      };
+    }
+    runAction(
+      {
+        action: "addon_checkout",
+        checkoutAttemptId: addonCheckoutAttemptRef.current.id,
+        fulfillmentId: nextSunday.id,
+        items,
+      },
+      "Opening add-on checkout.",
+    );
   }
 
   function openBillingPortal() {
@@ -468,18 +506,7 @@ export function BreadClubMemberDashboard({
               isPending ||
               !Object.values(addonQuantities).some((quantity) => quantity > 0)
             }
-            onClick={() =>
-              runAction(
-                {
-                  action: "addon_checkout",
-                  fulfillmentId: nextSunday.id,
-                  items: Object.entries(addonQuantities)
-                    .filter(([, quantity]) => quantity > 0)
-                    .map(([productId, quantity]) => ({ productId, quantity })),
-                },
-                "Opening add-on checkout.",
-              )
-            }
+            onClick={startAddonCheckout}
           >
             <PackagePlus size={16} />
             Checkout add-ons

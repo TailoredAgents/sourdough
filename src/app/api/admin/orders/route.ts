@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { getCurrentAdmin } from "@/lib/admin-auth";
+import { rejectCrossOriginMutation } from "@/lib/request-security";
 import {
   acceptApprovalOrder,
   denyApprovalOrderWithRefund,
@@ -10,7 +12,30 @@ import {
   updateAdminOrderStatus,
 } from "@/lib/order-admin";
 
-export async function GET() {
+const weeklyMenuIdSchema = z.string().uuid();
+
+function parseWeeklyMenuId(request: Request) {
+  const value = new URL(request.url).searchParams.get("weeklyMenuId");
+  if (value === null) {
+    return { success: true as const, weeklyMenuId: null };
+  }
+
+  const parsed = weeklyMenuIdSchema.safeParse(value);
+  return parsed.success
+    ? { success: true as const, weeklyMenuId: parsed.data }
+    : { success: false as const, weeklyMenuId: null };
+}
+
+async function getResponseOrders(
+  weeklyMenuId: string | null,
+  fallbackOrders: Awaited<ReturnType<typeof getAdminOrdersData>>,
+) {
+  return weeklyMenuId
+    ? getAdminOrdersData({ weeklyMenuId, limit: 500 })
+    : fallbackOrders;
+}
+
+export async function GET(request: Request) {
   const admin = await getCurrentAdmin();
   if (!admin) {
     return NextResponse.json(
@@ -19,10 +44,28 @@ export async function GET() {
     );
   }
 
-  return NextResponse.json({ orders: await getAdminOrdersData() });
+  const menuSelection = parseWeeklyMenuId(request);
+  if (!menuSelection.success) {
+    return NextResponse.json(
+      { error: "Delivery week must be a valid ID." },
+      { status: 400 },
+    );
+  }
+
+  return NextResponse.json({
+    orders: menuSelection.weeklyMenuId
+      ? await getAdminOrdersData({
+          weeklyMenuId: menuSelection.weeklyMenuId,
+          limit: 500,
+        })
+      : await getAdminOrdersData(),
+  });
 }
 
 export async function PATCH(request: Request) {
+  const originError = rejectCrossOriginMutation(request);
+  if (originError) return originError;
+
   const admin = await getCurrentAdmin();
   if (!admin) {
     return NextResponse.json(
@@ -31,24 +74,59 @@ export async function PATCH(request: Request) {
     );
   }
 
-  const body = await request.json();
+  const menuSelection = parseWeeklyMenuId(request);
+  if (!menuSelection.success) {
+    return NextResponse.json(
+      { error: "Delivery week must be a valid ID." },
+      { status: 400 },
+    );
+  }
+
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    body = null;
+  }
   const approvalAction = orderApprovalActionSchema.safeParse(body);
   if (approvalAction.success) {
     try {
       if (approvalAction.data.action === "accept_request") {
+        const orders = await acceptApprovalOrder(
+          approvalAction.data.id,
+          admin.email,
+          menuSelection.weeklyMenuId,
+        );
         return NextResponse.json({
-          orders: await acceptApprovalOrder(approvalAction.data.id),
+          orders: await getResponseOrders(
+            menuSelection.weeklyMenuId,
+            orders,
+          ),
         });
       }
       if (approvalAction.data.action === "deny_refund") {
+        const orders = await denyApprovalOrderWithRefund(
+          approvalAction.data.id,
+          admin.email,
+          menuSelection.weeklyMenuId,
+        );
         return NextResponse.json({
-          orders: await denyApprovalOrderWithRefund(approvalAction.data.id),
+          orders: await getResponseOrders(
+            menuSelection.weeklyMenuId,
+            orders,
+          ),
         });
       }
+      const orders = await moveApprovalOrderToNextWeek(
+        approvalAction.data.id,
+        approvalAction.data.targetDeliveryWindowId,
+        admin.email,
+        menuSelection.weeklyMenuId,
+      );
       return NextResponse.json({
-        orders: await moveApprovalOrderToNextWeek(
-          approvalAction.data.id,
-          approvalAction.data.targetDeliveryWindowId,
+        orders: await getResponseOrders(
+          menuSelection.weeklyMenuId,
+          orders,
         ),
       });
     } catch (error) {
@@ -66,8 +144,18 @@ export async function PATCH(request: Request) {
   }
 
   try {
+    const result = await updateAdminOrderStatus(
+      parsed.data.id,
+      parsed.data.status,
+      admin.email,
+      menuSelection.weeklyMenuId,
+    );
     return NextResponse.json({
-      orders: await updateAdminOrderStatus(parsed.data.id, parsed.data.status),
+      orders: await getResponseOrders(
+        menuSelection.weeklyMenuId,
+        result.orders,
+      ),
+      completionNotification: result.completionNotification,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Order could not be updated.";

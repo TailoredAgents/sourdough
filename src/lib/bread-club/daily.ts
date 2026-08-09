@@ -10,9 +10,26 @@ import {
 } from "./emails";
 import { getBreadClubMemberData } from "./member-data";
 import {
+  reconcileBreadClubPendingRefunds,
+  refundBreadClubUnusedCredits,
+} from "./billing";
+import {
+  expireBreadClubCheckoutSession,
+  findPendingCycleForMembership,
   markBreadClubCheckoutIncomplete,
   prepareNextBreadClubCycle,
+  releaseBreadClubPendingCycle,
 } from "./records";
+import {
+  completeBreadClubAddonCheckout,
+  expireBreadClubAddonCheckout,
+  expireUnattachedBreadClubAddonCheckout,
+} from "./member-actions";
+import { reconcilePendingBreadClubProviderChanges } from "./provider-sync";
+import {
+  reconcileBreadClubSubscriptionCheckout,
+  type BreadClubSubscriptionCheckoutReconciliation,
+} from "./webhook";
 
 type DailyReport = {
   generatedMenuIds: string[];
@@ -21,6 +38,13 @@ type DailyReport = {
   fridaySummarySent: boolean;
   creditsExpired: number;
   creditsReconciled: number;
+  canceledCreditsRefunded: number;
+  completedSubscriptionCheckoutsReconciled: number;
+  paidSubscriptionCyclesRecovered: number;
+  providerChangesSucceeded: number;
+  providerChangesDeferred: number;
+  refundsReconciled: number;
+  refundsDeferred: number;
   staleCheckoutsReleased: number;
   staleAddonsReleased: number;
   fulfillmentsCompleted: number;
@@ -35,7 +59,24 @@ type MembershipRow = {
   stripe_subscription_id: string | null;
   stripe_current_period_end: string | null;
   cancel_at_period_end: boolean;
+  provider_sync_required: boolean;
 };
+
+type PendingCheckoutRow = {
+  id: string;
+  current_cycle_id: string | null;
+  stripe_checkout_session_id: string | null;
+  checkout_expires_at: string | null;
+  created_at: string;
+};
+
+export type DailySubscriptionCheckoutRecovery =
+  | { outcome: "not_due" | "deferred" | "unchanged" }
+  | { outcome: "released" }
+  | {
+      outcome: "completed";
+      reconciliation: BreadClubSubscriptionCheckoutReconciliation;
+    };
 
 function localDateKey(now: Date) {
   return new Intl.DateTimeFormat("en-CA", {
@@ -69,80 +110,45 @@ async function claimJob(
   jobType: string,
   membershipId: string | null,
   payload: Record<string, unknown>,
-  now: Date,
 ) {
   const supabase = getSupabaseAdminClient();
   if (!supabase) throw new Error("Supabase admin client is not configured.");
-
-  const { error: insertError } = await supabase
-    .from("bread_club_job_events")
-    .insert({
-      job_key: jobKey,
-      job_type: jobType,
-      membership_id: membershipId,
-      status: "processing",
-      payload,
-      started_at: now.toISOString(),
-      updated_at: now.toISOString(),
-    });
-  if (!insertError) return true;
-  if (insertError.code !== "23505") throw new Error(insertError.message);
-
-  const { data: existing, error: lookupError } = await supabase
-    .from("bread_club_job_events")
-    .select("status, attempt_count, updated_at")
-    .eq("job_key", jobKey)
-    .maybeSingle();
-  if (lookupError) throw new Error(lookupError.message);
-  if (!existing || existing.status === "completed") return false;
-
-  const staleBefore = now.getTime() - 15 * 60 * 1000;
-  const isStale =
-    new Date(existing.updated_at).getTime() < staleBefore;
-  if (existing.status !== "failed" && !isStale) return false;
-
-  const { data: reclaimed, error: reclaimError } = await supabase
-    .from("bread_club_job_events")
-    .update({
-      status: "processing",
-      attempt_count: Number(existing.attempt_count) + 1,
-      last_error: null,
-      started_at: now.toISOString(),
-      updated_at: now.toISOString(),
-    })
-    .eq("job_key", jobKey)
-    .eq("updated_at", existing.updated_at)
-    .select("job_key")
-    .maybeSingle();
-  if (reclaimError) throw new Error(reclaimError.message);
-  return Boolean(reclaimed);
+  const { data, error } = await supabase.rpc("claim_bread_club_job", {
+    p_job_key: jobKey,
+    p_job_type: jobType,
+    p_membership_id: membershipId,
+    p_payload: payload,
+  });
+  if (error) throw new Error(error.message);
+  return data ? String(data) : null;
 }
 
 async function finishJob(
   jobKey: string,
+  claimToken: string,
   status: "completed" | "failed",
   error?: unknown,
 ) {
   const supabase = getSupabaseAdminClient();
   if (!supabase) return;
-  const now = new Date().toISOString();
-  await supabase
-    .from("bread_club_job_events")
-    .update({
-      status,
-      completed_at: status === "completed" ? now : null,
-      last_error:
-        status === "failed"
-          ? error instanceof Error
-            ? error.message
-            : String(error || "Job failed.")
-          : null,
-      updated_at: now,
-    })
-    .eq("job_key", jobKey);
+  const { error: finishError } = await supabase.rpc("finish_bread_club_job", {
+    p_job_key: jobKey,
+    p_claim_token: claimToken,
+    p_status: status,
+    p_error_message:
+      status === "failed"
+        ? error instanceof Error
+          ? error.message
+          : String(error || "Job failed.")
+        : null,
+  });
+  if (finishError) throw new Error(finishError.message);
 }
 
-function subscriptionDetails(subscription: Stripe.Subscription) {
+export function subscriptionDetails(
+  subscription: Stripe.Subscription,
+  now = new Date(),
+) {
   const planItem = subscription.items.data.find((item) =>
     Boolean(item.price.metadata.bread_club_plan_id),
   );
@@ -154,14 +160,24 @@ function subscriptionDetails(subscription: Stripe.Subscription) {
     0,
   );
   const status =
-    subscription.status === "past_due" || subscription.status === "unpaid"
-      ? "past_due"
-      : subscription.cancel_at_period_end
-        ? "canceling"
-        : subscription.status === "active" ||
-            subscription.status === "trialing"
-          ? "active"
-          : "incomplete";
+    subscription.status === "canceled"
+      ? "canceled"
+      : subscription.status === "past_due" ||
+          subscription.status === "unpaid"
+        ? "past_due"
+        : subscription.cancel_at_period_end
+          ? "canceling"
+          : subscription.status === "active" ||
+              subscription.status === "trialing"
+            ? "active"
+            : "incomplete";
+  const canceledAt =
+    status === "canceled"
+      ? new Date(
+          (subscription.canceled_at || Math.floor(now.getTime() / 1000)) *
+            1000,
+        ).toISOString()
+      : null;
 
   return {
     planItemId: planItem?.id || null,
@@ -169,10 +185,74 @@ function subscriptionDetails(subscription: Stripe.Subscription) {
     periodEnd:
       periodEnd > 0 ? new Date(periodEnd * 1000).toISOString() : null,
     status,
+    cancelAtPeriodEnd:
+      status === "canceled" || subscription.cancel_at_period_end,
+    canceledAt,
   };
 }
 
-async function cleanupExpiredState(report: DailyReport, now: Date) {
+export async function reconcileStaleBreadClubSubscriptionCheckout(
+  membership: PendingCheckoutRow,
+  now: Date,
+): Promise<DailySubscriptionCheckoutRecovery> {
+  if (!membership.current_cycle_id) return { outcome: "unchanged" };
+
+  const knownExpiry = membership.checkout_expires_at
+    ? new Date(membership.checkout_expires_at).getTime()
+    : Number.NaN;
+  const createdAt = new Date(membership.created_at).getTime();
+  const legacySafeAge =
+    Number.isFinite(createdAt) &&
+    now.getTime() - createdAt >= 26 * 60 * 60 * 1000;
+  const reachedSafeExpiry = Number.isFinite(knownExpiry)
+    ? knownExpiry <= now.getTime()
+    : legacySafeAge;
+
+  const membershipId = String(membership.id);
+  const cycleId = String(membership.current_cycle_id);
+  const sessionId = membership.stripe_checkout_session_id
+    ? String(membership.stripe_checkout_session_id)
+    : null;
+  if (!sessionId) {
+    if (!reachedSafeExpiry) return { outcome: "not_due" };
+    const released = await markBreadClubCheckoutIncomplete(
+      membershipId,
+      cycleId,
+    );
+    return released ? { outcome: "released" } : { outcome: "unchanged" };
+  }
+
+  const stripe = getStripe();
+  if (!stripe) return { outcome: "deferred" };
+  let session = await stripe.checkout.sessions.retrieve(sessionId);
+  if (session.status === "complete") {
+    const reconciliation =
+      await reconcileBreadClubSubscriptionCheckout(session, {
+        membershipId,
+        cycleId,
+      });
+    return { outcome: "completed", reconciliation };
+  }
+  if (!reachedSafeExpiry) return { outcome: "not_due" };
+  if (session.status === "open") {
+    try {
+      session = await stripe.checkout.sessions.expire(sessionId);
+    } catch {
+      session = await stripe.checkout.sessions.retrieve(sessionId);
+    }
+  }
+  if (session.status !== "expired") return { outcome: "unchanged" };
+
+  const releasedMembershipId = await expireBreadClubCheckoutSession(
+    session.id,
+    membershipId,
+  );
+  return releasedMembershipId
+    ? { outcome: "released" }
+    : { outcome: "unchanged" };
+}
+
+async function expireBreadClubCredits(report: DailyReport, now: Date) {
   const supabase = getSupabaseAdminClient();
   if (!supabase) throw new Error("Supabase admin client is not configured.");
   const nowIso = now.toISOString();
@@ -188,10 +268,17 @@ async function cleanupExpiredState(report: DailyReport, now: Date) {
     const { error } = await supabase
       .from("bread_club_rollover_credits")
       .update({ status: "expired", updated_at: nowIso })
-      .in("id", expiredCreditIds);
+      .in("id", expiredCreditIds)
+      .eq("status", "available");
     if (error) throw new Error(error.message);
   }
   report.creditsExpired = expiredCreditIds.length;
+}
+
+async function cleanupExpiredState(report: DailyReport, now: Date) {
+  const supabase = getSupabaseAdminClient();
+  if (!supabase) throw new Error("Supabase admin client is not configured.");
+  const nowIso = now.toISOString();
 
   await supabase
     .from("bread_club_magic_links")
@@ -208,17 +295,26 @@ async function cleanupExpiredState(report: DailyReport, now: Date) {
   const { data: staleMemberships, error: staleMembershipError } =
     await supabase
       .from("bread_club_memberships")
-      .select("id, current_cycle_id")
+      .select(
+        "id, current_cycle_id, stripe_checkout_session_id, checkout_expires_at, created_at",
+      )
       .eq("status", "pending_checkout")
       .lt("created_at", staleCheckoutBefore);
   if (staleMembershipError) throw new Error(staleMembershipError.message);
   for (const membership of staleMemberships || []) {
-    if (!membership.current_cycle_id) continue;
-    await markBreadClubCheckoutIncomplete(
-      String(membership.id),
-      String(membership.current_cycle_id),
+    const recovery = await reconcileStaleBreadClubSubscriptionCheckout(
+      membership as PendingCheckoutRow,
+      now,
     );
-    report.staleCheckoutsReleased += 1;
+    if (recovery.outcome === "released") {
+      report.staleCheckoutsReleased += 1;
+    }
+    if (recovery.outcome === "completed") {
+      report.completedSubscriptionCheckoutsReconciled += 1;
+      if (recovery.reconciliation.cycleState === "activated") {
+        report.paidSubscriptionCyclesRecovered += 1;
+      }
+    }
   }
 
   const staleAddonBefore = new Date(
@@ -226,17 +322,40 @@ async function cleanupExpiredState(report: DailyReport, now: Date) {
   ).toISOString();
   const { data: staleAddons, error: staleAddonError } = await supabase
     .from("bread_club_addon_checkouts")
-    .select("id")
+    .select("id, stripe_checkout_session_id")
     .eq("status", "pending_payment")
     .lt("created_at", staleAddonBefore);
   if (staleAddonError) throw new Error(staleAddonError.message);
   for (const addon of staleAddons || []) {
-    const { error } = await supabase.rpc(
-      "release_bread_club_addon_inventory",
-      { p_addon_checkout_id: addon.id },
-    );
-    if (error) throw new Error(error.message);
-    report.staleAddonsReleased += 1;
+    const sessionId = addon.stripe_checkout_session_id
+      ? String(addon.stripe_checkout_session_id)
+      : null;
+    if (!sessionId) {
+      if (await expireUnattachedBreadClubAddonCheckout(String(addon.id))) {
+        report.staleAddonsReleased += 1;
+      }
+      continue;
+    }
+    const stripe = getStripe();
+    if (!stripe) continue;
+    let session = await stripe.checkout.sessions.retrieve(sessionId);
+    if (session.status === "complete") {
+      await completeBreadClubAddonCheckout(session);
+      continue;
+    }
+    if (session.status === "open") {
+      try {
+        session = await stripe.checkout.sessions.expire(sessionId);
+      } catch {
+        session = await stripe.checkout.sessions.retrieve(sessionId);
+      }
+    }
+    if (
+      session.status === "expired" &&
+      (await expireBreadClubAddonCheckout(session.id, String(addon.id)))
+    ) {
+      report.staleAddonsReleased += 1;
+    }
   }
 }
 
@@ -283,6 +402,70 @@ async function reconcileFulfillments(report: DailyReport) {
   }
 }
 
+export type CanceledCreditRefundReconciliation = {
+  membershipsAttempted: number;
+  creditsRefunded: number;
+  errors: string[];
+};
+
+export async function reconcileCanceledBreadClubCreditRefunds(
+  now: Date,
+): Promise<CanceledCreditRefundReconciliation> {
+  const supabase = getSupabaseAdminClient();
+  if (!supabase) throw new Error("Supabase admin client is not configured.");
+  const { data, error } = await supabase
+    .from("bread_club_rollover_credits")
+    .select(
+      "membership_id, expires_at, bread_club_memberships!inner(status, canceled_at)",
+    )
+    .in("status", ["available", "expired"])
+    .eq("bread_club_memberships.status", "canceled");
+  if (error) throw new Error(error.message);
+
+  const membershipIds = new Set(
+    (data || [])
+      .filter((credit) => {
+        const membership = Array.isArray(credit.bread_club_memberships)
+          ? credit.bread_club_memberships[0]
+          : credit.bread_club_memberships;
+        const canceledAt = new Date(
+          String(membership?.canceled_at || ""),
+        ).getTime();
+        const expiresAt = new Date(String(credit.expires_at)).getTime();
+        return (
+          Number.isFinite(canceledAt) &&
+          Number.isFinite(expiresAt) &&
+          canceledAt <= now.getTime() &&
+          canceledAt < expiresAt
+        );
+      })
+      .map((credit) => String(credit.membership_id)),
+  );
+  const result: CanceledCreditRefundReconciliation = {
+    membershipsAttempted: 0,
+    creditsRefunded: 0,
+    errors: [],
+  };
+  for (const membershipId of membershipIds) {
+    result.membershipsAttempted += 1;
+    try {
+      const refunds = await refundBreadClubUnusedCredits(membershipId);
+      result.creditsRefunded += refunds.filter(
+        (refund) => refund.state === "refunded",
+      ).length;
+    } catch (refundError) {
+      result.errors.push(
+        `Canceled membership ${membershipId} credits: ${
+          refundError instanceof Error
+            ? refundError.message
+            : "refund failed"
+        }`,
+      );
+    }
+  }
+  return result;
+}
+
 async function reconcileCredits(report: DailyReport, now: Date) {
   const stripe = getStripe();
   const supabase = getSupabaseAdminClient();
@@ -291,7 +474,7 @@ async function reconcileCredits(report: DailyReport, now: Date) {
   const { data, error } = await supabase
     .from("bread_club_rollover_credits")
     .select(
-      "id, membership_id, delivery_fee_credit_cents, bread_club_memberships(stripe_customer_id, stripe_subscription_id)",
+      "id, membership_id, delivery_fee_credit_cents, bread_club_memberships(status, stripe_customer_id, stripe_subscription_id)",
     )
     .eq("status", "available")
     .gt("expires_at", now.toISOString())
@@ -302,21 +485,23 @@ async function reconcileCredits(report: DailyReport, now: Date) {
     const membership = Array.isArray(credit.bread_club_memberships)
       ? credit.bread_club_memberships[0]
       : credit.bread_club_memberships;
-    if (!membership?.stripe_customer_id || !membership.stripe_subscription_id) {
-      continue;
-    }
-    const jobKey = `credit-invoice-item:${credit.id}`;
     if (
-      !(await claimJob(
-        jobKey,
-        "credit_reconciliation",
-        String(credit.membership_id),
-        { creditId: credit.id },
-        now,
-      ))
+      !membership?.stripe_customer_id ||
+      !membership.stripe_subscription_id ||
+      !["active", "past_due", "canceling"].includes(
+        String(membership.status),
+      )
     ) {
       continue;
     }
+    const jobKey = `credit-invoice-item:${credit.id}`;
+    const claimToken = await claimJob(
+      jobKey,
+      "credit_reconciliation",
+      String(credit.membership_id),
+      { creditId: credit.id },
+    );
+    if (!claimToken) continue;
     try {
       const invoiceItem = await stripe.invoiceItems.create(
         {
@@ -342,10 +527,10 @@ async function reconcileCredits(report: DailyReport, now: Date) {
         .eq("id", credit.id)
         .is("stripe_invoice_item_id", null);
       if (updateError) throw new Error(updateError.message);
-      await finishJob(jobKey, "completed");
+      await finishJob(jobKey, claimToken, "completed");
       report.creditsReconciled += 1;
     } catch (creditError) {
-      await finishJob(jobKey, "failed", creditError);
+      await finishJob(jobKey, claimToken, "failed", creditError);
       report.errors.push(
         `Credit ${credit.id}: ${
           creditError instanceof Error
@@ -364,7 +549,7 @@ async function reconcileMemberships(report: DailyReport, now: Date) {
   const { data, error } = await supabase
     .from("bread_club_memberships")
     .select(
-      "id, status, stripe_customer_id, stripe_subscription_id, stripe_current_period_end, cancel_at_period_end",
+      "id, status, stripe_customer_id, stripe_subscription_id, stripe_current_period_end, cancel_at_period_end, provider_sync_required",
     )
     .in("status", ["active", "past_due", "canceling"]);
   if (error) throw new Error(error.message);
@@ -378,15 +563,22 @@ async function reconcileMemberships(report: DailyReport, now: Date) {
         const subscription = await stripe.subscriptions.retrieve(
           membership.stripe_subscription_id,
         );
-        const details = subscriptionDetails(subscription);
+        const details = subscriptionDetails(subscription, now);
         periodEnd = details.periodEnd;
         status = details.status;
-        cancelAtPeriodEnd = subscription.cancel_at_period_end;
+        cancelAtPeriodEnd = details.cancelAtPeriodEnd;
+        if (status === "canceled") {
+          const pending = await findPendingCycleForMembership(
+            String(membership.id),
+          );
+          if (pending) await releaseBreadClubPendingCycle(pending.id);
+        }
         const { error: updateError } = await supabase
           .from("bread_club_memberships")
           .update({
             status,
             cancel_at_period_end: cancelAtPeriodEnd,
+            canceled_at: details.canceledAt,
             stripe_plan_subscription_item_id: details.planItemId,
             stripe_delivery_subscription_item_id: details.deliveryItemId,
             stripe_current_period_end: periodEnd,
@@ -400,6 +592,7 @@ async function reconcileMemberships(report: DailyReport, now: Date) {
       if (
         status === "active" &&
         !cancelAtPeriodEnd &&
+        !membership.provider_sync_required &&
         periodEnd &&
         new Date(periodEnd).getTime() <=
           now.getTime() + 7 * 24 * 60 * 60 * 1000
@@ -449,17 +642,13 @@ async function sendReminders(report: DailyReport, now: Date) {
     if (!fulfillment) continue;
 
     const jobKey = `selection-reminder:${fulfillment.id}`;
-    if (
-      !(await claimJob(
-        jobKey,
-        "selection_reminder",
-        member.id,
-        { fulfillmentId: fulfillment.id },
-        now,
-      ))
-    ) {
-      continue;
-    }
+    const claimToken = await claimJob(
+      jobKey,
+      "selection_reminder",
+      member.id,
+      { fulfillmentId: fulfillment.id },
+    );
+    if (!claimToken) continue;
     try {
       const selection = fulfillment.items
         .map((item) => `${item.quantity} x ${item.productName}`)
@@ -472,11 +661,12 @@ async function sendReminders(report: DailyReport, now: Date) {
         selection,
         cutoffLabel: formatCutoff(fulfillment.cutoffAt),
         manageUrl: `${getSiteUrl()}/bread-club/manage`,
+        eventKey: jobKey,
       });
-      await finishJob(jobKey, "completed");
+      await finishJob(jobKey, claimToken, "completed");
       report.remindersSent += 1;
     } catch (reminderError) {
-      await finishJob(jobKey, "failed", reminderError);
+      await finishJob(jobKey, claimToken, "failed", reminderError);
       report.errors.push(
         `Reminder ${fulfillment.id}: ${
           reminderError instanceof Error
@@ -496,17 +686,13 @@ async function sendFridaySummary(report: DailyReport, now: Date) {
   const admin = await getBreadClubAdminData();
   if (!admin.nextSunday) return;
   const jobKey = `friday-summary:${localDateKey(now)}`;
-  if (
-    !(await claimJob(
-      jobKey,
-      "friday_summary",
-      null,
-      { deliveryLabel: admin.nextSunday.label },
-      now,
-    ))
-  ) {
-    return;
-  }
+  const claimToken = await claimJob(
+    jobKey,
+    "friday_summary",
+    null,
+    { deliveryLabel: admin.nextSunday.label },
+  );
+  if (!claimToken) return;
   try {
     await sendBreadClubFridaySummary({
       to: recipient,
@@ -515,11 +701,12 @@ async function sendFridaySummary(report: DailyReport, now: Date) {
         (item) => `${item.quantity} x ${item.productName}`,
       ),
       memberCount: admin.metrics.nextSundayStops,
+      eventKey: jobKey,
     });
-    await finishJob(jobKey, "completed");
+    await finishJob(jobKey, claimToken, "completed");
     report.fridaySummarySent = true;
   } catch (summaryError) {
-    await finishJob(jobKey, "failed", summaryError);
+    await finishJob(jobKey, claimToken, "failed", summaryError);
     report.errors.push(
       `Friday summary: ${
         summaryError instanceof Error ? summaryError.message : "send failed"
@@ -536,6 +723,13 @@ export async function runBreadClubDaily(now = new Date()): Promise<DailyReport> 
     fridaySummarySent: false,
     creditsExpired: 0,
     creditsReconciled: 0,
+    canceledCreditsRefunded: 0,
+    completedSubscriptionCheckoutsReconciled: 0,
+    paidSubscriptionCyclesRecovered: 0,
+    providerChangesSucceeded: 0,
+    providerChangesDeferred: 0,
+    refundsReconciled: 0,
+    refundsDeferred: 0,
     staleCheckoutsReleased: 0,
     staleAddonsReleased: 0,
     fulfillmentsCompleted: 0,
@@ -546,8 +740,36 @@ export async function runBreadClubDaily(now = new Date()): Promise<DailyReport> 
   report.generatedMenuIds = await ensureRollingWeeklyMenus(now);
   await cleanupExpiredState(report, now);
   await reconcileFulfillments(report);
-  await reconcileCredits(report, now);
+  const providerChanges =
+    await reconcilePendingBreadClubProviderChanges();
+  report.providerChangesSucceeded = providerChanges.succeeded;
+  report.providerChangesDeferred = providerChanges.deferred;
+  report.errors.push(
+    ...providerChanges.errors.map((error) => `Provider sync ${error}`),
+  );
   await reconcileMemberships(report, now);
+  const canceledCreditRefunds =
+    await reconcileCanceledBreadClubCreditRefunds(now);
+  report.canceledCreditsRefunded = canceledCreditRefunds.creditsRefunded;
+  report.errors.push(...canceledCreditRefunds.errors);
+  await expireBreadClubCredits(report, now);
+  const pendingRefunds = await reconcileBreadClubPendingRefunds();
+  const refundOutcomes = [
+    ...pendingRefunds.creditOutcomes,
+    ...pendingRefunds.cycleOutcomes,
+  ];
+  report.refundsReconciled = refundOutcomes.filter(
+    (refund) => refund.state === "refunded",
+  ).length;
+  report.refundsDeferred = refundOutcomes.filter(
+    (refund) => refund.state === "refund_pending",
+  ).length + pendingRefunds.errors.length;
+  report.errors.push(
+    ...pendingRefunds.errors.map((error) =>
+      `Refund reconciliation ${error}`,
+    ),
+  );
+  await reconcileCredits(report, now);
   await sendReminders(report, now);
   await sendFridaySummary(report, now);
   return report;

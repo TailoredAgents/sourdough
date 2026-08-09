@@ -2,7 +2,7 @@ import Link from "next/link";
 import { AdminDashboard } from "@/components/admin-dashboard";
 import { requireAdmin } from "@/lib/admin-auth";
 import { getAiKnowledgeEntriesData } from "@/lib/ai-knowledge-admin";
-import { getCustomerMessagesData } from "@/lib/customer-messages";
+import { getCustomerMessagesPageData } from "@/lib/customer-messages";
 import { getAdminOrdersData } from "@/lib/order-admin";
 import { getStorefrontData, getWeeklyMenusData } from "@/lib/storefront-data";
 
@@ -18,13 +18,13 @@ export default async function AdminPage() {
   const admin = await requireAdmin();
   const [
     { deliverySettings, deliveryWindows, menu, orderingWeeks, products, weeklyMenu },
-    customerMessages,
+    customerMessagesPage,
     aiKnowledgeEntries,
     orders,
     weeklyMenus,
   ] = await Promise.all([
     getStorefrontData(),
-    getCustomerMessagesData(),
+    getCustomerMessagesPageData(),
     getAiKnowledgeEntriesData(),
     getAdminOrdersData(),
     getWeeklyMenusData(),
@@ -33,11 +33,11 @@ export default async function AdminPage() {
   return (
     <>
       <div className="border-b border-stone-200 bg-white">
-        <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-          <Link href="/" className="font-bold text-[#23443b]">
+        <div className="mx-auto flex min-h-14 max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:flex-nowrap sm:px-6 lg:px-8">
+          <Link href="/" className="w-full font-bold text-[#23443b] sm:w-auto">
             Luna &amp; Lorelai&apos;s Sourdough
           </Link>
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
             <span className="hidden text-xs text-stone-500 sm:inline">
               {admin.email}
             </span>
@@ -60,7 +60,9 @@ export default async function AdminPage() {
       </div>
       <AdminDashboard
         aiKnowledgeEntries={aiKnowledgeEntries}
-        customerMessages={customerMessages}
+        customerMessages={customerMessagesPage.messages}
+        customerMessagesHasMore={customerMessagesPage.hasMore}
+        customerMessagesTotal={customerMessagesPage.total}
         deliverySettings={deliverySettings}
         deliveryWindows={deliveryWindows}
         menu={menu}

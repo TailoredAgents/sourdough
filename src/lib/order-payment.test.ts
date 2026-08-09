@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  attachStripeSessionToOrder: vi.fn(),
   markCheckoutSessionPaid: vi.fn(),
   getPaidCheckoutOrderSummaryBySessionId: vi.fn(),
   hasSentEmailEvent: vi.fn(),
@@ -12,6 +13,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("./order-records", () => ({
+  attachStripeSessionToOrder: mocks.attachStripeSessionToOrder,
   markCheckoutSessionPaid: mocks.markCheckoutSessionPaid,
   getPaidCheckoutOrderSummaryBySessionId:
     mocks.getPaidCheckoutOrderSummaryBySessionId,
@@ -45,10 +47,13 @@ const paidOrder = {
 
 const session = {
   id: "cs_paid",
+  payment_status: "paid",
+  currency: "usd",
+  amount_subtotal: 1800,
   amount_total: 1800,
   total_details: { amount_tax: 0 },
   customer_email: "customer@example.com",
-} as never;
+};
 
 beforeEach(() => {
   process.env.BAKERY_EMAIL = "owner@example.com";
@@ -60,15 +65,35 @@ beforeEach(() => {
 });
 
 describe("completed storefront checkout", () => {
+  it("does not fulfill a Checkout Session while payment is still unpaid", async () => {
+    const { completeStorefrontCheckoutSession } = await import(
+      "./order-payment"
+    );
+
+    await expect(
+      completeStorefrontCheckoutSession({
+        ...session,
+        payment_status: "unpaid",
+      } as never),
+    ).resolves.toBeNull();
+
+    expect(mocks.markCheckoutSessionPaid).not.toHaveBeenCalled();
+    expect(mocks.sendCustomerOrderConfirmation).not.toHaveBeenCalled();
+    expect(mocks.sendOwnerNewOrderNotification).not.toHaveBeenCalled();
+    expect(mocks.sendOwnerAlert).not.toHaveBeenCalled();
+  });
+
   it("marks the order paid and sends customer, owner, and short alerts", async () => {
     mocks.markCheckoutSessionPaid.mockResolvedValue(paidOrder);
 
     const { completeStorefrontCheckoutSession } = await import(
       "./order-payment"
     );
-    await completeStorefrontCheckoutSession(session);
+    await completeStorefrontCheckoutSession(session as never);
 
     expect(mocks.markCheckoutSessionPaid).toHaveBeenCalledWith("cs_paid", {
+      currency: "usd",
+      subtotalCents: 1800,
       taxCents: 0,
       totalCents: 1800,
     });
@@ -96,6 +121,28 @@ describe("completed storefront checkout", () => {
     );
   });
 
+  it("recovers a missing database attachment from signed session metadata", async () => {
+    const orderId = "11111111-1111-4111-8111-111111111111";
+    mocks.markCheckoutSessionPaid.mockResolvedValue({
+      ...paidOrder,
+      orderId,
+    });
+
+    const { completeStorefrontCheckoutSession } = await import(
+      "./order-payment"
+    );
+    await completeStorefrontCheckoutSession({
+      ...session,
+      metadata: { order_id: orderId },
+    } as never);
+
+    expect(mocks.attachStripeSessionToOrder).toHaveBeenCalledWith(
+      orderId,
+      "cs_paid",
+    );
+    expect(mocks.markCheckoutSessionPaid).toHaveBeenCalled();
+  });
+
   it("retries missing notifications after the order is already paid", async () => {
     mocks.markCheckoutSessionPaid
       .mockResolvedValueOnce(paidOrder)
@@ -109,10 +156,10 @@ describe("completed storefront checkout", () => {
       "./order-payment"
     );
     await expect(
-      completeStorefrontCheckoutSession(session),
+      completeStorefrontCheckoutSession(session as never),
     ).rejects.toThrow("Temporary Resend failure");
     await expect(
-      completeStorefrontCheckoutSession(session),
+      completeStorefrontCheckoutSession(session as never),
     ).resolves.toEqual(paidOrder);
 
     expect(mocks.sendCustomerOrderConfirmation).toHaveBeenCalledTimes(2);

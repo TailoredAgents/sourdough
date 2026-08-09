@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentAdmin } from "@/lib/admin-auth";
+import { rejectCrossOriginMutation } from "@/lib/request-security";
 import {
   aiKnowledgeAdminSchema,
   getAiKnowledgeEntriesData,
@@ -19,6 +20,9 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const originError = rejectCrossOriginMutation(request);
+  if (originError) return originError;
+
   const admin = await getCurrentAdmin();
   if (!admin) {
     return NextResponse.json(
@@ -27,7 +31,13 @@ export async function POST(request: Request) {
     );
   }
 
-  const parsed = aiKnowledgeAdminSchema.safeParse(await request.json());
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    body = null;
+  }
+  const parsed = aiKnowledgeAdminSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
       { error: parsed.error.issues[0]?.message || "Invalid AI knowledge entry." },

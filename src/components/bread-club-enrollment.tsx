@@ -12,7 +12,13 @@ import {
   Truck,
   UserRound,
 } from "lucide-react";
-import { useMemo, useState, useTransition, type FormEvent } from "react";
+import {
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+  type FormEvent,
+} from "react";
 import type {
   BreadClubEnrollmentData,
   BreadClubPlan,
@@ -97,6 +103,10 @@ export function BreadClubEnrollment({
   const [error, setError] = useState<string | null>(null);
   const [isChecking, startDeliveryTransition] = useTransition();
   const [isCheckingOut, startCheckoutTransition] = useTransition();
+  const checkoutAttemptRef = useRef<{
+    fingerprint: string;
+    id: string;
+  } | null>(null);
 
   const plan =
     data.plans.find((item) => item.id === planId) || initialPlan;
@@ -227,26 +237,43 @@ export function BreadClubEnrollment({
       return;
     }
 
+    const checkoutDetails = {
+      planId: plan.id,
+      selection,
+      customer,
+      address,
+      deliveryInstructions,
+      acknowledgedAutoRenewal: true as const,
+      consentText,
+    };
+    const checkoutFingerprint = JSON.stringify(checkoutDetails);
+    if (checkoutAttemptRef.current?.fingerprint !== checkoutFingerprint) {
+      checkoutAttemptRef.current = {
+        fingerprint: checkoutFingerprint,
+        id: crypto.randomUUID(),
+      };
+    }
+    const checkoutAttemptId = checkoutAttemptRef.current.id;
+
     startCheckoutTransition(async () => {
       try {
         const response = await fetch("/api/bread-club/checkout", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            planId: plan.id,
-            selection,
-            customer,
-            address,
-            deliveryInstructions,
-            acknowledgedAutoRenewal: true,
-            consentText,
+            ...checkoutDetails,
+            checkoutAttemptId,
           }),
         });
         const payload = (await response.json()) as {
           url?: string;
           error?: string;
+          resetCheckoutAttempt?: boolean;
         };
         if (!response.ok || !payload.url) {
+          if (payload.resetCheckoutAttempt) {
+            checkoutAttemptRef.current = null;
+          }
           setError(payload.error || "Bread Club checkout could not start.");
           return;
         }

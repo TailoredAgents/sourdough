@@ -271,6 +271,35 @@ requireOneOf("BREAD_CLUB_TAX_STATUS", [
   "exempt",
 ]);
 requireValue("CRON_SECRET");
+requireValue("BREAD_CLUB_SETUP_SECRET");
+requireValue("CLOUDFLARE_ORIGIN_SECRET");
+const operationalSecretKeys = [
+  "CRON_SECRET",
+  "BREAD_CLUB_SETUP_SECRET",
+  "CLOUDFLARE_ORIGIN_SECRET",
+];
+for (const key of operationalSecretKeys) {
+  if (hasValue(key) && valueFor(key).length < 32) {
+    failures.push(`${key} must be at least 32 characters.`);
+  }
+}
+for (let index = 0; index < operationalSecretKeys.length; index += 1) {
+  for (
+    let comparisonIndex = index + 1;
+    comparisonIndex < operationalSecretKeys.length;
+    comparisonIndex += 1
+  ) {
+    const firstKey = operationalSecretKeys[index];
+    const secondKey = operationalSecretKeys[comparisonIndex];
+    if (
+      hasValue(firstKey) &&
+      hasValue(secondKey) &&
+      valueFor(firstKey) === valueFor(secondKey)
+    ) {
+      failures.push(`${firstKey} and ${secondKey} must use different values.`);
+    }
+  }
+}
 
 if (
   valueFor("BREAD_CLUB_PUBLIC_ENABLED") === "true" &&

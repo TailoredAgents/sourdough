@@ -61,7 +61,7 @@ Run this sequence on the live domain before taking real orders:
 
 These are not blockers for launch, but they would make the website more effective after real customers start using it.
 
-- Add a review-request workflow after completed delivery, then publish only real customer quotes with permission.
+- Monitor delivered-order review email delivery and retry failures from the transactional notification queue.
 - Add a pre-publish photo quality check that warns when product images are missing, too small, or not close to a 4:3 or 3:2 crop.
 - Add an optional "best seller" or "limited bake" flag to the weekly menu once real sales data exists.
 - Add a returning-customer reorder shortcut based on prior orders after privacy and account decisions are settled.

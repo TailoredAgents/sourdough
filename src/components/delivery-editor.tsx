@@ -13,6 +13,7 @@ import {
   DEFAULT_SUNDAY_DELIVERY_CAPACITY,
   formatSundayDeliveryWindowLabel,
   getFirstVisibleDeliveryWeekSchedule,
+  getWeeklyMenuDeliverySchedule,
 } from "@/lib/bake-schedule";
 import {
   getAdminPayloadError,
@@ -87,8 +88,10 @@ function buildWindowForm(window: DeliveryWindow): DeliveryWindowForm {
   };
 }
 
-function buildNewWindow(): DeliveryWindowForm {
-  const schedule = getFirstVisibleDeliveryWeekSchedule();
+function buildNewWindow(weeklyMenu?: WeeklyMenuSummary): DeliveryWindowForm {
+  const schedule =
+    getWeeklyMenuDeliverySchedule(weeklyMenu?.startsAt) ||
+    getFirstVisibleDeliveryWeekSchedule();
 
   return {
     clientId: newClientId(),
@@ -121,24 +124,65 @@ function getDeliveryWindowWarning(window: DeliveryWindowForm) {
   return null;
 }
 
+function getDeliveryFingerprint(
+  settings: DeliverySettingsForm,
+  windows: DeliveryWindowForm[],
+) {
+  return JSON.stringify({ settings, windows });
+}
+
+export function getDeliverySwitchConfirmation(isDirty: boolean) {
+  return isDirty
+    ? "You have unsaved delivery edits. Switch Sundays and discard those changes?"
+    : null;
+}
+
 export function DeliveryEditor({
   initialDeliverySettings,
   initialDeliveryWindows,
+  onDirtyChange,
+  onRequestWeeklyMenuIdChange,
+  onDeliveryWindowsChange,
   onSelectedWeeklyMenuIdChange,
   selectedWeeklyMenuId,
   weeklyMenus,
 }: {
   initialDeliverySettings: DeliverySettings;
   initialDeliveryWindows: DeliveryWindow[];
+  onDirtyChange?: (dirty: boolean) => void;
+  onRequestWeeklyMenuIdChange?: (id: string) => void;
+  onDeliveryWindowsChange?: (
+    weeklyMenuId: string,
+    windows: DeliveryWindow[],
+  ) => void;
   onSelectedWeeklyMenuIdChange: (id: string) => void;
   selectedWeeklyMenuId: string;
   weeklyMenus: WeeklyMenuSummary[];
 }) {
-  const [settings, setSettings] = useState(() => buildSettingsForm(initialDeliverySettings));
-  const [windows, setWindows] = useState(() => initialDeliveryWindows.map(buildWindowForm));
+  const initialSettingsForm = buildSettingsForm(initialDeliverySettings);
+  const initialWindowForms = initialDeliveryWindows.map(buildWindowForm);
+  const [settings, setSettings] = useState(() => initialSettingsForm);
+  const [windows, setWindows] = useState(() => initialWindowForms);
+  const [loadedWeeklyMenuId, setLoadedWeeklyMenuId] = useState(
+    selectedWeeklyMenuId,
+  );
+  const [cleanFingerprint, setCleanFingerprint] = useState(() =>
+    getDeliveryFingerprint(initialSettingsForm, initialWindowForms),
+  );
+  const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
-  const lastLoadedMenuId = useRef(selectedWeeklyMenuId);
+  const loadRequestIdRef = useRef(0);
+  const loadAbortControllerRef = useRef<AbortController | null>(null);
+  const isDirty =
+    getDeliveryFingerprint(settings, windows) !== cleanFingerprint;
+  const isSwitchingWeek =
+    Boolean(selectedWeeklyMenuId) &&
+    selectedWeeklyMenuId !== loadedWeeklyMenuId;
+  const isBusy = isPending || isLoading || isSwitchingWeek;
+  const selectedWeeklyMenu = weeklyMenus.find(
+    (menu) => menu.id === selectedWeeklyMenuId,
+  );
 
   const activeWindows = windows.filter((window) => !window.remove);
   const deliveryFeeCents = Math.round(Number(settings.deliveryFeeDollars || 0) * 100);
@@ -149,6 +193,17 @@ export function DeliveryEditor({
       open: current.open + getOpenDeliverySpots(window),
     }),
     { capacity: 0, reserved: 0, open: 0 },
+  );
+
+  useEffect(() => {
+    onDirtyChange?.(isDirty);
+  }, [isDirty, onDirtyChange]);
+
+  useEffect(
+    () => () => {
+      onDirtyChange?.(false);
+    },
+    [onDirtyChange],
   );
 
   function updateWindow(clientId: string, patch: Partial<DeliveryWindowForm>) {
@@ -169,16 +224,41 @@ export function DeliveryEditor({
   }
 
   useEffect(() => {
-    if (!selectedWeeklyMenuId || lastLoadedMenuId.current === selectedWeeklyMenuId) return;
-    lastLoadedMenuId.current = selectedWeeklyMenuId;
-    setMessage(null);
+    if (
+      !selectedWeeklyMenuId ||
+      selectedWeeklyMenuId === loadedWeeklyMenuId
+    ) {
+      return;
+    }
 
-    startTransition(async () => {
+    const requestedWeeklyMenuId = selectedWeeklyMenuId;
+    const requestId = ++loadRequestIdRef.current;
+    loadAbortControllerRef.current?.abort();
+    let canceled = false;
+
+    async function loadSelectedDeliveryWeek() {
+      await Promise.resolve();
+      if (canceled || requestId !== loadRequestIdRef.current) return;
+
+      const controller = new AbortController();
+      loadAbortControllerRef.current = controller;
+      setIsLoading(true);
+      setMessage(null);
+
       try {
         const response = await fetch(
-          `/api/admin/delivery?weeklyMenuId=${encodeURIComponent(selectedWeeklyMenuId)}`,
+          `/api/admin/delivery?weeklyMenuId=${encodeURIComponent(requestedWeeklyMenuId)}`,
+          { signal: controller.signal },
         );
         const payload = await readAdminJsonResponse(response);
+
+        if (
+          canceled ||
+          controller.signal.aborted ||
+          requestId !== loadRequestIdRef.current
+        ) {
+          return;
+        }
 
         if (
           !response.ok ||
@@ -187,20 +267,82 @@ export function DeliveryEditor({
           !Array.isArray(payload.deliveryWindows)
         ) {
           setMessage(getAdminPayloadError(payload) || "Sunday delivery could not be loaded.");
+          if (loadedWeeklyMenuId) {
+            onSelectedWeeklyMenuIdChange(loadedWeeklyMenuId);
+          }
           return;
         }
 
-        setSettings(buildSettingsForm(payload.deliverySettings as DeliverySettings));
-        setWindows((payload.deliveryWindows as DeliveryWindow[]).map(buildWindowForm));
-      } catch {
+        if (
+          !hasAdminKeys(payload, ["weeklyMenuId"]) ||
+          payload.weeklyMenuId !== requestedWeeklyMenuId
+        ) {
+          setMessage("Sunday delivery response did not match the selected week.");
+          if (loadedWeeklyMenuId) {
+            onSelectedWeeklyMenuIdChange(loadedWeeklyMenuId);
+          }
+          return;
+        }
+
+        const nextSettings = buildSettingsForm(
+          payload.deliverySettings as DeliverySettings,
+        );
+        const nextDeliveryWindows = payload.deliveryWindows as DeliveryWindow[];
+        const nextWindows = nextDeliveryWindows.map(buildWindowForm);
+        setSettings(nextSettings);
+        setWindows(nextWindows);
+        setCleanFingerprint(
+          getDeliveryFingerprint(nextSettings, nextWindows),
+        );
+        setLoadedWeeklyMenuId(requestedWeeklyMenuId);
+        onDeliveryWindowsChange?.(
+          requestedWeeklyMenuId,
+          nextDeliveryWindows,
+        );
+      } catch (error) {
+        if (
+          canceled ||
+          controller.signal.aborted ||
+          requestId !== loadRequestIdRef.current
+        ) {
+          return;
+        }
         setMessage("Sunday delivery could not be loaded. Check your connection and try again.");
+        if (
+          !(error instanceof Error && error.name === "AbortError") &&
+          loadedWeeklyMenuId
+        ) {
+          onSelectedWeeklyMenuIdChange(loadedWeeklyMenuId);
+        }
+      } finally {
+        if (!canceled && requestId === loadRequestIdRef.current) {
+          setIsLoading(false);
+        }
       }
-    });
-  }, [selectedWeeklyMenuId]);
+    }
+
+    void loadSelectedDeliveryWeek();
+    return () => {
+      canceled = true;
+      loadAbortControllerRef.current?.abort();
+    };
+  }, [
+    loadedWeeklyMenuId,
+    onDeliveryWindowsChange,
+    onSelectedWeeklyMenuIdChange,
+    selectedWeeklyMenuId,
+  ]);
+
+  useEffect(
+    () => () => {
+      loadAbortControllerRef.current?.abort();
+    },
+    [],
+  );
 
   function selectWeeklyMenu(id: string) {
-    if (!id) return;
-    onSelectedWeeklyMenuIdChange(id);
+    if (!id || id === selectedWeeklyMenuId) return;
+    (onRequestWeeklyMenuIdChange || onSelectedWeeklyMenuIdChange)(id);
   }
 
   function saveDelivery() {
@@ -258,10 +400,30 @@ export function DeliveryEditor({
           return;
         }
 
-        setSettings(buildSettingsForm(payload.deliverySettings as DeliverySettings));
-        setWindows((payload.deliveryWindows as DeliveryWindow[]).map(buildWindowForm));
-        if (hasAdminKeys(payload, ["weeklyMenuId"]) && typeof payload.weeklyMenuId === "string") {
-          onSelectedWeeklyMenuIdChange(payload.weeklyMenuId);
+        const nextSettings = buildSettingsForm(
+          payload.deliverySettings as DeliverySettings,
+        );
+        const nextDeliveryWindows = payload.deliveryWindows as DeliveryWindow[];
+        const nextWindows = nextDeliveryWindows.map(buildWindowForm);
+        const savedWeeklyMenuId =
+          hasAdminKeys(payload, ["weeklyMenuId"]) &&
+          typeof payload.weeklyMenuId === "string"
+            ? payload.weeklyMenuId
+            : selectedWeeklyMenuId;
+        setSettings(nextSettings);
+        setWindows(nextWindows);
+        setCleanFingerprint(
+          getDeliveryFingerprint(nextSettings, nextWindows),
+        );
+        setLoadedWeeklyMenuId(savedWeeklyMenuId);
+        if (savedWeeklyMenuId) {
+          onDeliveryWindowsChange?.(
+            savedWeeklyMenuId,
+            nextDeliveryWindows,
+          );
+        }
+        if (savedWeeklyMenuId && savedWeeklyMenuId !== selectedWeeklyMenuId) {
+          onSelectedWeeklyMenuIdChange(savedWeeklyMenuId);
         }
         setMessage("Delivery settings saved.");
       } catch {
@@ -279,12 +441,16 @@ export function DeliveryEditor({
             Set allowed ZIPs, delivery fee, and the Sunday 3:00-6:00 PM capacity.
           </p>
         </div>
-        <Button type="button" onClick={saveDelivery} disabled={isPending}>
-          {isPending ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
+        <Button type="button" onClick={saveDelivery} disabled={isBusy}>
+          {isBusy ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
           Save delivery
         </Button>
       </div>
 
+      <fieldset
+        disabled={isBusy}
+        className="m-0 min-w-0 border-0 p-0 disabled:opacity-75"
+      >
       <div className="mt-5 grid gap-3 lg:grid-cols-[1fr_1.2fr]">
         <label className="grid gap-1 text-sm font-semibold text-stone-700 lg:col-span-2">
           Sunday delivery week
@@ -292,7 +458,7 @@ export function DeliveryEditor({
             className="h-11 rounded-md border border-stone-300 bg-white px-3 font-normal"
             value={selectedWeeklyMenuId}
             onChange={(event) => selectWeeklyMenu(event.target.value)}
-            disabled={isPending || !weeklyMenus.length}
+            disabled={isBusy || !weeklyMenus.length}
           >
             {!weeklyMenus.length ? <option value="">No menus yet</option> : null}
             {weeklyMenus.map((menu) => (
@@ -330,6 +496,17 @@ export function DeliveryEditor({
         </label>
       </div>
 
+      {isLoading || isSwitchingWeek ? (
+        <p className="mt-2 inline-flex items-center gap-2 text-sm font-semibold text-stone-700">
+          <Loader2 className="animate-spin" size={15} />
+          Loading selected Sunday delivery setup...
+        </p>
+      ) : isDirty ? (
+        <p className="mt-2 text-sm font-semibold text-amber-900">
+          Unsaved delivery changes
+        </p>
+      ) : null}
+
       <div className="mt-5 grid gap-3 md:grid-cols-2 lg:grid-cols-4">
         <label className="grid gap-1 text-sm font-semibold text-stone-700">
           Delivery fee
@@ -359,8 +536,15 @@ export function DeliveryEditor({
         <Button
           type="button"
           variant="secondary"
-          onClick={() => setWindows((current) => [...current, buildNewWindow()])}
-          disabled={isPending || activeWindows.length >= 1}
+          onClick={() =>
+            setWindows((current) => [
+              ...current,
+              buildNewWindow(selectedWeeklyMenu),
+            ])
+          }
+          disabled={
+            isBusy || !selectedWeeklyMenu || activeWindows.length >= 1
+          }
         >
           <Plus size={16} />
           Add Sunday slot
@@ -422,6 +606,7 @@ export function DeliveryEditor({
                     <input
                       className="h-10 w-full min-w-52 rounded-md border border-stone-300 px-3"
                       aria-label={`Sunday delivery label for ${window.label}`}
+                      disabled={isBusy || hasReservedOrders}
                       value={window.label}
                       onChange={(event) =>
                         updateWindow(window.clientId, { label: event.target.value })
@@ -436,8 +621,9 @@ export function DeliveryEditor({
                   ) : null}
                   {hasReservedOrders ? (
                     <p className="text-sm leading-6 text-stone-700">
-                      Reserved Sunday slots cannot be removed until the related orders are
-                      canceled or moved.
+                      This slot has reserved orders, so its customer label and times are
+                      locked and it cannot be removed. Capacity may still change, but it
+                      cannot be lower than {window.reserved} reserved.
                     </p>
                   ) : null}
                 </div>
@@ -449,6 +635,7 @@ export function DeliveryEditor({
                       className="h-10 min-w-0 rounded-md border border-stone-300 px-3 font-normal"
                       aria-label={`${window.label} start time`}
                       type="datetime-local"
+                      disabled={isBusy || hasReservedOrders}
                       value={window.startsAt}
                       onChange={(event) =>
                         updateWindow(window.clientId, { startsAt: event.target.value })
@@ -461,6 +648,7 @@ export function DeliveryEditor({
                       className="h-10 min-w-0 rounded-md border border-stone-300 px-3 font-normal"
                       aria-label={`${window.label} end time`}
                       type="datetime-local"
+                      disabled={isBusy || hasReservedOrders}
                       value={window.endsAt}
                       onChange={(event) =>
                         updateWindow(window.clientId, { endsAt: event.target.value })
@@ -473,9 +661,10 @@ export function DeliveryEditor({
                       className="h-10 min-w-0 rounded-md border border-stone-300 px-3 font-normal"
                       aria-label={`${window.label} capacity`}
                       inputMode="numeric"
-                      min={0}
+                      min={window.reserved}
                       step={1}
                       type="number"
+                      disabled={isBusy}
                       value={window.capacity}
                       onChange={(event) =>
                         updateWindow(window.clientId, { capacity: Number(event.target.value) })
@@ -483,19 +672,13 @@ export function DeliveryEditor({
                     />
                   </label>
                   <label className="grid gap-1 text-sm font-semibold text-stone-700">
-                    Reserved
-                    <input
-                      className="h-10 min-w-0 rounded-md border border-stone-300 px-3 font-normal"
+                    Reserved (automatic)
+                    <div
+                      className="flex h-10 items-center rounded-md border border-stone-200 bg-stone-100 px-3 font-bold text-stone-700"
                       aria-label={`${window.label} reserved spots`}
-                      inputMode="numeric"
-                      min={0}
-                      step={1}
-                      type="number"
-                      value={window.reserved}
-                      onChange={(event) =>
-                        updateWindow(window.clientId, { reserved: Number(event.target.value) })
-                      }
-                    />
+                    >
+                      {window.reserved}
+                    </div>
                   </label>
                 </div>
 
@@ -513,7 +696,7 @@ export function DeliveryEditor({
                     variant="ghost"
                     size="sm"
                     onClick={() => removeWindow(window.clientId)}
-                    disabled={isPending || hasReservedOrders}
+                    disabled={isBusy || hasReservedOrders}
                     aria-label={`Remove ${window.label}`}
                   >
                     <Trash2 size={16} />
@@ -530,6 +713,7 @@ export function DeliveryEditor({
           </div>
         ) : null}
       </div>
+      </fieldset>
 
       {message ? (
         <p

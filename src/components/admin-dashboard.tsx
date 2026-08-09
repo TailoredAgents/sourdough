@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import {
   AlertTriangle,
   Bot,
   CheckCircle2,
   Copy,
+  ArrowRight,
   Inbox,
   Loader2,
   Megaphone,
@@ -14,6 +15,7 @@ import {
   Truck,
   type LucideIcon,
   MailCheck,
+  RefreshCw,
 } from "lucide-react";
 import {
   extractAdminDraftText,
@@ -54,8 +56,10 @@ const activeOrderStatuses = ["pending_approval", "paid", "baking", "out_for_deli
 
 type SundayRouteStop = {
   orderId: string;
+  orderIds: string[];
   customerName: string;
   customerPhone: string | null;
+  customerContacts: Array<{ name: string; phone: string | null }>;
   address: string;
   orderSummary: string;
   notes: string | null;
@@ -63,6 +67,8 @@ type SundayRouteStop = {
 };
 
 type SundayRoute = {
+  weeklyMenuId: string | null;
+  weeklyMenuName: string | null;
   originAddress: string;
   destinationAddress: string;
   durationMinutes: number | null;
@@ -71,9 +77,39 @@ type SundayRoute = {
   mapsUrl: string;
 };
 
+export function isCurrentSundayRouteRequest(
+  requestedWeeklyMenuId: string,
+  requestId: number,
+  currentWeeklyMenuId: string,
+  currentRequestId: number,
+) {
+  return (
+    requestedWeeklyMenuId === currentWeeklyMenuId &&
+    requestId === currentRequestId
+  );
+}
+
+export function getAdminWeekSwitchConfirmation(
+  weeklyMenuDirty: boolean,
+  deliveryDirty: boolean,
+) {
+  if (weeklyMenuDirty && deliveryDirty) {
+    return "You have unsaved weekly-menu and delivery edits. Switch Sundays and discard both?";
+  }
+  if (weeklyMenuDirty) {
+    return "You have unsaved weekly-menu edits. Switch Sundays and discard them?";
+  }
+  if (deliveryDirty) {
+    return "You have unsaved delivery edits. Switch Sundays and discard them?";
+  }
+  return null;
+}
+
 export function AdminDashboard({
   aiKnowledgeEntries,
   customerMessages,
+  customerMessagesHasMore,
+  customerMessagesTotal,
   deliverySettings,
   deliveryWindows,
   menu,
@@ -85,6 +121,8 @@ export function AdminDashboard({
 }: {
   aiKnowledgeEntries: AiKnowledgeEntry[];
   customerMessages: CustomerMessage[];
+  customerMessagesHasMore: boolean;
+  customerMessagesTotal: number;
   deliverySettings: DeliverySettings;
   deliveryWindows: DeliveryWindow[];
   menu: MenuProduct[];
@@ -94,9 +132,41 @@ export function AdminDashboard({
   weeklyMenu: WeeklyMenu | null;
   weeklyMenus: WeeklyMenuSummary[];
 }) {
+  const initialSelectedWeeklyMenuId =
+    weeklyMenu?.id ?? weeklyMenus[0]?.id ?? "";
   const [weeklyMenusState, setWeeklyMenusState] = useState(weeklyMenus);
+  const [ordersState, setOrdersState] = useState(orders);
+  const [customerMessagesState, setCustomerMessagesState] = useState(customerMessages);
   const [selectedWeeklyMenuId, setSelectedWeeklyMenuId] = useState(
-    weeklyMenu?.id ?? weeklyMenus[0]?.id ?? "",
+    initialSelectedWeeklyMenuId,
+  );
+  const [weeklyMenuEditorDirty, setWeeklyMenuEditorDirty] = useState(false);
+  const [deliveryEditorDirty, setDeliveryEditorDirty] = useState(false);
+  const [selectedMenuSnapshot, setSelectedMenuSnapshot] = useState(() => ({
+    weeklyMenuId: initialSelectedWeeklyMenuId,
+    items: menu,
+  }));
+  const [selectedDeliverySnapshot, setSelectedDeliverySnapshot] = useState(() => ({
+    weeklyMenuId: initialSelectedWeeklyMenuId,
+    windows: deliveryWindows,
+  }));
+  const selectedWeeklyMenuIdRef = useRef(initialSelectedWeeklyMenuId);
+  const routeRequestIdRef = useRef(0);
+  const routeAbortControllerRef = useRef<AbortController | null>(null);
+  const handleSelectedWeeklyMenuChange = useCallback(
+    (nextWeeklyMenu: WeeklyMenu) => {
+      setSelectedMenuSnapshot({
+        weeklyMenuId: nextWeeklyMenu.id,
+        items: nextWeeklyMenu.items,
+      });
+    },
+    [],
+  );
+  const handleDeliveryWindowsChange = useCallback(
+    (weeklyMenuId: string, windows: DeliveryWindow[]) => {
+      setSelectedDeliverySnapshot({ weeklyMenuId, windows });
+    },
+    [],
   );
   const [draftType, setDraftType] = useState("weekly_announcement");
   const [context, setContext] = useState(
@@ -111,29 +181,57 @@ export function AdminDashboard({
   const [isDraftPending, startDraftTransition] = useTransition();
   const [isEmailTestPending, startEmailTestTransition] = useTransition();
   const [isRoutePending, startRouteTransition] = useTransition();
-  const openRequestCount = customerMessages.filter(
+  const selectedMenuItems =
+    selectedWeeklyMenuId &&
+    selectedMenuSnapshot.weeklyMenuId === selectedWeeklyMenuId
+      ? selectedMenuSnapshot.items
+      : null;
+  const selectedDeliveryWindows =
+    selectedWeeklyMenuId &&
+    selectedDeliverySnapshot.weeklyMenuId === selectedWeeklyMenuId
+      ? selectedDeliverySnapshot.windows
+      : null;
+  const selectedWeeklyMenu = weeklyMenusState.find(
+    (menuOption) => menuOption.id === selectedWeeklyMenuId,
+  );
+  const operationalOrders = selectedWeeklyMenuId
+    ? ordersState.filter((order) => order.weeklyMenuId === selectedWeeklyMenuId)
+    : ordersState;
+  const openRequestCount = customerMessagesState.filter(
     (message) => message.status === "new" || message.status === "in_progress",
   ).length;
-  const newRequestCount = customerMessages.filter((message) => message.status === "new").length;
-  const openOrderCount = orders.filter((order) =>
+  const newRequestCount = customerMessagesState.filter(
+    (message) => message.status === "new",
+  ).length;
+  const openOrderCount = operationalOrders.filter((order) =>
     activeOrderStatuses.includes(order.status as (typeof activeOrderStatuses)[number]),
   ).length;
-  const pendingPaymentCount = orders.filter((order) => order.status === "pending_payment").length;
-  const approvalCount = orders.filter((order) => order.status === "pending_approval").length;
-  const paidOrderCount = orders.filter((order) => order.status === "paid").length;
+  const pendingPaymentCount = operationalOrders.filter((order) => order.status === "pending_payment").length;
+  const approvalCount = operationalOrders.filter((order) => order.status === "pending_approval").length;
+  const paidOrderCount = operationalOrders.filter((order) => order.status === "paid").length;
+  const bakingOrderCount = operationalOrders.filter((order) => order.status === "baking").length;
+  const deliveryOrderCount = operationalOrders.filter(
+    (order) => order.status === "out_for_delivery",
+  ).length;
   const approvedKnowledgeCount = aiKnowledgeEntries.filter((entry) => entry.approved).length;
-  const menuCapacity = menu.reduce(
-    (sum, item) => sum + (item.unavailable ? 0 : item.availableQuantity),
-    0,
-  );
-  const soldCount = menu.reduce(
-    (sum, item) => sum + (item.unavailable ? 0 : item.soldQuantity),
-    0,
-  );
-  const remainingCount = menu.reduce(
-    (sum, item) => sum + (item.unavailable ? 0 : item.remainingQuantity),
-    0,
-  );
+  const menuCapacity = selectedMenuItems
+    ? selectedMenuItems.reduce(
+        (sum, item) => sum + (item.unavailable ? 0 : item.availableQuantity),
+        0,
+      )
+    : null;
+  const soldCount = selectedMenuItems
+    ? selectedMenuItems.reduce(
+        (sum, item) => sum + (item.unavailable ? 0 : item.soldQuantity),
+        0,
+      )
+    : null;
+  const remainingCount = selectedMenuItems
+    ? selectedMenuItems.reduce(
+        (sum, item) => sum + (item.unavailable ? 0 : item.remainingQuantity),
+        0,
+      )
+    : null;
   const customerVisibleProductIds = Array.from(
     new Set(
       orderingWeeks.flatMap((week) => week.menu.map((item) => item.id)),
@@ -144,19 +242,64 @@ export function AdminDashboard({
   const stats: { label: string; value: string; Icon: LucideIcon }[] = [
     { label: "Orders needing approval", value: String(approvalCount), Icon: AlertTriangle },
     { label: "Open requests", value: String(openRequestCount), Icon: Inbox },
-    { label: "Loaves/items left", value: String(remainingCount), Icon: Package },
-    { label: "Sunday delivery slots", value: String(deliveryWindows.length), Icon: Truck },
+    {
+      label: "Loaves/items left",
+      value: remainingCount === null ? "—" : String(remainingCount),
+      Icon: Package,
+    },
+    {
+      label: "Sunday delivery slots",
+      value: selectedDeliveryWindows ? String(selectedDeliveryWindows.length) : "—",
+      Icon: Truck,
+    },
   ];
   const quickLinks = [
     { label: "Orders", href: "#orders", count: approvalCount || openOrderCount },
     { label: "Requests", href: "#requests", count: openRequestCount },
-    { label: "Weekly menu", href: "#weekly-menu", count: remainingCount },
-    { label: "Delivery", href: "#delivery", count: deliveryWindows.length },
+    {
+      label: "Weekly menu",
+      href: "#weekly-menu",
+      count: remainingCount === null ? "—" : remainingCount,
+    },
+    {
+      label: "Delivery",
+      href: "#delivery",
+      count: selectedDeliveryWindows ? selectedDeliveryWindows.length : "—",
+    },
     { label: "Route", href: "#sunday-route", count: "Map" },
     { label: "Products", href: "#products", count: products.length },
     { label: "Drafts", href: "#assistant", count: "AI" },
     { label: "Knowledge", href: "#knowledge", count: approvedKnowledgeCount },
   ].map((link) => ({ ...link, count: String(link.count) }));
+  const dailySteps = [
+    {
+      number: "1",
+      title: "Triage",
+      count: approvalCount + newRequestCount,
+      detail: `${approvalCount} paid approval requests and ${newRequestCount} new customer requests`,
+      href: approvalCount ? "#orders" : "#requests",
+      action: approvalCount + newRequestCount ? "Review now" : "All clear",
+      Icon: AlertTriangle,
+    },
+    {
+      number: "2",
+      title: "Bake & pack",
+      count: paidOrderCount + bakingOrderCount,
+      detail: `${paidOrderCount} ready to bake and ${bakingOrderCount} in progress`,
+      href: "#orders",
+      action: paidOrderCount + bakingOrderCount ? "Work orders" : "Nothing queued",
+      Icon: Package,
+    },
+    {
+      number: "3",
+      title: "Deliver & close",
+      count: deliveryOrderCount,
+      detail: `${deliveryOrderCount} out for delivery; complete each stop to send its thank-you`,
+      href: deliveryOrderCount ? "#orders" : "#sunday-route",
+      action: deliveryOrderCount ? "Finish stops" : "Open route",
+      Icon: Truck,
+    },
+  ];
 
   function generateDraft() {
     setDraftMessage(null);
@@ -189,6 +332,37 @@ export function AdminDashboard({
       }
     });
   }
+
+  const selectOperationalWeek = useCallback((weeklyMenuId: string) => {
+    if (weeklyMenuId === selectedWeeklyMenuIdRef.current) return;
+
+    selectedWeeklyMenuIdRef.current = weeklyMenuId;
+    routeRequestIdRef.current += 1;
+    routeAbortControllerRef.current?.abort();
+    setSelectedWeeklyMenuId(weeklyMenuId);
+    setSundayRoute(null);
+    setSundayRouteMessage(null);
+  }, []);
+
+  const requestOperationalWeek = useCallback(
+    (weeklyMenuId: string) => {
+      if (weeklyMenuId === selectedWeeklyMenuIdRef.current) return;
+      const confirmation = getAdminWeekSwitchConfirmation(
+        weeklyMenuEditorDirty,
+        deliveryEditorDirty,
+      );
+      if (confirmation && !window.confirm(confirmation)) return;
+      selectOperationalWeek(weeklyMenuId);
+    },
+    [deliveryEditorDirty, selectOperationalWeek, weeklyMenuEditorDirty],
+  );
+
+  useEffect(
+    () => () => {
+      routeAbortControllerRef.current?.abort();
+    },
+    [],
+  );
 
   async function copyDraft() {
     if (!draft) return;
@@ -238,12 +412,37 @@ export function AdminDashboard({
 
   function buildSundayRoute() {
     setSundayRouteMessage(null);
+    const requestedWeeklyMenuId = selectedWeeklyMenuIdRef.current;
+    const requestId = ++routeRequestIdRef.current;
+    routeAbortControllerRef.current?.abort();
+    const controller = new AbortController();
+    routeAbortControllerRef.current = controller;
+
     startRouteTransition(async () => {
       try {
-        const response = await fetch("/api/admin/routes/sunday");
+        const params = new URLSearchParams();
+        if (requestedWeeklyMenuId) {
+          params.set("weeklyMenuId", requestedWeeklyMenuId);
+        }
+        const response = await fetch(
+          `/api/admin/routes/sunday${params.size ? `?${params.toString()}` : ""}`,
+          { signal: controller.signal },
+        );
         const payload = (await response.json().catch(() => null)) as
           | { route?: SundayRoute; error?: string }
           | null;
+
+        if (
+          controller.signal.aborted ||
+          !isCurrentSundayRouteRequest(
+            requestedWeeklyMenuId,
+            requestId,
+            selectedWeeklyMenuIdRef.current,
+            routeRequestIdRef.current,
+          )
+        ) {
+          return;
+        }
 
         if (!response.ok || !payload?.route) {
           setSundayRoute(null);
@@ -253,13 +452,29 @@ export function AdminDashboard({
           return;
         }
 
+        if (payload.route.weeklyMenuId !== requestedWeeklyMenuId) {
+          return;
+        }
+
         setSundayRoute(payload.route);
         setSundayRouteMessage(
           payload.route.stops.length
             ? "Sunday route optimized."
             : "No paid active Sunday delivery orders yet.",
         );
-      } catch {
+      } catch (error) {
+        if (
+          controller.signal.aborted ||
+          (error instanceof Error && error.name === "AbortError") ||
+          !isCurrentSundayRouteRequest(
+            requestedWeeklyMenuId,
+            requestId,
+            selectedWeeklyMenuIdRef.current,
+            routeRequestIdRef.current,
+          )
+        ) {
+          return;
+        }
         setSundayRoute(null);
         setSundayRouteMessage("Sunday route could not be optimized. Try again.");
       }
@@ -278,14 +493,89 @@ export function AdminDashboard({
               Luna &amp; Lorelai&apos;s Sourdough admin
             </h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-stone-700">
-              This is the v1 operating console for menu, delivery, orders,
-              customer requests, and approved AI knowledge.
+              Run the bakery in three steps, then use the lower tools only when
+              you need to change setup or content.
             </p>
           </div>
-          <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900">
-            Drafts and order status changes should be reviewed before sending
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="rounded-md border border-stone-200 bg-white px-3 py-2 text-sm font-semibold text-stone-700">
+              {selectedWeeklyMenu?.name || "No active bake week"}
+            </div>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => window.location.reload()}
+            >
+              <RefreshCw size={15} />
+              Refresh data
+            </Button>
           </div>
         </div>
+
+        <section aria-labelledby="today-workflow-heading" className="mt-8">
+          <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-end">
+            <div className="order-2 sm:order-1">
+              <p className="text-sm font-bold uppercase tracking-[0.16em] text-[#a94334]">
+                Start here
+              </p>
+              <h2 id="today-workflow-heading" className="mt-1 text-2xl font-bold text-stone-950">
+                Today&apos;s 1-2-3
+              </h2>
+            </div>
+            <div className="order-1 grid gap-2 sm:order-2 sm:min-w-72">
+              <label className="grid gap-1 text-sm font-bold text-stone-700">
+                Work Sunday
+                <select
+                  aria-label="Work Sunday"
+                  className="h-11 rounded-md border border-stone-300 bg-white px-3 font-normal"
+                  value={selectedWeeklyMenuId}
+                  onChange={(event) => requestOperationalWeek(event.target.value)}
+                  disabled={!weeklyMenusState.length}
+                >
+                  {!weeklyMenusState.length ? (
+                    <option value="">No Sundays available</option>
+                  ) : null}
+                  {weeklyMenusState.map((menuOption) => (
+                    <option key={menuOption.id} value={menuOption.id}>
+                      {menuOption.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <p className="text-xs leading-5 text-stone-600">
+                This Sunday drives the orders, menu, delivery, and route below.
+              </p>
+            </div>
+          </div>
+          <div className="mt-4 grid gap-4 lg:grid-cols-3">
+            {dailySteps.map(({ number, title, count, detail, href, action, Icon }) => (
+              <a
+                key={number}
+                href={href}
+                className="group rounded-md border border-stone-200 bg-white p-5 transition hover:border-[#23443b] hover:shadow-sm"
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <span className="flex size-9 items-center justify-center rounded-full bg-[#23443b] text-sm font-bold text-white">
+                      {number}
+                    </span>
+                    <div>
+                      <p className="font-bold text-stone-950">{title}</p>
+                      <p className="text-sm text-stone-500">{count} in queue</p>
+                    </div>
+                  </div>
+                  <Icon className="text-[#a94334]" size={20} />
+                </div>
+                <p className="mt-4 text-sm leading-6 text-stone-700">{detail}</p>
+                <span className="mt-4 inline-flex items-center gap-2 text-sm font-bold text-[#23443b]">
+                  {action}
+                  <ArrowRight className="transition group-hover:translate-x-0.5" size={15} />
+                </span>
+              </a>
+            ))}
+          </div>
+        </section>
 
         <section className="mt-8 grid gap-4 md:grid-cols-4">
           {stats.map(({ label, value, Icon }) => (
@@ -335,12 +625,20 @@ export function AdminDashboard({
             <p className="text-sm font-bold uppercase tracking-[0.16em] text-[#a94334]">
               Bake status
             </p>
-            <p className="mt-2 text-2xl font-bold text-stone-950">
-              {soldCount} sold / {menuCapacity} capacity
-            </p>
-            <p className="mt-2 text-sm leading-6 text-stone-700">
-              {remainingCount} items remain available on the customer storefront.
-            </p>
+            {soldCount === null || menuCapacity === null || remainingCount === null ? (
+              <p className="mt-2 text-sm font-semibold leading-6 text-stone-600">
+                Loading the selected Sunday&apos;s inventory…
+              </p>
+            ) : (
+              <>
+                <p className="mt-2 text-2xl font-bold text-stone-950">
+                  {soldCount} sold / {menuCapacity} capacity
+                </p>
+                <p className="mt-2 text-sm leading-6 text-stone-700">
+                  {remainingCount} items remain available on the customer storefront.
+                </p>
+              </>
+            )}
           </div>
           <div className="rounded-md border border-amber-300 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
             <p className="font-bold">Owner reminder</p>
@@ -384,7 +682,12 @@ export function AdminDashboard({
           </div>
         </section>
 
-        <OrderDashboard initialOrders={orders} />
+        <OrderDashboard
+          initialOrders={orders}
+          onOrdersChange={setOrdersState}
+          weeklyMenuId={selectedWeeklyMenuId}
+          weeklyMenuName={selectedWeeklyMenu?.name || null}
+        />
 
         <section
           id="sunday-route"
@@ -399,22 +702,38 @@ export function AdminDashboard({
                 </h2>
               </div>
               <p className="mt-1 text-sm leading-6 text-stone-700">
-                Optimize paid active stops from the bakery to the route ending
-                address.
+                Optimize paid active stops for one selected Sunday only, from
+                the bakery to the route ending address.
               </p>
             </div>
-            <Button
-              type="button"
-              onClick={buildSundayRoute}
-              disabled={isRoutePending}
-            >
-              {isRoutePending ? (
-                <Loader2 className="animate-spin" size={16} />
-              ) : (
-                <Route size={16} />
-              )}
-              Optimize route
-            </Button>
+            <div className="grid gap-2 sm:min-w-72">
+              <label className="grid gap-1 text-sm font-semibold text-stone-700">
+                Delivery Sunday
+                <select
+                  className="h-11 rounded-md border border-stone-300 bg-white px-3 font-normal"
+                  value={selectedWeeklyMenuId}
+                  onChange={(event) => requestOperationalWeek(event.target.value)}
+                >
+                  {weeklyMenusState.map((menuOption) => (
+                    <option key={menuOption.id} value={menuOption.id}>
+                      {menuOption.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <Button
+                type="button"
+                onClick={buildSundayRoute}
+                disabled={isRoutePending || !selectedWeeklyMenuId}
+              >
+                {isRoutePending ? (
+                  <Loader2 className="animate-spin" size={16} />
+                ) : (
+                  <Route size={16} />
+                )}
+                Optimize route
+              </Button>
+            </div>
           </div>
 
           {sundayRouteMessage ? (
@@ -426,6 +745,10 @@ export function AdminDashboard({
           {sundayRoute ? (
             <div className="mt-4 grid gap-4">
               <div className="rounded-md border border-stone-200 bg-[#fffaf2] p-4 text-sm leading-6 text-stone-700">
+                <p>
+                  <span className="font-bold text-stone-950">Delivery week:</span>{" "}
+                  {sundayRoute.weeklyMenuName || "Selected Sunday"}
+                </p>
                 <p>
                   <span className="font-bold text-stone-950">Start:</span>{" "}
                   {sundayRoute.originAddress}
@@ -456,7 +779,7 @@ export function AdminDashboard({
                 <div className="grid gap-3">
                   {sundayRoute.stops.map((stop, index) => (
                     <article
-                      key={stop.orderId}
+                      key={stop.orderIds.join(":")}
                       className="rounded-md border border-stone-200 bg-white p-4 text-sm leading-6 text-stone-700"
                     >
                       <div className="flex flex-col justify-between gap-2 sm:flex-row">
@@ -464,18 +787,32 @@ export function AdminDashboard({
                           <p className="text-xs font-bold uppercase tracking-wide text-[#a94334]">
                             Stop {index + 1}
                           </p>
-                          <p className="mt-1 font-bold text-stone-950">
-                            {stop.customerName}
-                          </p>
+                          <div className="mt-1 grid gap-1">
+                            {stop.customerContacts.map((contact) => (
+                              <div
+                                key={`${contact.name}:${contact.phone || "no-phone"}`}
+                                className="flex flex-wrap items-center gap-x-2"
+                              >
+                                <span className="font-bold text-stone-950">
+                                  {contact.name}
+                                </span>
+                                {contact.phone ? (
+                                  <a
+                                    className="font-semibold text-[#23443b] underline"
+                                    href={`tel:${contact.phone}`}
+                                  >
+                                    {contact.phone}
+                                  </a>
+                                ) : null}
+                              </div>
+                            ))}
+                          </div>
+                          {stop.orderIds.length > 1 ? (
+                            <p className="text-xs text-stone-500">
+                              {stop.orderIds.length} orders combined at this address
+                            </p>
+                          ) : null}
                         </div>
-                        {stop.customerPhone ? (
-                          <a
-                            className="font-semibold text-[#23443b] underline"
-                            href={`tel:${stop.customerPhone}`}
-                          >
-                            {stop.customerPhone}
-                          </a>
-                        ) : null}
                       </div>
                       <p className="mt-2">{stop.address}</p>
                       <p className="mt-2 font-semibold text-stone-950">
@@ -495,7 +832,12 @@ export function AdminDashboard({
           ) : null}
         </section>
 
-        <CustomerMessageInbox initialMessages={customerMessages} />
+        <CustomerMessageInbox
+          initialMessages={customerMessages}
+          initialHasMore={customerMessagesHasMore}
+          initialTotal={customerMessagesTotal}
+          onMessagesChange={setCustomerMessagesState}
+        />
 
         <section id="menu-summary" className="mt-8 scroll-mt-28 grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
           <div className="rounded-md border border-stone-200 bg-white p-5">
@@ -516,7 +858,7 @@ export function AdminDashboard({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-stone-100">
-                  {menu.map((item) => (
+                  {(selectedMenuItems || []).map((item) => (
                     <tr key={item.id}>
                       <td className="py-3 font-semibold text-stone-950">{item.name}</td>
                       <td className="py-3 text-stone-700">{item.category}</td>
@@ -542,6 +884,15 @@ export function AdminDashboard({
                       </td>
                     </tr>
                   ))}
+                  {!selectedMenuItems || !selectedMenuItems.length ? (
+                    <tr>
+                      <td className="py-6 text-center text-stone-600" colSpan={6}>
+                        {selectedMenuItems
+                          ? "No products are included for this Sunday."
+                          : "Loading the selected Sunday’s menu…"}
+                      </td>
+                    </tr>
+                  ) : null}
                 </tbody>
               </table>
             </div>
@@ -686,7 +1037,7 @@ export function AdminDashboard({
           <div className="rounded-md border border-stone-200 bg-white p-5">
             <h2 className="text-xl font-bold text-stone-950">Sunday delivery slots</h2>
             <div className="mt-4 grid gap-3">
-              {deliveryWindows.map((window) => (
+              {(selectedDeliveryWindows || []).map((window) => (
                 <div key={window.id} className="rounded-md border border-stone-100 p-3">
                   <p className="font-semibold text-stone-950">{window.label}</p>
                   <p className="mt-1 text-sm text-stone-700">
@@ -694,6 +1045,13 @@ export function AdminDashboard({
                   </p>
                 </div>
               ))}
+              {!selectedDeliveryWindows || !selectedDeliveryWindows.length ? (
+                <p className="rounded-md border border-stone-100 p-3 text-sm text-stone-600">
+                  {selectedDeliveryWindows
+                    ? "No delivery slot is configured for this Sunday."
+                    : "Loading the selected Sunday’s delivery setup…"}
+                </p>
+              ) : null}
             </div>
           </div>
         </section>
@@ -701,7 +1059,10 @@ export function AdminDashboard({
         <WeeklyMenuEditor
           initialWeeklyMenu={weeklyMenu}
           initialWeeklyMenus={weeklyMenusState}
-          onSelectedWeeklyMenuIdChange={setSelectedWeeklyMenuId}
+          onSelectedWeeklyMenuIdChange={selectOperationalWeek}
+          onRequestWeeklyMenuIdChange={requestOperationalWeek}
+          onSelectedWeeklyMenuChange={handleSelectedWeeklyMenuChange}
+          onDirtyChange={setWeeklyMenuEditorDirty}
           onWeeklyMenusChange={setWeeklyMenusState}
           products={products}
           selectedWeeklyMenuId={selectedWeeklyMenuId}
@@ -712,7 +1073,10 @@ export function AdminDashboard({
         <DeliveryEditor
           initialDeliverySettings={deliverySettings}
           initialDeliveryWindows={deliveryWindows}
-          onSelectedWeeklyMenuIdChange={setSelectedWeeklyMenuId}
+          onDeliveryWindowsChange={handleDeliveryWindowsChange}
+          onDirtyChange={setDeliveryEditorDirty}
+          onRequestWeeklyMenuIdChange={requestOperationalWeek}
+          onSelectedWeeklyMenuIdChange={selectOperationalWeek}
           selectedWeeklyMenuId={selectedWeeklyMenuId}
           weeklyMenus={weeklyMenusState}
         />

@@ -8,6 +8,7 @@ import {
   type EmailTemplate,
 } from "./email";
 import {
+  attachStripeSessionToOrder,
   getPaidCheckoutOrderSummaryBySessionId,
   markCheckoutSessionPaid,
 } from "./order-records";
@@ -40,8 +41,31 @@ async function sendOrderEmailOnce({
 export async function completeStorefrontCheckoutSession(
   session: Stripe.Checkout.Session,
 ) {
+  if (
+    session.payment_status !== "paid" &&
+    session.payment_status !== "no_payment_required"
+  ) {
+    console.log("[stripe:webhook] storefront fulfillment deferred", {
+      sessionId: session.id,
+      paymentStatus: session.payment_status,
+    });
+    return null;
+  }
+
+  const recoveryOrderId = session.metadata?.order_id;
+  if (
+    recoveryOrderId &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      recoveryOrderId,
+    )
+  ) {
+    await attachStripeSessionToOrder(recoveryOrderId, session.id);
+  }
+
   const paidOrder =
     (await markCheckoutSessionPaid(session.id, {
+      currency: session.currency,
+      subtotalCents: session.amount_subtotal,
       taxCents: session.total_details?.amount_tax,
       totalCents: session.amount_total,
     })) || (await getPaidCheckoutOrderSummaryBySessionId(session.id));

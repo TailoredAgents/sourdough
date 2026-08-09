@@ -5,6 +5,8 @@ import { getBreadClubMemberData } from "@/lib/bread-club/member-data";
 import { getStripe } from "@/lib/stripe";
 import { getSupabaseAdminClient } from "@/lib/supabase";
 import { getSiteUrl } from "@/lib/utils";
+import { checkRateLimit } from "@/lib/rate-limit";
+import { isSameOriginMutation } from "@/lib/request-security";
 
 async function getPortalConfigurationId() {
   const configured = getBreadClubPortalConfigurationId();
@@ -21,12 +23,27 @@ async function getPortalConfigurationId() {
     : null;
 }
 
-export async function POST() {
+export async function POST(request: Request) {
+  if (!isSameOriginMutation(request)) {
+    return NextResponse.json({ error: "Invalid request origin." }, { status: 403 });
+  }
   const membershipId = await getBreadClubSessionMembershipId();
   if (!membershipId) {
     return NextResponse.json(
       { error: "Use a secure email link to access billing." },
       { status: 401 },
+    );
+  }
+  const rateLimit = await checkRateLimit({
+    scope: "bread_club_portal",
+    key: membershipId,
+    limit: 10,
+    windowMs: 60 * 60 * 1000,
+  });
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { error: "Too many billing portal requests. Please wait and try again." },
+      { status: 429 },
     );
   }
   const member = await getBreadClubMemberData(membershipId);

@@ -4,15 +4,21 @@ import type { OrderStatus } from "./types";
 
 const mocks = vi.hoisted(() => ({
   from: vi.fn(),
+  rpc: vi.fn(),
   sendOrderCompletionThankYou: vi.fn(),
   sendOrderStatusUpdate: vi.fn(),
+  processOrderCompletionNotification: vi.fn(),
+  completeStorefrontCheckoutSession: vi.fn(),
+  getStripe: vi.fn(),
+  retrieveSession: vi.fn(),
+  expireSession: vi.fn(),
   updates: [] as Array<Record<string, unknown>>,
 }));
 
 vi.mock("./supabase", () => ({
   getSupabaseAdminClient: () => ({
     from: mocks.from,
-    rpc: vi.fn(),
+    rpc: mocks.rpc,
   }),
 }));
 
@@ -21,8 +27,18 @@ vi.mock("./email", () => ({
   sendOrderStatusUpdate: mocks.sendOrderStatusUpdate,
 }));
 
+vi.mock("./order-notifications", () => ({
+  processOrderCompletionNotification:
+    mocks.processOrderCompletionNotification,
+}));
+
+vi.mock("./order-payment", () => ({
+  completeStorefrontCheckoutSession:
+    mocks.completeStorefrontCheckoutSession,
+}));
+
 vi.mock("./stripe", () => ({
-  getStripe: () => null,
+  getStripe: mocks.getStripe,
 }));
 
 const orderId = "11111111-1111-4111-8111-111111111111";
@@ -89,20 +105,33 @@ const orderItemRows = [
   },
 ];
 
+function adminOrdersQuery(data: unknown[]) {
+  const ordered = {
+    order: () => ({
+      limit: async () => ({ data, error: null }),
+    }),
+  };
+  return { ...ordered, eq: () => ordered };
+}
+
 function setupOrderUpdate(existingStatus: OrderStatus, nextStatus: OrderStatus) {
   mocks.from.mockImplementation((table: string) => {
     if (table === "orders") {
       return {
         select: (columns: string) => {
-          if (columns === "status, paid_at, delivery_window_id") {
+          if (
+            columns ===
+            "source, status, stripe_checkout_session_id, checkout_expires_at, created_at"
+          ) {
             return {
               eq: () => ({
                 maybeSingle: async () => ({
                   data: {
+                    source: "storefront",
                     status: existingStatus,
-                    paid_at: "2026-07-29T14:00:00.000Z",
-                    delivery_window_id:
-                      "22222222-2222-4222-8222-222222222222",
+                    stripe_checkout_session_id: "cs_first_order",
+                    checkout_expires_at: "2099-07-29T15:00:00.000Z",
+                    created_at: "2026-07-29T14:00:00.000Z",
                   },
                   error: null,
                 }),
@@ -110,15 +139,7 @@ function setupOrderUpdate(existingStatus: OrderStatus, nextStatus: OrderStatus) 
             };
           }
 
-          return {
-            order: () => ({
-              limit: async () => ({ data: [orderRow(nextStatus)], error: null }),
-            }),
-          };
-        },
-        update: (payload: Record<string, unknown>) => {
-          mocks.updates.push(payload);
-          return { eq: async () => ({ error: null }) };
+          return adminOrdersQuery([orderRow(nextStatus)]);
         },
       };
     }
@@ -139,10 +160,20 @@ function setupOrderUpdate(existingStatus: OrderStatus, nextStatus: OrderStatus) 
 
 beforeEach(() => {
   mocks.from.mockReset();
+  mocks.rpc.mockReset();
+  mocks.rpc.mockResolvedValue({ data: true, error: null });
   mocks.sendOrderCompletionThankYou.mockReset();
   mocks.sendOrderStatusUpdate.mockReset();
+  mocks.processOrderCompletionNotification.mockReset();
+  mocks.completeStorefrontCheckoutSession.mockReset();
+  mocks.getStripe.mockReset();
+  mocks.retrieveSession.mockReset();
+  mocks.expireSession.mockReset();
   mocks.sendOrderCompletionThankYou.mockResolvedValue({ data: { id: "thanks" } });
   mocks.sendOrderStatusUpdate.mockResolvedValue({ data: { id: "status" } });
+  mocks.processOrderCompletionNotification.mockResolvedValue({ state: "sent" });
+  mocks.completeStorefrontCheckoutSession.mockResolvedValue({ orderId });
+  mocks.getStripe.mockReturnValue(null);
   mocks.updates.length = 0;
 });
 
@@ -152,13 +183,7 @@ describe("admin order status customer emails", () => {
 
     await updateAdminOrderStatus(orderId, "delivered");
 
-    expect(mocks.sendOrderCompletionThankYou).toHaveBeenCalledWith({
-      to: "customer@example.com",
-      customerName: "First Customer",
-      orderSummary: "1 x Classic Country Loaf",
-      deliveryWindow: "Sunday, Aug 2, 3:00 PM-6:00 PM",
-      orderId,
-    });
+    expect(mocks.processOrderCompletionNotification).toHaveBeenCalledWith(orderId);
     expect(mocks.sendOrderStatusUpdate).not.toHaveBeenCalled();
   });
 
@@ -168,6 +193,7 @@ describe("admin order status customer emails", () => {
     await updateAdminOrderStatus(orderId, "baking");
 
     expect(mocks.sendOrderCompletionThankYou).not.toHaveBeenCalled();
+    expect(mocks.processOrderCompletionNotification).not.toHaveBeenCalled();
     expect(mocks.sendOrderStatusUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
         to: "customer@example.com",
@@ -182,6 +208,74 @@ describe("admin order status customer emails", () => {
     await updateAdminOrderStatus(orderId, "delivered");
 
     expect(mocks.sendOrderCompletionThankYou).not.toHaveBeenCalled();
+    expect(mocks.processOrderCompletionNotification).not.toHaveBeenCalled();
     expect(mocks.sendOrderStatusUpdate).not.toHaveBeenCalled();
+  });
+
+  it("expires an attached Stripe session before canceling an unpaid order", async () => {
+    setupOrderUpdate("pending_payment", "canceled");
+    mocks.getStripe.mockReturnValue({
+      checkout: {
+        sessions: {
+          retrieve: mocks.retrieveSession,
+          expire: mocks.expireSession,
+        },
+      },
+    });
+    mocks.retrieveSession.mockResolvedValue({
+      id: "cs_first_order",
+      status: "open",
+    });
+    mocks.expireSession.mockResolvedValue({
+      id: "cs_first_order",
+      status: "expired",
+    });
+
+    await updateAdminOrderStatus(orderId, "canceled", "owner@example.com");
+
+    expect(mocks.expireSession).toHaveBeenCalledWith("cs_first_order");
+    expect(mocks.rpc).toHaveBeenCalledWith("admin_cancel_storefront_checkout_scoped", {
+      p_order_id: orderId,
+      p_expected_weekly_menu_id: null,
+      p_session_id: "cs_first_order",
+      p_cancel_token: null,
+      p_actor_email: "owner@example.com",
+      p_reason:
+        "Canceled by the bakery after Stripe checkout was confirmed closed.",
+    });
+    expect(mocks.rpc).not.toHaveBeenCalledWith(
+      "admin_transition_order_status_scoped",
+      expect.anything(),
+    );
+  });
+
+  it("never cancels inventory when Stripe reports a completed checkout", async () => {
+    setupOrderUpdate("pending_payment", "canceled");
+    mocks.getStripe.mockReturnValue({
+      checkout: {
+        sessions: {
+          retrieve: mocks.retrieveSession,
+          expire: mocks.expireSession,
+        },
+      },
+    });
+    const completedSession = {
+      id: "cs_first_order",
+      status: "complete",
+      payment_status: "paid",
+    };
+    mocks.retrieveSession.mockResolvedValue(completedSession);
+
+    await expect(
+      updateAdminOrderStatus(orderId, "canceled", "owner@example.com"),
+    ).rejects.toThrow(/already completed or is processing/i);
+
+    expect(mocks.completeStorefrontCheckoutSession).toHaveBeenCalledWith(
+      completedSession,
+    );
+    expect(mocks.rpc).not.toHaveBeenCalledWith(
+      "admin_cancel_storefront_checkout_scoped",
+      expect.anything(),
+    );
   });
 });

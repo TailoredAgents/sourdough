@@ -59,10 +59,39 @@ type CheckoutStartResponse = {
   url?: string;
   error?: string;
   message?: string;
+  resetCheckoutAttempt?: boolean;
 };
 
 const EMPTY_MENU: MenuProduct[] = [];
 const EMPTY_DELIVERY_WINDOWS: DeliveryWindow[] = [];
+const CHECKOUT_ATTEMPT_STORAGE_KEY = "landl-storefront-checkout-attempt-v1";
+
+type StoredCheckoutAttempt = {
+  fingerprint: string;
+  id: string;
+};
+
+function isStoredCheckoutAttempt(value: unknown): value is StoredCheckoutAttempt {
+  return Boolean(
+    value &&
+      typeof value === "object" &&
+      "fingerprint" in value &&
+      typeof value.fingerprint === "string" &&
+      "id" in value &&
+      typeof value.id === "string" &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        value.id,
+      ),
+  );
+}
+
+async function checkoutFingerprint(value: unknown) {
+  const bytes = new TextEncoder().encode(JSON.stringify(value));
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+}
 
 function isRequestWeek(week: OrderingWeek | null | undefined) {
   const primaryWindow = week?.deliveryWindows[0];
@@ -148,10 +177,31 @@ export function OrderBuilder({
   const [isPending, startTransition] = useTransition();
   const quantitiesRef = useRef(quantities);
   const handledSelectionHashRef = useRef<string | null>(null);
+  const checkoutAttemptRef = useRef<{
+    fingerprint: string;
+    id: string;
+  } | null>(null);
 
   useEffect(() => {
     quantitiesRef.current = quantities;
   }, [quantities]);
+
+  useEffect(() => {
+    try {
+      const stored = window.sessionStorage.getItem(
+        CHECKOUT_ATTEMPT_STORAGE_KEY,
+      );
+      if (!stored) return;
+      const parsed: unknown = JSON.parse(stored);
+      if (isStoredCheckoutAttempt(parsed)) {
+        checkoutAttemptRef.current = parsed;
+      } else {
+        window.sessionStorage.removeItem(CHECKOUT_ATTEMPT_STORAGE_KEY);
+      }
+    } catch {
+      // Storage can be unavailable in privacy-restricted browsers.
+    }
+  }, []);
 
   useEffect(() => {
     const zip = new URLSearchParams(window.location.search)
@@ -406,8 +456,35 @@ export function OrderBuilder({
     });
   }
 
-  function submitOrder() {
+  async function submitOrder() {
     setMessage(null);
+    const checkoutDetails = {
+      weeklyMenuId: selectedWeek?.weeklyMenu.id,
+      cart,
+      customer,
+      address,
+      deliveryWindowId,
+      deliveryInstructions,
+      notes,
+      nextWeekOk: requestSelected ? nextWeekOk : undefined,
+      acknowledgedTerms,
+    };
+    const requestFingerprint = await checkoutFingerprint(checkoutDetails);
+    if (checkoutAttemptRef.current?.fingerprint !== requestFingerprint) {
+      checkoutAttemptRef.current = {
+        fingerprint: requestFingerprint,
+        id: crypto.randomUUID(),
+      };
+      try {
+        window.sessionStorage.setItem(
+          CHECKOUT_ATTEMPT_STORAGE_KEY,
+          JSON.stringify(checkoutAttemptRef.current),
+        );
+      } catch {
+        // The in-memory attempt still protects retries while this page remains open.
+      }
+    }
+    const checkoutAttemptId = checkoutAttemptRef.current.id;
     trackEvent(requestSelected ? "availability_request_start" : "checkout_start", {
       item_count: selectedCount,
       subtotal_cents: subtotal,
@@ -422,15 +499,8 @@ export function OrderBuilder({
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            weeklyMenuId: selectedWeek?.weeklyMenu.id,
-            cart,
-            customer,
-            address,
-            deliveryWindowId,
-            deliveryInstructions,
-            notes,
-            nextWeekOk: requestSelected ? nextWeekOk : undefined,
-            acknowledgedTerms,
+            ...checkoutDetails,
+            checkoutAttemptId,
           }),
         });
         payload = (await response.json().catch(() => null)) as
@@ -446,6 +516,14 @@ export function OrderBuilder({
       }
 
       if (!response.ok || !payload?.url) {
+        if (payload?.resetCheckoutAttempt) {
+          checkoutAttemptRef.current = null;
+          try {
+            window.sessionStorage.removeItem(CHECKOUT_ATTEMPT_STORAGE_KEY);
+          } catch {
+            // Storage can be unavailable in privacy-restricted browsers.
+          }
+        }
         setMessage(
           payload?.error ||
             payload?.message ||

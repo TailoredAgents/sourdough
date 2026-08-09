@@ -3,7 +3,12 @@ import { Mail, ShoppingBag, XCircle } from "lucide-react";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { bakery } from "@/lib/bakery-data";
-import { cancelPendingOrderByToken } from "@/lib/order-records";
+import {
+  cancelPendingOrderByToken,
+  getPendingCheckoutCancellationSession,
+} from "@/lib/order-records";
+import { completeStorefrontCheckoutSession } from "@/lib/order-payment";
+import { getStripe } from "@/lib/stripe";
 
 export const metadata = {
   title: "Checkout Canceled",
@@ -20,12 +25,38 @@ export default async function OrderCanceledPage({
 }) {
   const params = await searchParams;
   let released = false;
+  let paymentCompleted = false;
 
   if (params.order_id && params.token) {
     try {
-      released = Boolean(
-        await cancelPendingOrderByToken(params.order_id, params.token),
+      const stripe = getStripe();
+      const sessionId = await getPendingCheckoutCancellationSession(
+        params.order_id,
+        params.token,
       );
+      if (stripe && sessionId) {
+        let session = await stripe.checkout.sessions.retrieve(sessionId);
+        if (session.status === "open") {
+          try {
+            session = await stripe.checkout.sessions.expire(sessionId);
+          } catch {
+            session = await stripe.checkout.sessions.retrieve(sessionId);
+          }
+        }
+        if (session.status === "complete") {
+          paymentCompleted = Boolean(
+            await completeStorefrontCheckoutSession(session),
+          );
+        } else if (session.status === "expired") {
+          released = Boolean(
+            await cancelPendingOrderByToken(
+              params.order_id,
+              params.token,
+              sessionId,
+            ),
+          );
+        }
+      }
     } catch (error) {
       console.error("[checkout] cancel release failed", error);
     }
@@ -43,9 +74,11 @@ export default async function OrderCanceledPage({
                 Checkout canceled
               </h1>
               <p className="mt-3 text-sm leading-6 text-stone-700">
-                {released
+                {paymentCompleted
+                  ? "Payment completed before checkout could be canceled. Your order is being confirmed; please check your email."
+                  : released
                   ? "Your pending order was canceled and reserved inventory was released."
-                  : "Your order was not completed. You can return to the weekly menu and try again while inventory remains available."}
+                  : "Checkout could not be safely canceled yet. No inventory was released unless Stripe confirmed the payment session was closed."}
               </p>
             </div>
 

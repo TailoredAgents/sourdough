@@ -6,6 +6,7 @@ import {
   isStripeAutomaticTaxEnabled,
   STRIPE_TAX_CODES,
   toStripeAddress,
+  updateStripeDeliveryCustomer,
 } from "./stripe-tax";
 
 const deliveryAddress = {
@@ -91,5 +92,32 @@ describe("Stripe tax configuration", () => {
       tax: { validate_location: "immediately" },
       metadata: { storefront_order_id: "order-id" },
     });
+  });
+
+  it("forwards a stable idempotency key when updating a delivery customer", async () => {
+    const update = vi.fn().mockResolvedValue({ id: "cus_tax" });
+    const stripe = {
+      customers: { update },
+    } as unknown as Stripe;
+
+    await updateStripeDeliveryCustomer(
+      stripe,
+      "cus_tax",
+      {
+        name: "Customer Name",
+        phone: "4045550100",
+        address: deliveryAddress,
+      },
+      { idempotencyKey: "bread-club-address-revision-7" },
+    );
+
+    expect(update).toHaveBeenCalledWith(
+      "cus_tax",
+      expect.objectContaining({
+        name: "Customer Name",
+        address: toStripeAddress(deliveryAddress),
+      }),
+      { idempotencyKey: "bread-club-address-revision-7" },
+    );
   });
 });

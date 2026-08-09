@@ -1,14 +1,22 @@
 import type Stripe from "stripe";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { handleBreadClubStripeEvent } from "./webhook";
+import {
+  handleBreadClubStripeEvent,
+  reconcileBreadClubSubscriptionCheckout,
+} from "./webhook";
 
 const mocks = vi.hoisted(() => ({
   rpc: vi.fn(),
+  claimStripeEvent: vi.fn(),
+  finishStripeEvent: vi.fn(),
+  claimJob: vi.fn(),
+  finishJob: vi.fn(),
   from: vi.fn(),
   findBreadClubCycleByInvoiceId: vi.fn(),
   findPendingCycleForMembership: vi.fn(),
   activateBreadClubCycleForInvoice: vi.fn(),
   prepareNextBreadClubCycle: vi.fn(),
+  attachStripeSubscriptionCheckout: vi.fn(),
   recordBreadClubCheckoutCompleted: vi.fn(),
   releaseBreadClubPendingCycle: vi.fn(),
   expireBreadClubCheckoutSession: vi.fn(),
@@ -24,9 +32,6 @@ const mocks = vi.hoisted(() => ({
   expireBreadClubAddonCheckout: vi.fn(),
   retrieveSubscription: vi.fn(),
   membershipSelect: vi.fn(),
-  notificationJobInsert: vi.fn(),
-  notificationJobSelect: vi.fn(),
-  notificationJobReclaim: vi.fn(),
 }));
 
 vi.mock("@/lib/supabase", () => ({
@@ -53,6 +58,8 @@ vi.mock("./records", () => ({
   activateBreadClubCycleForInvoice:
     mocks.activateBreadClubCycleForInvoice,
   prepareNextBreadClubCycle: mocks.prepareNextBreadClubCycle,
+  attachStripeSubscriptionCheckout:
+    mocks.attachStripeSubscriptionCheckout,
   recordBreadClubCheckoutCompleted:
     mocks.recordBreadClubCheckoutCompleted,
   releaseBreadClubPendingCycle:
@@ -187,10 +194,92 @@ function subscriptionEvent(input: {
   } as unknown as Stripe.Event;
 }
 
+function paidCheckoutInvoice() {
+  return {
+    id: "in_checkout",
+    status: "paid",
+    amount_paid: 8000,
+    total_taxes: [],
+    status_transitions: { paid_at: 1785153600 },
+    parent: {
+      subscription_details: {
+        metadata: {
+          bread_club_membership_id: membershipId,
+        },
+      },
+    },
+  } as unknown as Stripe.Invoice;
+}
+
+function checkoutSubscription(
+  latestInvoice: Stripe.Invoice | null = paidCheckoutInvoice(),
+) {
+  return {
+    id: "sub_bread_club",
+    metadata: {
+      checkout_kind: "bread_club_subscription",
+      bread_club_membership_id: membershipId,
+    },
+    items: {
+      data: [
+        {
+          id: "si_plan",
+          current_period_end: 1787572800,
+          price: {
+            metadata: { bread_club_plan_id: planIdForMetadata() },
+          },
+        },
+        {
+          id: "si_delivery",
+          current_period_end: 1787572800,
+          price: {
+            metadata: { bread_club_delivery_band: "11-20" },
+          },
+        },
+      ],
+    },
+    latest_invoice: latestInvoice,
+  } as unknown as Stripe.Subscription;
+}
+
+function subscriptionCheckoutSession(
+  paymentStatus: Stripe.Checkout.Session.PaymentStatus,
+) {
+  return {
+    id: "cs_bread_club",
+    mode: "subscription",
+    status: "complete",
+    payment_status: paymentStatus,
+    customer: "cus_bread_club",
+    subscription: "sub_bread_club",
+    metadata: {
+      checkout_kind: "bread_club_subscription",
+      bread_club_membership_id: membershipId,
+      bread_club_cycle_id: cycleId,
+    },
+  } as unknown as Stripe.Checkout.Session;
+}
+
 beforeEach(() => {
   for (const mock of Object.values(mocks)) mock.mockReset();
   process.env.BAKERY_EMAIL = "owner@example.com";
-  mocks.rpc.mockResolvedValue({ data: true, error: null });
+  mocks.claimStripeEvent.mockResolvedValue({
+    data: "30000000-0000-4000-8000-000000000001",
+    error: null,
+  });
+  mocks.finishStripeEvent.mockResolvedValue({ data: true, error: null });
+  mocks.claimJob.mockResolvedValue({
+    data: "40000000-0000-4000-8000-000000000001",
+    error: null,
+  });
+  mocks.finishJob.mockResolvedValue({ data: true, error: null });
+  mocks.rpc.mockImplementation((name: string) => {
+    if (name === "claim_stripe_event") return mocks.claimStripeEvent();
+    if (name === "finish_stripe_event") return mocks.finishStripeEvent();
+    if (name === "claim_bread_club_job") return mocks.claimJob();
+    if (name === "finish_bread_club_job") return mocks.finishJob();
+    throw new Error(`Unexpected RPC ${name}`);
+  });
   mocks.findBreadClubCycleByInvoiceId.mockResolvedValue(null);
   mocks.findPendingCycleForMembership.mockResolvedValue({
     id: cycleId,
@@ -198,23 +287,7 @@ beforeEach(() => {
   });
   mocks.activateBreadClubCycleForInvoice.mockResolvedValue(undefined);
   mocks.markInvoiceDeliveryCreditsApplied.mockResolvedValue(undefined);
-  mocks.notificationJobInsert.mockResolvedValue({ error: null });
-  mocks.notificationJobSelect.mockResolvedValue({
-    data: { status: "completed", attempt_count: 1 },
-    error: null,
-  });
-  mocks.notificationJobReclaim.mockResolvedValue({
-    data: null,
-    error: null,
-  });
   mocks.from.mockImplementation((table: string) => {
-    if (table === "processed_stripe_events") {
-      return {
-        update: () => ({
-          eq: async () => ({ error: null }),
-        }),
-      };
-    }
     if (table === "bread_club_memberships") {
       return {
         update: () => ({
@@ -241,23 +314,6 @@ beforeEach(() => {
             }),
           };
         },
-      };
-    }
-    if (table === "bread_club_job_events") {
-      const updateChain = {
-        eq: () => updateChain,
-        select: () => ({
-          maybeSingle: mocks.notificationJobReclaim,
-        }),
-      };
-      return {
-        insert: mocks.notificationJobInsert,
-        select: () => ({
-          eq: () => ({
-            maybeSingle: mocks.notificationJobSelect,
-          }),
-        }),
-        update: () => updateChain,
       };
     }
     if (table === "bread_club_cycles") {
@@ -295,6 +351,102 @@ beforeEach(() => {
 });
 
 describe("Bread Club Stripe webhook integration", () => {
+  it.each(["paid", "no_payment_required"] as const)(
+    "activates a completed %s subscription Checkout",
+    async (paymentStatus) => {
+      mocks.retrieveSubscription.mockResolvedValue(checkoutSubscription());
+
+      await expect(
+        reconcileBreadClubSubscriptionCheckout(
+          subscriptionCheckoutSession(paymentStatus),
+        ),
+      ).resolves.toEqual(
+        expect.objectContaining({
+          membershipId,
+          cycleId,
+          checkoutRecorded: true,
+          cycleState: "activated",
+        }),
+      );
+
+      expect(mocks.attachStripeSubscriptionCheckout).toHaveBeenCalledWith(
+        membershipId,
+        "cs_bread_club",
+      );
+      expect(mocks.recordBreadClubCheckoutCompleted).toHaveBeenCalledWith(
+        expect.objectContaining({
+          membershipId,
+          stripeSubscriptionId: "sub_bread_club",
+          planSubscriptionItemId: "si_plan",
+          deliverySubscriptionItemId: "si_delivery",
+        }),
+      );
+      expect(mocks.activateBreadClubCycleForInvoice).toHaveBeenCalledWith(
+        expect.objectContaining({
+          membershipId,
+          cycleId,
+          invoiceId: "in_checkout",
+        }),
+      );
+    },
+  );
+
+  it("idempotently reapplies a completed paid Checkout without notifying twice", async () => {
+    mocks.retrieveSubscription.mockResolvedValue(checkoutSubscription());
+    mocks.findBreadClubCycleByInvoiceId
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        id: cycleId,
+        membershipId,
+        cycleNumber: 1,
+        status: "paid",
+      });
+    mocks.claimJob
+      .mockResolvedValueOnce({
+        data: "40000000-0000-4000-8000-000000000001",
+        error: null,
+      })
+      .mockResolvedValueOnce({ data: null, error: null });
+
+    await expect(
+      reconcileBreadClubSubscriptionCheckout(
+        subscriptionCheckoutSession("paid"),
+      ),
+    ).resolves.toEqual(expect.objectContaining({ cycleState: "activated" }));
+    await expect(
+      reconcileBreadClubSubscriptionCheckout(
+        subscriptionCheckoutSession("paid"),
+      ),
+    ).resolves.toEqual(
+      expect.objectContaining({ cycleState: "already_activated" }),
+    );
+
+    expect(mocks.recordBreadClubCheckoutCompleted).toHaveBeenCalledTimes(2);
+    expect(mocks.activateBreadClubCycleForInvoice).toHaveBeenCalledTimes(2);
+    expect(mocks.sendBreadClubWelcome).toHaveBeenCalledTimes(1);
+    expect(mocks.sendBreadClubOwnerAlert).toHaveBeenCalledTimes(1);
+    expect(mocks.sendOwnerAlert).toHaveBeenCalledTimes(1);
+  });
+
+  it("records but does not fulfill a completed unpaid subscription Checkout", async () => {
+    mocks.retrieveSubscription.mockResolvedValue(checkoutSubscription());
+
+    await expect(
+      reconcileBreadClubSubscriptionCheckout(
+        subscriptionCheckoutSession("unpaid"),
+      ),
+    ).resolves.toEqual(
+      expect.objectContaining({ cycleState: "awaiting_payment" }),
+    );
+
+    expect(mocks.attachStripeSubscriptionCheckout).toHaveBeenCalled();
+    expect(mocks.recordBreadClubCheckoutCompleted).toHaveBeenCalled();
+    expect(mocks.findBreadClubCycleByInvoiceId).not.toHaveBeenCalled();
+    expect(mocks.findPendingCycleForMembership).not.toHaveBeenCalled();
+    expect(mocks.activateBreadClubCycleForInvoice).not.toHaveBeenCalled();
+    expect(mocks.sendBreadClubWelcome).not.toHaveBeenCalled();
+  });
+
   it("provisions a paid cycle and sends member and owner communication", async () => {
     await expect(
       handleBreadClubStripeEvent(invoicePaidEvent()),
@@ -318,13 +470,12 @@ describe("Bread Club Stripe webhook integration", () => {
         "bread_club_plans!bread_club_memberships_plan_id_fkey(name)",
       ),
     );
-    expect(mocks.notificationJobInsert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        job_key: `paid-cycle-notification:${cycleId}`,
-        job_type: "paid_cycle_notification",
-        membership_id: membershipId,
-      }),
-    );
+    expect(mocks.rpc).toHaveBeenCalledWith("claim_bread_club_job", {
+      p_job_key: `paid-cycle-notification:${cycleId}`,
+      p_job_type: "paid_cycle_notification",
+      p_membership_id: membershipId,
+      p_payload: { cycle_id: cycleId },
+    });
     expect(mocks.markInvoiceDeliveryCreditsApplied).toHaveBeenCalled();
     expect(mocks.sendBreadClubWelcome).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -355,8 +506,57 @@ describe("Bread Club Stripe webhook integration", () => {
     );
   });
 
+  it.each(["refund_pending", "refunded"])(
+    "does not reactivate or notify a %s cycle when its paid invoice is replayed",
+    async (status) => {
+      mocks.findBreadClubCycleByInvoiceId.mockResolvedValue({
+        id: cycleId,
+        membershipId,
+        cycleNumber: 1,
+        status,
+      });
+      const event = invoicePaidEvent(`evt_${status}_invoice_replayed`);
+
+      await expect(handleBreadClubStripeEvent(event)).resolves.toBe(true);
+
+      expect(mocks.markInvoiceDeliveryCreditsApplied).toHaveBeenCalledWith(
+        membershipId,
+        event.data.object,
+      );
+      expect(mocks.findPendingCycleForMembership).not.toHaveBeenCalled();
+      expect(mocks.prepareNextBreadClubCycle).not.toHaveBeenCalled();
+      expect(mocks.activateBreadClubCycleForInvoice).not.toHaveBeenCalled();
+      expect(mocks.claimJob).not.toHaveBeenCalled();
+      expect(mocks.sendBreadClubWelcome).not.toHaveBeenCalled();
+      expect(mocks.sendBreadClubRenewal).not.toHaveBeenCalled();
+    },
+  );
+
+  it("fails closed for a canceled cycle whose invoice is reported paid", async () => {
+    mocks.findBreadClubCycleByInvoiceId.mockResolvedValue({
+      id: cycleId,
+      membershipId,
+      cycleNumber: 1,
+      status: "canceled",
+    });
+
+    await expect(
+      handleBreadClubStripeEvent(
+        invoicePaidEvent("evt_canceled_invoice_paid"),
+      ),
+    ).rejects.toThrow(
+      `Bread Club cycle ${cycleId} is canceled, but Stripe reported invoice in_bread_club as paid. Manual reconciliation is required.`,
+    );
+
+    expect(mocks.findPendingCycleForMembership).not.toHaveBeenCalled();
+    expect(mocks.prepareNextBreadClubCycle).not.toHaveBeenCalled();
+    expect(mocks.activateBreadClubCycleForInvoice).not.toHaveBeenCalled();
+    expect(mocks.markInvoiceDeliveryCreditsApplied).not.toHaveBeenCalled();
+    expect(mocks.claimJob).not.toHaveBeenCalled();
+  });
+
   it("does not repeat provisioning or email for a duplicate Stripe event", async () => {
-    mocks.rpc.mockResolvedValue({ data: false, error: null });
+    mocks.claimStripeEvent.mockResolvedValue({ data: null, error: null });
     await expect(
       handleBreadClubStripeEvent(invoicePaidEvent("evt_duplicate")),
     ).resolves.toBe(true);
@@ -366,12 +566,62 @@ describe("Bread Club Stripe webhook integration", () => {
     expect(mocks.sendBreadClubOwnerAlert).not.toHaveBeenCalled();
   });
 
+  it("recovers an unattached expired subscription from signed Stripe metadata", async () => {
+    const event = {
+      id: "evt_subscription_checkout_expired",
+      type: "checkout.session.expired",
+      data: {
+        object: {
+          id: "cs_subscription_expired",
+          metadata: {
+            checkout_kind: "bread_club_subscription",
+            bread_club_membership_id: membershipId,
+            bread_club_cycle_id: cycleId,
+          },
+        },
+      },
+    } as unknown as Stripe.Event;
+
+    await expect(handleBreadClubStripeEvent(event)).resolves.toBe(true);
+
+    expect(mocks.expireBreadClubCheckoutSession).toHaveBeenCalledWith(
+      "cs_subscription_expired",
+      membershipId,
+    );
+  });
+
+  it("recovers an unattached expired add-on from signed Stripe metadata", async () => {
+    const addonId = "50000000-0000-4000-8000-000000000001";
+    const event = {
+      id: "evt_addon_checkout_expired",
+      type: "checkout.session.expired",
+      data: {
+        object: {
+          id: "cs_addon_expired",
+          metadata: {
+            checkout_kind: "bread_club_addon",
+            bread_club_addon_id: addonId,
+            bread_club_membership_id: membershipId,
+          },
+        },
+      },
+    } as unknown as Stripe.Event;
+
+    await expect(handleBreadClubStripeEvent(event)).resolves.toBe(true);
+
+    expect(mocks.expireBreadClubAddonCheckout).toHaveBeenCalledWith(
+      "cs_addon_expired",
+      addonId,
+    );
+  });
+
   it("sends paid-cycle communication once when different Stripe events race", async () => {
-    mocks.notificationJobInsert
-      .mockResolvedValueOnce({ error: null })
+    mocks.claimJob
       .mockResolvedValueOnce({
-        error: { code: "23505", message: "duplicate job key" },
-      });
+        data: "40000000-0000-4000-8000-000000000001",
+        error: null,
+      })
+      .mockResolvedValueOnce({ data: null, error: null });
 
     await handleBreadClubStripeEvent(
       invoicePaidEvent("evt_paid_notification_first"),
@@ -385,31 +635,24 @@ describe("Bread Club Stripe webhook integration", () => {
     expect(mocks.sendOwnerAlert).toHaveBeenCalledTimes(1);
   });
 
-  it("handles invoice payment before Checkout completion without a second activation", async () => {
+  it("handles invoice payment before Checkout completion through the idempotent activation boundary", async () => {
+    mocks.findBreadClubCycleByInvoiceId
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        id: cycleId,
+        membershipId,
+        cycleNumber: 1,
+        status: "paid",
+      });
+    mocks.claimJob
+      .mockResolvedValueOnce({
+        data: "40000000-0000-4000-8000-000000000001",
+        error: null,
+      })
+      .mockResolvedValueOnce({ data: null, error: null });
     await handleBreadClubStripeEvent(invoicePaidEvent("evt_out_of_order_paid"));
     mocks.findPendingCycleForMembership.mockResolvedValue(null);
-    mocks.retrieveSubscription.mockResolvedValue({
-      id: "sub_bread_club",
-      items: {
-        data: [
-          {
-            id: "si_plan",
-            current_period_end: 1787572800,
-            price: {
-              metadata: { bread_club_plan_id: planIdForMetadata() },
-            },
-          },
-          {
-            id: "si_delivery",
-            current_period_end: 1787572800,
-            price: {
-              metadata: { bread_club_delivery_band: "11-20" },
-            },
-          },
-        ],
-      },
-      latest_invoice: null,
-    });
+    mocks.retrieveSubscription.mockResolvedValue(checkoutSubscription());
 
     const checkoutEvent = {
       id: "evt_out_of_order_checkout",
@@ -417,6 +660,9 @@ describe("Bread Club Stripe webhook integration", () => {
       data: {
         object: {
           id: "cs_bread_club",
+          mode: "subscription",
+          status: "complete",
+          payment_status: "paid",
           customer: "cus_bread_club",
           subscription: "sub_bread_club",
           metadata: {
@@ -440,7 +686,16 @@ describe("Bread Club Stripe webhook integration", () => {
         deliverySubscriptionItemId: "si_delivery",
       }),
     );
-    expect(mocks.activateBreadClubCycleForInvoice).toHaveBeenCalledTimes(1);
+    expect(mocks.attachStripeSubscriptionCheckout).toHaveBeenCalledWith(
+      membershipId,
+      "cs_bread_club",
+    );
+    expect(
+      mocks.attachStripeSubscriptionCheckout.mock.invocationCallOrder[0],
+    ).toBeLessThan(
+      mocks.recordBreadClubCheckoutCompleted.mock.invocationCallOrder[0],
+    );
+    expect(mocks.activateBreadClubCycleForInvoice).toHaveBeenCalledTimes(2);
   });
 
   it("prepares an active membership when Stripe announces its next invoice", async () => {
@@ -495,6 +750,37 @@ describe("Bread Club Stripe webhook integration", () => {
     expect(mocks.prepareNextBreadClubCycle).not.toHaveBeenCalled();
   });
 
+  it("does not reserve another cycle while a provider change is pending", async () => {
+    mocks.from.mockImplementation((table: string) => {
+      if (table === "bread_club_memberships") {
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: async () => ({
+                data: {
+                  id: membershipId,
+                  status: "active",
+                  cancel_at_period_end: false,
+                  provider_sync_required: true,
+                },
+                error: null,
+              }),
+            }),
+          }),
+        };
+      }
+      throw new Error(`Unexpected table ${table}`);
+    });
+
+    await expect(
+      handleBreadClubStripeEvent(
+        invoiceUpcomingEvent("evt_provider_sync_upcoming"),
+      ),
+    ).resolves.toBe(true);
+
+    expect(mocks.prepareNextBreadClubCycle).not.toHaveBeenCalled();
+  });
+
   it("releases an unpaid renewal when cancellation comes from Billing Portal", async () => {
     const event = subscriptionEvent({
       id: "evt_portal_cancel",
@@ -520,6 +806,7 @@ describe("Bread Club Stripe webhook integration", () => {
       expect.objectContaining({
         to: "member@example.com",
         membershipId,
+        eventKey: "stripe-event:evt_invoice_failed:payment-failure",
       }),
     );
   });
@@ -536,6 +823,34 @@ describe("Bread Club Stripe webhook integration", () => {
     expect(mocks.releaseBreadClubPendingCycle).toHaveBeenCalledWith(cycleId);
     expect(mocks.refundBreadClubUnusedCredits).toHaveBeenCalledWith(
       membershipId,
+    );
+  });
+
+  it("fails the deleted-subscription event when unused-credit refunds fail", async () => {
+    mocks.refundBreadClubUnusedCredits.mockRejectedValue(
+      new Error("Stripe refund is temporarily unavailable."),
+    );
+    const event = subscriptionEvent({
+      id: "evt_subscription_deleted_refund_failure",
+      type: "customer.subscription.deleted",
+      cancelAtPeriodEnd: false,
+    });
+
+    await expect(handleBreadClubStripeEvent(event)).rejects.toThrow(
+      "Stripe refund is temporarily unavailable.",
+    );
+
+    expect(mocks.rpc).toHaveBeenCalledWith(
+      "finish_stripe_event",
+      expect.objectContaining({
+        p_event_id: "evt_subscription_deleted_refund_failure",
+        p_status: "failed",
+        p_error_message: "Stripe refund is temporarily unavailable.",
+      }),
+    );
+    expect(mocks.rpc).not.toHaveBeenCalledWith(
+      "finish_stripe_event",
+      expect.objectContaining({ p_status: "processed" }),
     );
   });
 });

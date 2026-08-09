@@ -1,8 +1,12 @@
 import { NextResponse } from "next/server";
 import { getCurrentAdmin } from "@/lib/admin-auth";
+import { rejectCrossOriginMutation } from "@/lib/request-security";
 import { syncStripeProductCatalog } from "@/lib/stripe-catalog";
 
-export async function POST() {
+export async function POST(request: Request) {
+  const originError = rejectCrossOriginMutation(request);
+  if (originError) return originError;
+
   const admin = await getCurrentAdmin();
   if (!admin) {
     return NextResponse.json(

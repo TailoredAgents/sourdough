@@ -138,6 +138,13 @@ export function getCurrentDeliveryWeekSchedule(now = new Date()) {
   return getWeekScheduleFromMonday(getWeekStartDateParts(now));
 }
 
+export function getWeeklyMenuDeliverySchedule(startsAt?: string | null) {
+  if (!startsAt) return null;
+  const start = new Date(startsAt);
+  if (Number.isNaN(start.getTime())) return null;
+  return getCurrentDeliveryWeekSchedule(start);
+}
+
 export function getFirstVisibleDeliveryWeekSchedule(now = new Date()) {
   const current = getCurrentDeliveryWeekSchedule(now);
   if (now >= current.deliveryEndsAt) {

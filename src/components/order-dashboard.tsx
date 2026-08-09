@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -37,15 +37,6 @@ const statusLabels: Record<OrderStatus, string> = {
   delivered: "Completed",
   canceled: "Canceled",
 };
-
-const statusOptions: OrderStatus[] = [
-  "pending_payment",
-  "paid",
-  "baking",
-  "out_for_delivery",
-  "delivered",
-  "canceled",
-];
 
 const activeStatuses: OrderStatus[] = [
   "pending_approval",
@@ -91,43 +82,113 @@ function shortId(id: string) {
   return id.slice(0, 8);
 }
 
-export function OrderDashboard({ initialOrders }: { initialOrders: AdminOrder[] }) {
-  const firstApprovalOrder = initialOrders.find(
-    (order) => order.status === "pending_approval",
-  );
-  const firstActiveOrder = initialOrders.find((order) =>
-    activeStatuses.includes(order.status),
-  );
+function isOrderSuccessMessage(message: string) {
+  return message === "Order updated." || message.startsWith("Order completed");
+}
+
+export function getOrderCompletionMessage(notification: unknown) {
+  switch (notification) {
+    case "sent":
+      return "Order completed and thank-you email sent.";
+    case "queued":
+      return "Order completed. Thank-you email queued for automatic retry.";
+    case "already_sent":
+      return "Order completed. The thank-you email was already sent earlier.";
+    case "skipped":
+      return "Order completed. Thank-you email skipped because no customer email is available.";
+    default:
+      return "Order completed. Thank-you email status could not be confirmed.";
+  }
+}
+
+export function getOrderStatusUpdateConfirmation(
+  order: AdminOrder,
+  status: OrderStatus,
+) {
+  if (status === "canceled") {
+    return `Cancel order #${shortId(order.id)} for ${order.customerName}? This releases its reserved inventory and Sunday delivery spot.`;
+  }
+  if (order.status === "delivered" && status === "out_for_delivery") {
+    return `Reopen order #${shortId(order.id)} as out for delivery? This sends the customer another status email. Completing it again will not send a second thank-you email.`;
+  }
+  return null;
+}
+
+function getDefaultOrderView(orders: AdminOrder[]): {
+  filter: OrderFilter;
+  selectedId: string | null;
+} {
+  const approvalOrder = orders.find((order) => order.status === "pending_approval");
+  if (approvalOrder) {
+    return { filter: "needs_approval", selectedId: approvalOrder.id };
+  }
+
+  const activeOrder = orders.find((order) => activeStatuses.includes(order.status));
+  if (activeOrder) {
+    return { filter: "active", selectedId: activeOrder.id };
+  }
+
+  return { filter: "all", selectedId: orders[0]?.id ?? null };
+}
+
+function getAdminOrdersUrl(weeklyMenuId?: string) {
+  return weeklyMenuId
+    ? `/api/admin/orders?weeklyMenuId=${encodeURIComponent(weeklyMenuId)}`
+    : "/api/admin/orders";
+}
+
+export function OrderDashboard({
+  initialOrders,
+  onOrdersChange,
+  weeklyMenuId,
+  weeklyMenuName,
+}: {
+  initialOrders: AdminOrder[];
+  onOrdersChange?: (orders: AdminOrder[]) => void;
+  weeklyMenuId?: string;
+  weeklyMenuName?: string | null;
+}) {
+  const initialScopedOrders = weeklyMenuId
+    ? initialOrders.filter((order) => order.weeklyMenuId === weeklyMenuId)
+    : initialOrders;
+  const initialView = getDefaultOrderView(initialScopedOrders);
   const [orders, setOrders] = useState<AdminOrder[]>(initialOrders);
-  const [selectedId, setSelectedId] = useState<string | null>(
-    firstApprovalOrder?.id ?? firstActiveOrder?.id ?? initialOrders[0]?.id ?? null,
-  );
-  const [filter, setFilter] = useState<OrderFilter>(
-    firstApprovalOrder ? "needs_approval" : firstActiveOrder ? "active" : "all",
-  );
+  const [selectedId, setSelectedId] = useState<string | null>(initialView.selectedId);
+  const [filter, setFilter] = useState<OrderFilter>(initialView.filter);
   const [moveWindowIds, setMoveWindowIds] = useState<Record<string, string>>({});
   const [message, setMessage] = useState<string | null>(null);
+  const [isWeekLoading, setIsWeekLoading] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const detailsRef = useRef<HTMLDivElement>(null);
+  const weekRequestIdRef = useRef(0);
+  const currentWeeklyMenuIdRef = useRef(weeklyMenuId);
 
+  const scopedOrders = useMemo(
+    () =>
+      weeklyMenuId
+        ? orders.filter((order) => order.weeklyMenuId === weeklyMenuId)
+        : orders,
+    [orders, weeklyMenuId],
+  );
   const filteredOrders = useMemo(
-    () => orders.filter((order) => matchesOrderFilter(order, filter)),
-    [filter, orders],
+    () => scopedOrders.filter((order) => matchesOrderFilter(order, filter)),
+    [filter, scopedOrders],
   );
   const selectedOrder =
     filteredOrders.find((order) => order.id === selectedId) ?? filteredOrders[0] ?? null;
-  const openOrdersCount = orders.filter((order) =>
+  const openOrdersCount = scopedOrders.filter((order) =>
     activeStatuses.includes(order.status),
   ).length;
-  const pendingPaymentCount = orders.filter((order) => order.status === "pending_payment").length;
-  const approvalCount = orders.filter((order) => order.status === "pending_approval").length;
+  const pendingPaymentCount = scopedOrders.filter(
+    (order) => order.status === "pending_payment",
+  ).length;
+  const approvalCount = scopedOrders.filter(
+    (order) => order.status === "pending_approval",
+  ).length;
+  const isInteractionPending = isPending || isWeekLoading;
   const statusActions = selectedOrder
-    ? getAdminOrderStatusActions(selectedOrder.status)
+    ? getAdminOrderStatusActions(selectedOrder.status, selectedOrder.source)
     : [];
-  const canUseManualStatus = Boolean(
-    selectedOrder &&
-      selectedOrder.status !== "pending_approval" &&
-      selectedOrder.status !== "pending_approval_payment",
-  );
   const canCompleteOrder = statusActions.some(
     (action) => action.status === "delivered",
   );
@@ -148,16 +209,88 @@ export function OrderDashboard({ initialOrders }: { initialOrders: AdminOrder[] 
     ? buildMapSearchHref(selectedOrder.deliveryAddress)
     : null;
 
+  useEffect(() => {
+    currentWeeklyMenuIdRef.current = weeklyMenuId;
+  }, [weeklyMenuId]);
+
+  useEffect(() => {
+    if (!weeklyMenuId) return;
+
+    const requestId = ++weekRequestIdRef.current;
+    const controller = new AbortController();
+
+    async function loadSelectedWeekOrders() {
+      await Promise.resolve();
+      if (controller.signal.aborted || requestId !== weekRequestIdRef.current) {
+        return;
+      }
+      setIsWeekLoading(true);
+      setMessage(null);
+
+      try {
+        const response = await fetch(getAdminOrdersUrl(weeklyMenuId), {
+          signal: controller.signal,
+        });
+        const payload = await readAdminJsonResponse(response);
+        if (requestId !== weekRequestIdRef.current) return;
+
+        if (
+          !response.ok ||
+          !hasAdminKeys(payload, ["orders"]) ||
+          !Array.isArray(payload.orders)
+        ) {
+          setMessage(
+            getAdminPayloadError(payload) ||
+              "Orders for this delivery week could not be loaded.",
+          );
+          return;
+        }
+
+        const nextOrders = payload.orders as AdminOrder[];
+        const nextView = getDefaultOrderView(nextOrders);
+        setOrders(nextOrders);
+        onOrdersChange?.(nextOrders);
+        setFilter(nextView.filter);
+        setSelectedId(nextView.selectedId);
+      } catch (error) {
+        if (controller.signal.aborted || requestId !== weekRequestIdRef.current) {
+          return;
+        }
+        setMessage(
+          error instanceof Error && error.name === "AbortError"
+            ? null
+            : "Orders for this delivery week could not be loaded. Check your connection and try again.",
+        );
+      } finally {
+        if (requestId === weekRequestIdRef.current) {
+          setIsWeekLoading(false);
+        }
+      }
+    }
+
+    void loadSelectedWeekOrders();
+    return () => controller.abort();
+  }, [onOrdersChange, weeklyMenuId]);
+
+  useEffect(() => {
+    if (!message) return;
+    const timeoutId = window.setTimeout(() => setMessage(null), 8_000);
+    return () => window.clearTimeout(timeoutId);
+  }, [message]);
+
   function updateStatus(id: string, status: OrderStatus) {
     setMessage(null);
+    const requestWeeklyMenuId = weeklyMenuId;
     startTransition(async () => {
       try {
-        const response = await fetch("/api/admin/orders", {
+        const response = await fetch(getAdminOrdersUrl(requestWeeklyMenuId), {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ id, status }),
         });
         const payload = await readAdminJsonResponse(response);
+
+        if (requestWeeklyMenuId !== currentWeeklyMenuIdRef.current) return;
 
         if (
           !response.ok ||
@@ -168,11 +301,34 @@ export function OrderDashboard({ initialOrders }: { initialOrders: AdminOrder[] 
           return;
         }
 
-        setOrders(payload.orders as AdminOrder[]);
-        setSelectedId(id);
-        setFilter(activeStatuses.includes(status) ? "active" : status);
-        setMessage(status === "delivered" ? "Order completed." : "Order updated.");
+        const nextOrders = payload.orders as AdminOrder[];
+        setOrders(nextOrders);
+        onOrdersChange?.(nextOrders);
+        if (status === "delivered") {
+          const nextActiveOrder = nextOrders.find(
+            (order) =>
+              order.id !== id &&
+              activeStatuses.includes(order.status) &&
+              (!weeklyMenuId || order.weeklyMenuId === weeklyMenuId),
+          );
+          setFilter("active");
+          setSelectedId(nextActiveOrder?.id ?? null);
+        } else {
+          setSelectedId(id);
+          setFilter(activeStatuses.includes(status) ? "active" : status);
+        }
+        const completionNotification =
+          hasAdminKeys(payload, ["completionNotification"]) &&
+          typeof payload.completionNotification === "string"
+            ? payload.completionNotification
+            : null;
+        setMessage(
+          status !== "delivered"
+            ? "Order updated."
+            : getOrderCompletionMessage(completionNotification),
+        );
       } catch {
+        if (requestWeeklyMenuId !== currentWeeklyMenuIdRef.current) return;
         setMessage("Order could not be updated. Check your connection and try again.");
       }
     });
@@ -184,14 +340,17 @@ export function OrderDashboard({ initialOrders }: { initialOrders: AdminOrder[] 
     targetDeliveryWindowId?: string,
   ) {
     setMessage(null);
+    const requestWeeklyMenuId = weeklyMenuId;
     startTransition(async () => {
       try {
-        const response = await fetch("/api/admin/orders", {
+        const response = await fetch(getAdminOrdersUrl(requestWeeklyMenuId), {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ id, action, targetDeliveryWindowId }),
         });
         const payload = await readAdminJsonResponse(response);
+
+        if (requestWeeklyMenuId !== currentWeeklyMenuIdRef.current) return;
 
         if (
           !response.ok ||
@@ -202,11 +361,14 @@ export function OrderDashboard({ initialOrders }: { initialOrders: AdminOrder[] 
           return;
         }
 
-        setOrders(payload.orders as AdminOrder[]);
+        const nextOrders = payload.orders as AdminOrder[];
+        setOrders(nextOrders);
+        onOrdersChange?.(nextOrders);
         setSelectedId(id);
         setFilter(action === "deny_refund" ? "canceled" : "active");
         setMessage("Order updated.");
       } catch {
+        if (requestWeeklyMenuId !== currentWeeklyMenuIdRef.current) return;
         setMessage("Approval request could not be updated. Check your connection and try again.");
       }
     });
@@ -214,8 +376,24 @@ export function OrderDashboard({ initialOrders }: { initialOrders: AdminOrder[] 
 
   function selectFilter(nextFilter: OrderFilter) {
     setFilter(nextFilter);
-    setSelectedId(orders.find((order) => matchesOrderFilter(order, nextFilter))?.id ?? null);
+    setSelectedId(
+      scopedOrders.find((order) => matchesOrderFilter(order, nextFilter))?.id ??
+        null,
+    );
     setMessage(null);
+  }
+
+  function confirmStatusUpdate(order: AdminOrder, status: OrderStatus) {
+    const confirmation = getOrderStatusUpdateConfirmation(order, status);
+    return confirmation ? window.confirm(confirmation) : true;
+  }
+
+  function revealOrderDetailsOnMobile() {
+    if (!window.matchMedia("(max-width: 1023px)").matches) return;
+    window.requestAnimationFrame(() => {
+      detailsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      detailsRef.current?.focus({ preventScroll: true });
+    });
   }
 
   return (
@@ -227,7 +405,8 @@ export function OrderDashboard({ initialOrders }: { initialOrders: AdminOrder[] 
             <h2 className="text-xl font-bold text-stone-950">Order dashboard</h2>
           </div>
           <p className="mt-1 text-sm leading-6 text-stone-700">
-            Review approval requests and track paid orders through baking, delivery, and completion.
+            Review approval requests and track paid orders through baking, delivery,
+            and completion{weeklyMenuName ? ` for ${weeklyMenuName}` : ""}.
           </p>
         </div>
         <div className="rounded-md border border-stone-200 bg-[#fffaf2] px-3 py-2 text-sm font-semibold text-stone-700">
@@ -235,12 +414,40 @@ export function OrderDashboard({ initialOrders }: { initialOrders: AdminOrder[] 
         </div>
       </div>
 
+      {message ? (
+        <div
+          role={isOrderSuccessMessage(message) ? "status" : "alert"}
+          aria-atomic="true"
+          aria-live={isOrderSuccessMessage(message) ? "polite" : "assertive"}
+          className={`fixed inset-x-4 bottom-4 z-50 mx-auto flex max-w-xl items-center gap-2 rounded-md border bg-white px-4 py-3 text-sm font-semibold shadow-lg ${
+            isOrderSuccessMessage(message)
+              ? "border-emerald-200 text-emerald-800"
+              : "border-red-200 text-[#a94334]"
+          }`}
+        >
+          {isOrderSuccessMessage(message) ? (
+            <CheckCircle2 className="shrink-0" size={16} />
+          ) : null}
+          <span>{message}</span>
+          <button
+            type="button"
+            className="ml-auto shrink-0 rounded-sm px-2 py-1 text-xs font-bold underline underline-offset-2"
+            onClick={() => setMessage(null)}
+            aria-label="Dismiss order message"
+          >
+            Dismiss
+          </button>
+        </div>
+      ) : null}
+
       <div className="mt-5 flex gap-2 overflow-x-auto pb-1">
         {filterOptions.map((status) => (
           <button
             key={status}
             type="button"
+            aria-pressed={filter === status}
             onClick={() => selectFilter(status)}
+            disabled={isInteractionPending}
             className={`h-9 whitespace-nowrap rounded-md border px-3 text-sm font-semibold ${
               filter === status
                 ? "border-[#23443b] bg-[#23443b] text-white"
@@ -260,13 +467,26 @@ export function OrderDashboard({ initialOrders }: { initialOrders: AdminOrder[] 
 
       <div className="mt-5 grid gap-5 lg:grid-cols-[0.95fr_1.05fr]">
         <div className="grid max-h-[580px] content-start gap-2 overflow-y-auto pr-1">
-          {filteredOrders.map((order) => (
+          {isWeekLoading ? (
+            <div
+              role="status"
+              className="inline-flex items-center gap-2 rounded-md border border-stone-200 bg-[#fffaf2] p-5 text-sm font-semibold text-stone-700"
+            >
+              <Loader2 className="animate-spin" size={16} />
+              Loading this Sunday&apos;s orders...
+            </div>
+          ) : null}
+
+          {!isWeekLoading ? filteredOrders.map((order) => (
             <button
               key={order.id}
               type="button"
+              disabled={isInteractionPending}
+              aria-pressed={selectedOrder?.id === order.id}
               onClick={() => {
                 setSelectedId(order.id);
                 setMessage(null);
+                revealOrderDetailsOnMobile();
               }}
               className={`rounded-md border p-3 text-left transition ${
                 selectedOrder?.id === order.id
@@ -321,16 +541,20 @@ export function OrderDashboard({ initialOrders }: { initialOrders: AdminOrder[] 
                 </span>
               </div>
             </button>
-          ))}
+          )) : null}
 
-          {!filteredOrders.length ? (
+          {!isWeekLoading && !filteredOrders.length ? (
             <div className="rounded-md border border-dashed border-stone-300 bg-[#fffaf2] p-5 text-sm text-stone-700">
               No orders match this status yet.
             </div>
           ) : null}
         </div>
 
-        <div className="rounded-md border border-stone-100 bg-[#fffaf2] p-4">
+        <div
+          ref={detailsRef}
+          tabIndex={-1}
+          className="scroll-mt-24 rounded-md border border-stone-100 bg-[#fffaf2] p-4 outline-none"
+        >
           {selectedOrder ? (
             <>
               <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
@@ -394,7 +618,7 @@ export function OrderDashboard({ initialOrders }: { initialOrders: AdminOrder[] 
                   <AlertTriangle className="mt-0.5 shrink-0" size={16} />
                   <p>
                     Payment is not confirmed. Work this order only after Stripe marks it
-                    paid or manual payment is verified.
+                    paid.
                     {selectedOrder.status === "pending_payment"
                       ? " Canceling releases the reserved delivery spot and menu inventory."
                       : " This request has not reserved inventory yet."}
@@ -408,12 +632,14 @@ export function OrderDashboard({ initialOrders }: { initialOrders: AdminOrder[] 
                     <AlertTriangle className="mt-0.5 shrink-0 text-[#a94334]" size={16} />
                     <div>
                       <p className="font-semibold text-stone-950">
-                        Paid same-week request needs a decision
+                        {selectedOrder.approvalRefundStartedAt
+                          ? "Stripe refund is in progress"
+                          : "Paid same-week request needs a decision"}
                       </p>
                       <p className="mt-1">
-                        Accepting reserves this Sunday&apos;s inventory and delivery spot.
-                        Denying refunds the Stripe payment. Moving to next Sunday is only
-                        available if the customer said next Sunday works.
+                        {selectedOrder.approvalRefundStartedAt
+                          ? "Acceptance and moving are locked so this paid order cannot be reserved while Stripe is refunding it. Use Check refund status to finish the cancellation when Stripe confirms success."
+                          : "Accepting reserves this Sunday&apos;s inventory and delivery spot. Denying refunds the Stripe payment. Moving to next Sunday is only available if the customer said next Sunday works."}
                       </p>
                       <p className="mt-1 font-semibold text-stone-950">
                         Next Sunday works: {selectedOrder.nextWeekOk ? "Yes" : "No"}
@@ -423,7 +649,10 @@ export function OrderDashboard({ initialOrders }: { initialOrders: AdminOrder[] 
                   <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                     <Button
                       type="button"
-                      disabled={isPending}
+                      disabled={
+                        isInteractionPending ||
+                        Boolean(selectedOrder.approvalRefundStartedAt)
+                      }
                       onClick={() => runApprovalAction(selectedOrder.id, "accept_request")}
                     >
                       {isPending ? <Loader2 className="animate-spin" size={16} /> : null}
@@ -432,14 +661,26 @@ export function OrderDashboard({ initialOrders }: { initialOrders: AdminOrder[] 
                     <Button
                       type="button"
                       variant="ghost"
-                      disabled={isPending}
-                      onClick={() => runApprovalAction(selectedOrder.id, "deny_refund")}
+                      disabled={isInteractionPending}
+                      onClick={() => {
+                        if (
+                          selectedOrder.approvalRefundStartedAt ||
+                          window.confirm(
+                            `Deny and refund ${formatCurrency(selectedOrder.totalCents)} to ${selectedOrder.customerName}?`,
+                          )
+                        ) {
+                          runApprovalAction(selectedOrder.id, "deny_refund");
+                        }
+                      }}
                     >
                       {isPending ? <Loader2 className="animate-spin" size={16} /> : null}
-                      Deny & refund
+                      {selectedOrder.approvalRefundStartedAt
+                        ? "Check refund status"
+                        : "Deny & refund"}
                     </Button>
                   </div>
-                  {selectedOrder.nextWeekOk ? (
+                  {selectedOrder.nextWeekOk &&
+                  !selectedOrder.approvalRefundStartedAt ? (
                     <div className="grid gap-2 border-t border-stone-200 pt-3">
                       <label className="grid gap-1 font-semibold text-stone-700">
                         Move to next Sunday
@@ -456,7 +697,9 @@ export function OrderDashboard({ initialOrders }: { initialOrders: AdminOrder[] 
                               [selectedOrder.id]: event.target.value,
                             }))
                           }
-                          disabled={isPending || !selectedOrder.moveWindows.length}
+                          disabled={
+                            isInteractionPending || !selectedOrder.moveWindows.length
+                          }
                         >
                           {!selectedOrder.moveWindows.length ? (
                             <option value="">No next Sunday slots available</option>
@@ -472,7 +715,9 @@ export function OrderDashboard({ initialOrders }: { initialOrders: AdminOrder[] 
                       <Button
                         type="button"
                         variant="secondary"
-                        disabled={isPending || !selectedOrder.moveWindows.length}
+                        disabled={
+                          isInteractionPending || !selectedOrder.moveWindows.length
+                        }
                         onClick={() =>
                           runApprovalAction(
                             selectedOrder.id,
@@ -494,108 +739,63 @@ export function OrderDashboard({ initialOrders }: { initialOrders: AdminOrder[] 
                 <div className="mt-4 flex gap-2 rounded-md border border-stone-200 bg-white p-3 text-sm leading-6 text-stone-700">
                   <AlertTriangle className="mt-0.5 shrink-0 text-[#a94334]" size={16} />
                   <p>
-                    This order is canceled. Restoring it will try to reserve the Sunday delivery
-                    spot and product inventory again before marking it paid.
+                    This order is canceled. It cannot be restored with a raw status change;
+                    use Stripe reconciliation or create a new verified order instead.
                   </p>
                 </div>
               ) : null}
 
-              {statusActions.length || canUseManualStatus || message ? (
+              {statusActions.length ? (
                 <div className="mt-4 rounded-md border border-[#23443b]/25 bg-white p-4">
-                  {statusActions.length || canUseManualStatus ? (
-                    <>
-                      <div>
-                        <p className="font-semibold text-stone-950">
-                          {selectedOrder.status === "delivered"
-                            ? "Order complete"
-                            : canCompleteOrder
-                              ? "Finish this order"
-                              : "Order actions"}
-                        </p>
-                        {canCompleteOrder ? (
-                          <p className="mt-1 text-sm leading-6 text-stone-600">
-                            Already delivered? Complete it here in one click. This marks it
-                            delivered, sends a thank-you email with a review link, and moves
-                            it from Active to Completed.
-                          </p>
-                        ) : selectedOrder.status === "delivered" ? (
-                          <p className="mt-1 text-sm leading-6 text-stone-600">
-                            This order is complete and no longer appears in Active.
-                          </p>
+                  <div>
+                    <p className="font-semibold text-stone-950">
+                      {selectedOrder.status === "delivered"
+                        ? "Order complete"
+                        : canCompleteOrder
+                          ? "Finish this order"
+                          : "Order actions"}
+                    </p>
+                    {canCompleteOrder ? (
+                      <p className="mt-1 text-sm leading-6 text-stone-600">
+                        Already delivered? Complete it here in one click. This marks it
+                        delivered, safely queues the thank-you email with its review link,
+                        and moves it from Active to Completed.
+                      </p>
+                    ) : selectedOrder.status === "delivered" ? (
+                      <p className="mt-1 text-sm leading-6 text-stone-600">
+                        This order is complete and no longer appears in Active.
+                      </p>
+                    ) : null}
+                  </div>
+
+                  <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                    {statusActions.map((action) => (
+                      <Button
+                        key={action.status}
+                        type="button"
+                        variant={
+                          action.variant === "secondary"
+                            ? "secondary"
+                            : action.variant === "ghost"
+                              ? "ghost"
+                              : "primary"
+                        }
+                        disabled={isInteractionPending}
+                        onClick={() => {
+                          if (confirmStatusUpdate(selectedOrder, action.status)) {
+                            updateStatus(selectedOrder.id, action.status);
+                          }
+                        }}
+                      >
+                        {isPending ? (
+                          <Loader2 className="animate-spin" size={16} />
+                        ) : action.status === "delivered" ? (
+                          <CheckCircle2 size={16} />
                         ) : null}
-                      </div>
-
-                      {statusActions.length ? (
-                        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-                          {statusActions.map((action) => (
-                            <Button
-                              key={action.status}
-                              type="button"
-                              variant={
-                                action.variant === "secondary"
-                                  ? "secondary"
-                                  : action.variant === "ghost"
-                                    ? "ghost"
-                                    : "primary"
-                              }
-                              disabled={isPending}
-                              onClick={() => updateStatus(selectedOrder.id, action.status)}
-                            >
-                              {isPending ? (
-                                <Loader2 className="animate-spin" size={16} />
-                              ) : action.status === "delivered" ? (
-                                <CheckCircle2 size={16} />
-                              ) : null}
-                              {action.label}
-                            </Button>
-                          ))}
-                        </div>
-                      ) : null}
-
-                      {canUseManualStatus ? (
-                        <details className="mt-3 border-t border-stone-200 pt-3 text-sm text-stone-700">
-                          <summary className="cursor-pointer font-semibold text-stone-700">
-                            More status options
-                          </summary>
-                          <label className="mt-3 grid max-w-xs gap-1 font-semibold text-stone-700">
-                            Manual status
-                            <select
-                              className="h-11 rounded-md border border-stone-300 bg-white px-3 font-normal"
-                              value={selectedOrder.status}
-                              onChange={(event) =>
-                                updateStatus(
-                                  selectedOrder.id,
-                                  event.target.value as OrderStatus,
-                                )
-                              }
-                              disabled={isPending}
-                            >
-                              {statusOptions.map((status) => (
-                                <option key={status} value={status}>
-                                  {statusLabels[status]}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                        </details>
-                      ) : null}
-                    </>
-                  ) : null}
-
-                  {message ? (
-                    <span
-                      className={`mt-3 inline-flex items-center gap-2 text-sm font-semibold ${
-                        message === "Order updated." || message === "Order completed."
-                          ? "text-emerald-800"
-                          : "text-[#a94334]"
-                      }`}
-                    >
-                      {message === "Order updated." || message === "Order completed." ? (
-                        <CheckCircle2 size={16} />
-                      ) : null}
-                      {message}
-                    </span>
-                  ) : null}
+                        {action.label}
+                      </Button>
+                    ))}
+                  </div>
                 </div>
               ) : null}
 

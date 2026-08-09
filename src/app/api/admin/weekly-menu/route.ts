@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { getCurrentAdmin } from "@/lib/admin-auth";
+import { rejectCrossOriginMutation } from "@/lib/request-security";
 import { getSupabaseAdminClient } from "@/lib/supabase";
 import {
   getActiveWeeklyMenuData,
@@ -54,6 +55,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const originError = rejectCrossOriginMutation(request);
+  if (originError) return originError;
+
   const admin = await getCurrentAdmin();
   if (!admin) {
     return NextResponse.json(
@@ -62,7 +66,13 @@ export async function POST(request: Request) {
     );
   }
 
-  const parsed = weeklyMenuAdminSchema.safeParse(await request.json());
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    body = null;
+  }
+  const parsed = weeklyMenuAdminSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
       { error: parsed.error.issues[0]?.message || "Invalid weekly menu." },
@@ -79,76 +89,40 @@ export async function POST(request: Request) {
   }
 
   const weeklyMenu = parsed.data;
-  let weeklyMenuId = weeklyMenu.id;
-
-  if (weeklyMenuId) {
-    const { error: menuError } = await supabase
-      .from("weekly_menus")
-      .update({
-        name: weeklyMenu.name,
-        order_cutoff_at: weeklyMenu.orderCutoffAt,
-        starts_at: weeklyMenu.startsAt,
-        ends_at: weeklyMenu.endsAt,
-        published: weeklyMenu.published,
-      })
-      .eq("id", weeklyMenuId);
-
-    if (menuError) {
-      return NextResponse.json({ error: menuError.message }, { status: 400 });
-    }
-  } else {
-    const { data, error: menuError } = await supabase
-      .from("weekly_menus")
-      .insert({
-        name: weeklyMenu.name,
-        order_cutoff_at: weeklyMenu.orderCutoffAt,
-        starts_at: weeklyMenu.startsAt,
-        ends_at: weeklyMenu.endsAt,
-        published: weeklyMenu.published,
-      })
-      .select("id")
-      .single();
-
-    if (menuError) {
-      return NextResponse.json({ error: menuError.message }, { status: 400 });
-    }
-
-    weeklyMenuId = data.id as string;
-  }
-
   const includedItems = weeklyMenu.items.filter((item) => item.included);
-  const excludedProductIds = weeklyMenu.items
-    .filter((item) => !item.included)
-    .map((item) => item.productId);
-
-  if (includedItems.length) {
-    const { error } = await supabase.from("weekly_menu_items").upsert(
-      includedItems.map((item) => ({
-        weekly_menu_id: weeklyMenuId,
+  const { data: weeklyMenuId, error } = await supabase.rpc(
+    "admin_save_weekly_menu",
+    {
+      p_weekly_menu_id: weeklyMenu.id || null,
+      p_name: weeklyMenu.name,
+      p_order_cutoff_at: weeklyMenu.orderCutoffAt,
+      p_starts_at: weeklyMenu.startsAt,
+      p_ends_at: weeklyMenu.endsAt,
+      p_published: weeklyMenu.published,
+      p_items: includedItems.map((item) => ({
         product_id: item.productId,
         available_quantity: item.availableQuantity,
-        sold_quantity: item.soldQuantity,
         featured: item.unavailable ? false : item.featured,
         unavailable: item.unavailable,
       })),
-      { onConflict: "weekly_menu_id,product_id" },
+      p_actor_email: admin.email,
+    },
+  );
+
+  if (error) {
+    const conflict = /already sold|paid or reserved|cannot be removed|cannot be lower/i.test(
+      error.message,
     );
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
-    }
+    return NextResponse.json(
+      { error: error.message },
+      { status: conflict ? 409 : 400 },
+    );
   }
-
-  if (excludedProductIds.length) {
-    const { error } = await supabase
-      .from("weekly_menu_items")
-      .delete()
-      .eq("weekly_menu_id", weeklyMenuId)
-      .in("product_id", excludedProductIds);
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
-    }
+  if (typeof weeklyMenuId !== "string") {
+    return NextResponse.json(
+      { error: "Weekly menu was saved but its identifier was not returned." },
+      { status: 500 },
+    );
   }
 
   revalidateStorefrontMenuRoutes();
@@ -157,6 +131,9 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
+  const originError = rejectCrossOriginMutation(request);
+  if (originError) return originError;
+
   const admin = await getCurrentAdmin();
   if (!admin) {
     return NextResponse.json(
@@ -165,7 +142,13 @@ export async function PATCH(request: Request) {
     );
   }
 
-  const parsed = weeklyMenuItemAvailabilityAdminSchema.safeParse(await request.json());
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    body = null;
+  }
+  const parsed = weeklyMenuItemAvailabilityAdminSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
       { error: parsed.error.issues[0]?.message || "Invalid weekly menu item." },
@@ -183,21 +166,18 @@ export async function PATCH(request: Request) {
 
   const { weeklyMenuId, productId, unavailable } = parsed.data;
   const { data, error } = await supabase
-    .from("weekly_menu_items")
-    .update({
-      unavailable,
-      ...(unavailable ? { featured: false } : {}),
-    })
-    .eq("weekly_menu_id", weeklyMenuId)
-    .eq("product_id", productId)
-    .select("id")
-    .maybeSingle();
+    .rpc("admin_set_weekly_menu_item_availability", {
+      p_weekly_menu_id: weeklyMenuId,
+      p_product_id: productId,
+      p_unavailable: unavailable,
+      p_actor_email: admin.email,
+    });
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 400 });
   }
 
-  if (!data) {
+  if (data !== true) {
     return NextResponse.json(
       { error: "This product is not included in the selected weekly menu." },
       { status: 404 },

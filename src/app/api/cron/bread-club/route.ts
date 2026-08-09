@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { runBreadClubDaily } from "@/lib/bread-club/daily";
 import { isCronRequestAuthorized } from "@/lib/cron-auth";
 import { reconcileStorefrontCheckoutSessions } from "@/lib/order-reconciliation";
+import { processPendingOrderNotifications } from "@/lib/order-notifications";
+import { cleanupRateLimitEvents } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,16 +14,26 @@ export async function POST(request: Request) {
   }
 
   try {
-    const [report, checkoutReconciliation] = await Promise.all([
+    const [
+      report,
+      checkoutReconciliation,
+      orderNotifications,
+      expiredRateLimitEventsDeleted,
+    ] = await Promise.all([
       runBreadClubDaily(),
       reconcileStorefrontCheckoutSessions(),
+      processPendingOrderNotifications(),
+      cleanupRateLimitEvents(),
     ]);
     return NextResponse.json({
       ok:
         report.errors.length === 0 &&
-        checkoutReconciliation.errors.length === 0,
+        checkoutReconciliation.errors.length === 0 &&
+        orderNotifications.errors.length === 0,
       report,
       checkoutReconciliation,
+      orderNotifications,
+      expiredRateLimitEventsDeleted,
     });
   } catch (error) {
     return NextResponse.json(

@@ -4,7 +4,7 @@ import {
   createBreadClubMagicLink,
   hashBreadClubRequestIp,
 } from "@/lib/bread-club/auth";
-import { checkRateLimit } from "@/lib/rate-limit";
+import { checkRateLimitChain, getRequestClientIp } from "@/lib/rate-limit";
 
 const accessSchema = z.object({
   email: z.string().trim().email().max(254),
@@ -26,12 +26,20 @@ export async function POST(request: Request) {
   }
 
   const email = parsed.data.email.trim().toLowerCase();
-  const rateLimit = await checkRateLimit({
-    scope: "bread_club_magic_link",
-    key: `${hashBreadClubRequestIp(request) || "unknown"}:${email}`,
-    limit: 4,
-    windowMs: 60 * 60 * 1000,
-  });
+  const rateLimit = await checkRateLimitChain(
+    {
+      scope: "bread_club_magic_link_ip",
+      key: getRequestClientIp(request),
+      limit: 12,
+      windowMs: 60 * 60 * 1000,
+    },
+    {
+      scope: "bread_club_magic_link",
+      key: `${hashBreadClubRequestIp(request) || "unknown"}:${email}`,
+      limit: 4,
+      windowMs: 60 * 60 * 1000,
+    },
+  );
   if (!rateLimit.allowed) {
     return NextResponse.json(
       { error: "Too many link requests. Please try again later." },

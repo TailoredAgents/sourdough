@@ -7,6 +7,7 @@ import {
 } from "./emails";
 import {
   activateBreadClubCycleForInvoice,
+  attachStripeSubscriptionCheckout,
   expireBreadClubCheckoutSession,
   findBreadClubCycleByInvoiceId,
   findPendingCycleForMembership,
@@ -61,6 +62,8 @@ function eventObjectId(event: Stripe.Event) {
 export function isBreadClubStripeEvent(event: Stripe.Event) {
   if (
     event.type === "checkout.session.completed" ||
+    event.type === "checkout.session.async_payment_succeeded" ||
+    event.type === "checkout.session.async_payment_failed" ||
     event.type === "checkout.session.expired"
   ) {
     const session = event.data.object as Stripe.Checkout.Session;
@@ -103,26 +106,27 @@ async function claimEvent(event: Stripe.Event) {
     p_object_id: eventObjectId(event),
   });
   if (error) throw new Error(error.message);
-  return Boolean(data);
+  return data ? String(data) : null;
 }
 
 async function finishEvent(
   eventId: string,
+  claimToken: string,
   status: "processed" | "failed",
   errorMessage?: string,
 ) {
   const supabase = getSupabaseAdminClient();
   if (!supabase) throw new Error("Supabase admin client is not configured.");
-  const { error } = await supabase
-    .from("processed_stripe_events")
-    .update({
-      status,
-      processed_at: status === "processed" ? new Date().toISOString() : null,
-      last_error: errorMessage || null,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", eventId);
+  const { data, error } = await supabase.rpc("finish_stripe_event", {
+    p_event_id: eventId,
+    p_claim_token: claimToken,
+    p_status: status,
+    p_error_message: errorMessage || null,
+  });
   if (error) throw new Error(error.message);
+  if (!data) {
+    console.warn("[bread-club] stale Stripe event worker ignored", { eventId });
+  }
 }
 
 function subscriptionItemDetails(subscription: Stripe.Subscription) {
@@ -209,71 +213,43 @@ async function claimPaidCycleNotification(
   const supabase = getSupabaseAdminClient();
   if (!supabase) throw new Error("Supabase admin client is not configured.");
   const jobKey = `paid-cycle-notification:${cycleId}`;
-  const now = new Date().toISOString();
-  const { error: insertError } = await supabase
-    .from("bread_club_job_events")
-    .insert({
-      job_key: jobKey,
-      job_type: "paid_cycle_notification",
-      membership_id: membershipId,
-      status: "processing",
-      payload: { cycle_id: cycleId },
-      started_at: now,
-      updated_at: now,
-    });
-  if (!insertError) return { claimed: true, jobKey };
-  if (insertError.code !== "23505") throw new Error(insertError.message);
-
-  const { data: existing, error: lookupError } = await supabase
-    .from("bread_club_job_events")
-    .select("status, attempt_count")
-    .eq("job_key", jobKey)
-    .maybeSingle();
-  if (lookupError) throw new Error(lookupError.message);
-  if (!existing || existing.status !== "failed") {
-    return { claimed: false, jobKey };
-  }
-
-  const { data: reclaimed, error: reclaimError } = await supabase
-    .from("bread_club_job_events")
-    .update({
-      status: "processing",
-      attempt_count: Number(existing.attempt_count) + 1,
-      last_error: null,
-      started_at: now,
-      updated_at: now,
-    })
-    .eq("job_key", jobKey)
-    .eq("status", "failed")
-    .select("job_key")
-    .maybeSingle();
-  if (reclaimError) throw new Error(reclaimError.message);
-  return { claimed: Boolean(reclaimed), jobKey };
+  const { data, error } = await supabase.rpc("claim_bread_club_job", {
+    p_job_key: jobKey,
+    p_job_type: "paid_cycle_notification",
+    p_membership_id: membershipId,
+    p_payload: { cycle_id: cycleId },
+  });
+  if (error) throw new Error(error.message);
+  return { claimToken: data ? String(data) : null, jobKey };
 }
 
 async function finishPaidCycleNotification(
   jobKey: string,
+  claimToken: string,
   status: "completed" | "failed",
   error?: unknown,
 ) {
   const supabase = getSupabaseAdminClient();
   if (!supabase) return;
-  const now = new Date().toISOString();
-  const { error: updateError } = await supabase
-    .from("bread_club_job_events")
-    .update({
-      status,
-      completed_at: status === "completed" ? now : null,
-      last_error:
-        status === "failed"
-          ? error instanceof Error
-            ? error.message
-            : String(error || "Paid-cycle notification failed.")
-          : null,
-      updated_at: now,
-    })
-    .eq("job_key", jobKey);
+  const errorMessage =
+    status === "failed"
+      ? error instanceof Error
+        ? error.message
+        : String(error || "Paid-cycle notification failed.")
+      : null;
+  const { data, error: updateError } = await supabase.rpc(
+    "finish_bread_club_job",
+    {
+      p_job_key: jobKey,
+      p_claim_token: claimToken,
+      p_status: status,
+      p_error_message: errorMessage,
+    },
+  );
   if (updateError) throw new Error(updateError.message);
+  if (!data) {
+    console.warn("[bread-club] stale notification worker ignored", { jobKey });
+  }
 }
 
 async function notifyPaidCycle(
@@ -281,7 +257,7 @@ async function notifyPaidCycle(
   cycleId: string,
 ) {
   const claim = await claimPaidCycleNotification(membershipId, cycleId);
-  if (!claim.claimed) return;
+  if (!claim.claimToken) return;
 
   try {
     const notification = await membershipNotificationData(
@@ -289,7 +265,11 @@ async function notifyPaidCycle(
       cycleId,
     );
     if (!notification.customerEmail) {
-      await finishPaidCycleNotification(claim.jobKey, "completed");
+      await finishPaidCycleNotification(
+        claim.jobKey,
+        claim.claimToken,
+        "completed",
+      );
       return;
     }
     const manageUrl = `${getSiteUrl()}/bread-club/manage`;
@@ -304,6 +284,7 @@ async function notifyPaidCycle(
           recurringTotalCents: notification.totalCents,
           sundayLabels: notification.sundayLabels,
           manageUrl,
+          eventKey: `paid-cycle:${cycleId}:welcome`,
         }),
         sendOwnerAlert({
           type: "order",
@@ -313,6 +294,7 @@ async function notifyPaidCycle(
             notification.sundayLabels[0] || "Next Sunday"
           }.`,
           orderId: notification.firstOrderId || undefined,
+          throwOnFailure: true,
         }),
       ];
 
@@ -326,36 +308,52 @@ async function notifyPaidCycle(
             amountCents: notification.totalCents,
             firstDeliveryLabel:
               notification.sundayLabels[0] || "Next Sunday",
+            eventKey: `paid-cycle:${cycleId}:bakery-alert`,
           }),
         );
       }
 
       const results = await Promise.allSettled(sends);
-      results.forEach((result) => {
-        if (result.status === "rejected") {
-          console.error("[bread-club] paid-cycle email failed", {
-            membershipId,
-            cycleId,
-            error: result.reason,
-          });
-        }
-      });
-      await finishPaidCycleNotification(claim.jobKey, "completed");
+      const failures = results.filter(
+        (result): result is PromiseRejectedResult =>
+          result.status === "rejected",
+      );
+      if (failures.length) {
+        throw new AggregateError(
+          failures.map((failure) => failure.reason),
+          "One or more paid-cycle notifications failed.",
+        );
+      }
+      await finishPaidCycleNotification(
+        claim.jobKey,
+        claim.claimToken,
+        "completed",
+      );
       return;
     }
 
     await sendBreadClubRenewal({
       to: notification.customerEmail,
       customerName: notification.customerName,
-        membershipId,
-        planName: notification.planName,
-        amountCents: notification.totalCents,
+      membershipId,
+      planName: notification.planName,
+      amountCents: notification.totalCents,
       sundayLabels: notification.sundayLabels,
       manageUrl,
+      eventKey: `paid-cycle:${cycleId}:renewal`,
     });
-    await finishPaidCycleNotification(claim.jobKey, "completed");
+    await finishPaidCycleNotification(
+      claim.jobKey,
+      claim.claimToken,
+      "completed",
+    );
   } catch (error) {
-    await finishPaidCycleNotification(claim.jobKey, "failed", error);
+    await finishPaidCycleNotification(
+      claim.jobKey,
+      claim.claimToken,
+      "failed",
+      error,
+    );
     console.error("[bread-club] paid-cycle email failed", {
       membershipId,
       cycleId,
@@ -365,27 +363,67 @@ async function notifyPaidCycle(
   }
 }
 
-async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
+export type BreadClubSubscriptionCheckoutReconciliation = {
+  membershipId: string;
+  cycleId: string;
+  checkoutRecorded: true;
+  cycleState: "awaiting_payment" | "activated" | "already_activated";
+};
+
+type ExpectedBreadClubCheckout = {
+  membershipId?: string;
+  cycleId?: string;
+};
+
+export async function reconcileBreadClubSubscriptionCheckout(
+  session: Stripe.Checkout.Session,
+  expected: ExpectedBreadClubCheckout = {},
+): Promise<BreadClubSubscriptionCheckoutReconciliation> {
   const membershipId =
     session.metadata?.bread_club_membership_id || "";
   const cycleId = session.metadata?.bread_club_cycle_id || "";
-  if (!membershipId) return;
+  if (
+    session.status !== "complete" ||
+    session.mode !== "subscription" ||
+    session.metadata?.checkout_kind !== "bread_club_subscription" ||
+    !membershipId ||
+    !cycleId
+  ) {
+    throw new Error(
+      "Stripe Checkout did not contain a complete Bread Club subscription payment boundary.",
+    );
+  }
+  if (
+    (expected.membershipId && expected.membershipId !== membershipId) ||
+    (expected.cycleId && expected.cycleId !== cycleId)
+  ) {
+    throw new Error(
+      "Stripe Checkout metadata did not match the pending Bread Club checkout.",
+    );
+  }
 
   const stripe = getStripe();
   if (!stripe) throw new Error("STRIPE_SECRET_KEY is not configured.");
   const subscriptionId = stripeId(session.subscription);
-  const subscription = subscriptionId
-    ? await stripe.subscriptions.retrieve(subscriptionId, {
-        expand: ["latest_invoice"],
-      })
-    : null;
-  const itemDetails = subscription
-    ? subscriptionItemDetails(subscription)
-    : {
-        planItemId: null,
-        deliveryItemId: null,
-        currentPeriodEnd: null,
-      };
+  if (!subscriptionId) {
+    throw new Error(
+      "Completed Bread Club Checkout did not contain a subscription.",
+    );
+  }
+  const subscription = await stripe.subscriptions.retrieve(subscriptionId, {
+    expand: ["latest_invoice"],
+  });
+  if (
+    subscription.metadata.checkout_kind !== "bread_club_subscription" ||
+    subscriptionMembershipId(subscription) !== membershipId
+  ) {
+    throw new Error(
+      "Stripe subscription metadata did not match the Bread Club checkout.",
+    );
+  }
+  const itemDetails = subscriptionItemDetails(subscription);
+
+  await attachStripeSubscriptionCheckout(membershipId, session.id);
 
   await recordBreadClubCheckoutCompleted({
     membershipId,
@@ -402,37 +440,136 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
     typeof subscription.latest_invoice !== "string"
       ? subscription.latest_invoice
       : null;
-  if (cycleId && latestInvoice?.status === "paid") {
+  if (
+    session.payment_status !== "paid" &&
+    session.payment_status !== "no_payment_required"
+  ) {
+    return {
+      membershipId,
+      cycleId,
+      checkoutRecorded: true,
+      cycleState: "awaiting_payment",
+    };
+  }
+  if (!latestInvoice || latestInvoice.status !== "paid") {
+    throw new Error(
+      "Completed Bread Club Checkout did not have a paid Stripe invoice.",
+    );
+  }
+  const invoiceMetadataMembershipId = invoiceMembershipId(latestInvoice);
+  if (
+    invoiceMetadataMembershipId &&
+    invoiceMetadataMembershipId !== membershipId
+  ) {
+    throw new Error(
+      "Stripe invoice metadata did not match the Bread Club checkout.",
+    );
+  }
+
+  const existingCycle = await findBreadClubCycleByInvoiceId(
+    latestInvoice.id,
+  );
+  let cycleState: BreadClubSubscriptionCheckoutReconciliation["cycleState"] =
+    "activated";
+  if (existingCycle) {
+    if (
+      existingCycle.id !== cycleId ||
+      existingCycle.membershipId !== membershipId
+    ) {
+      throw new Error(
+        "The paid Stripe invoice is already attached to a different Bread Club cycle.",
+      );
+    }
+    if (["paid", "completed"].includes(existingCycle.status)) {
+      cycleState = "already_activated";
+    } else if (
+      !["pending_payment", "past_due"].includes(existingCycle.status)
+    ) {
+      throw new Error(
+        `Bread Club cycle ${cycleId} cannot be activated from ${existingCycle.status}.`,
+      );
+    }
+  } else {
     const pending = await findPendingCycleForMembership(membershipId);
-    if (pending?.id === cycleId) {
-      await activateBreadClubCycleForInvoice({
-        membershipId,
-        cycleId,
-        invoiceId: latestInvoice.id,
-        amountPaidCents: latestInvoice.amount_paid,
-        taxCents:
-          latestInvoice.total_taxes?.reduce(
-            (sum, tax) => sum + tax.amount,
-            0,
-          ) || 0,
-        paidAt: latestInvoice.status_transitions.paid_at
-          ? new Date(
-              latestInvoice.status_transitions.paid_at * 1000,
-            ).toISOString()
-          : undefined,
-      });
-      await notifyPaidCycle(membershipId, cycleId);
+    if (pending?.id !== cycleId) {
+      throw new Error(
+        "The paid Stripe Checkout did not match the membership's pending Bread Club cycle.",
+      );
     }
   }
+
+  await activateBreadClubCycleForInvoice({
+    membershipId,
+    cycleId,
+    invoiceId: latestInvoice.id,
+    amountPaidCents: latestInvoice.amount_paid,
+    taxCents:
+      latestInvoice.total_taxes?.reduce(
+        (sum, tax) => sum + tax.amount,
+        0,
+      ) || 0,
+    paidAt: latestInvoice.status_transitions.paid_at
+      ? new Date(
+          latestInvoice.status_transitions.paid_at * 1000,
+        ).toISOString()
+      : undefined,
+  });
+  await notifyPaidCycle(membershipId, cycleId);
+  return {
+    membershipId,
+    cycleId,
+    checkoutRecorded: true,
+    cycleState,
+  };
 }
 
 async function handleInvoicePaid(invoice: Stripe.Invoice) {
   const membershipId = invoiceMembershipId(invoice);
   if (!membershipId) return;
   const existingCycle = await findBreadClubCycleByInvoiceId(invoice.id);
-  if (existingCycle?.status === "paid") {
+  if (
+    existingCycle &&
+    existingCycle.membershipId !== membershipId
+  ) {
+    throw new Error(
+      "Stripe invoice metadata did not match its Bread Club cycle.",
+    );
+  }
+  if (
+    existingCycle &&
+    ["paid", "completed"].includes(existingCycle.status)
+  ) {
+    await activateBreadClubCycleForInvoice({
+      membershipId,
+      cycleId: existingCycle.id,
+      invoiceId: invoice.id,
+      amountPaidCents: invoice.amount_paid,
+      taxCents:
+        invoice.total_taxes?.reduce(
+          (sum, tax) => sum + tax.amount,
+          0,
+        ) || 0,
+      paidAt: invoice.status_transitions.paid_at
+        ? new Date(
+            invoice.status_transitions.paid_at * 1000,
+          ).toISOString()
+        : undefined,
+    });
+    await markInvoiceDeliveryCreditsApplied(membershipId, invoice);
+    await notifyPaidCycle(membershipId, existingCycle.id);
+    return;
+  }
+  if (
+    existingCycle &&
+    ["refund_pending", "refunded"].includes(existingCycle.status)
+  ) {
     await markInvoiceDeliveryCreditsApplied(membershipId, invoice);
     return;
+  }
+  if (existingCycle?.status === "canceled") {
+    throw new Error(
+      `Bread Club cycle ${existingCycle.id} is canceled, but Stripe reported invoice ${invoice.id} as paid. Manual reconciliation is required.`,
+    );
   }
   let cycle = await findPendingCycleForMembership(membershipId);
   if (!cycle) {
@@ -454,7 +591,10 @@ async function handleInvoicePaid(invoice: Stripe.Invoice) {
   await notifyPaidCycle(membershipId, cycle.id);
 }
 
-async function handleInvoicePaymentFailed(invoice: Stripe.Invoice) {
+async function handleInvoicePaymentFailed(
+  invoice: Stripe.Invoice,
+  eventId: string,
+) {
   const membershipId = invoiceMembershipId(invoice);
   if (!membershipId) return;
   await markBreadClubInvoiceFailed(membershipId, invoice.id);
@@ -476,6 +616,7 @@ async function handleInvoicePaymentFailed(invoice: Stripe.Invoice) {
       customerName: String(customer.name || "there"),
       membershipId,
       portalUrl: `${getSiteUrl()}/bread-club/manage`,
+      eventKey: `stripe-event:${eventId}:payment-failure`,
     });
   } catch (error) {
     console.error("[bread-club] payment-failure email failed", error);
@@ -528,21 +669,13 @@ async function handleSubscriptionUpdate(
     if (pending) await releaseBreadClubPendingCycle(pending.id);
   }
 
-  if (deleted) {
-    try {
-      await refundBreadClubUnusedCredits(membershipId);
-    } catch (error) {
-      console.error("[bread-club] unused credit refund failed", {
-        membershipId,
-        error,
-      });
-    }
-  }
+  if (deleted) await refundBreadClubUnusedCredits(membershipId);
 }
 
 async function processEvent(event: Stripe.Event) {
   switch (event.type) {
     case "checkout.session.completed":
+    case "checkout.session.async_payment_succeeded":
       if (
         (event.data.object as Stripe.Checkout.Session).metadata
           ?.checkout_kind === "bread_club_addon"
@@ -551,31 +684,34 @@ async function processEvent(event: Stripe.Event) {
           event.data.object as Stripe.Checkout.Session,
         );
       } else {
-        await handleCheckoutCompleted(
+        await reconcileBreadClubSubscriptionCheckout(
           event.data.object as Stripe.Checkout.Session,
         );
       }
       break;
-    case "checkout.session.expired":
-      if (
-        (event.data.object as Stripe.Checkout.Session).metadata
-          ?.checkout_kind === "bread_club_addon"
-      ) {
+    case "checkout.session.async_payment_failed":
+    case "checkout.session.expired": {
+      const session = event.data.object as Stripe.Checkout.Session;
+      if (session.metadata?.checkout_kind === "bread_club_addon") {
         await expireBreadClubAddonCheckout(
-          (event.data.object as Stripe.Checkout.Session).id,
+          session.id,
+          session.metadata?.bread_club_addon_id || null,
         );
       } else {
         await expireBreadClubCheckoutSession(
-          (event.data.object as Stripe.Checkout.Session).id,
+          session.id,
+          session.metadata?.bread_club_membership_id || null,
         );
       }
       break;
+    }
     case "invoice.paid":
       await handleInvoicePaid(event.data.object as Stripe.Invoice);
       break;
     case "invoice.payment_failed":
       await handleInvoicePaymentFailed(
         event.data.object as Stripe.Invoice,
+        event.id,
       );
       break;
     case "invoice.upcoming": {
@@ -589,14 +725,17 @@ async function processEvent(event: Stripe.Event) {
         }
         const { data: membership, error } = await supabase
           .from("bread_club_memberships")
-          .select("status, cancel_at_period_end")
+          .select(
+            "status, cancel_at_period_end, provider_sync_required",
+          )
           .eq("id", membershipId)
           .maybeSingle();
         if (error) throw new Error(error.message);
         if (
           membership &&
           ["active", "past_due"].includes(String(membership.status)) &&
-          !membership.cancel_at_period_end
+          !membership.cancel_at_period_end &&
+          !membership.provider_sync_required
         ) {
           await prepareNextBreadClubCycle(membershipId);
         }
@@ -619,16 +758,16 @@ async function processEvent(event: Stripe.Event) {
 
 export async function handleBreadClubStripeEvent(event: Stripe.Event) {
   if (!isBreadClubStripeEvent(event)) return false;
-  const claimed = await claimEvent(event);
-  if (!claimed) return true;
+  const claimToken = await claimEvent(event);
+  if (!claimToken) return true;
 
   try {
     await processEvent(event);
-    await finishEvent(event.id, "processed");
+    await finishEvent(event.id, claimToken, "processed");
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Bread Club webhook failed.";
-    await finishEvent(event.id, "failed", message);
+    await finishEvent(event.id, claimToken, "failed", message);
     throw error;
   }
   return true;

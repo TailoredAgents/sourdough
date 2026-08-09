@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getCurrentAdmin } from "@/lib/admin-auth";
+import { rejectCrossOriginMutation } from "@/lib/request-security";
 import {
   adminCancelBreadClubMembership,
   getBreadClubAdminData,
@@ -45,6 +46,9 @@ export async function GET() {
   return NextResponse.json({ data: await getBreadClubAdminData() });
 }
 export async function POST(request: Request) {
+  const originError = rejectCrossOriginMutation(request);
+  if (originError) return originError;
+
   if (!(await getCurrentAdmin())) {
     return NextResponse.json(
       { error: "Admin authorization is required." },

@@ -1,14 +1,24 @@
 import { NextResponse } from "next/server";
 import { getCurrentAdmin } from "@/lib/admin-auth";
+import { rejectCrossOriginMutation } from "@/lib/request-security";
 import {
   customerMessageReplySchema,
   customerMessageStatusSchema,
-  getCustomerMessagesData,
+  getCustomerMessagesPageData,
   sendCustomerMessageReply,
   updateCustomerMessageStatus,
 } from "@/lib/customer-messages";
 
-export async function GET() {
+function parseOffset(request: Request) {
+  const value = new URL(request.url).searchParams.get("offset");
+  if (value === null) return 0;
+  const offset = Number(value);
+  return Number.isSafeInteger(offset) && offset >= 0 && offset <= 100_000
+    ? offset
+    : null;
+}
+
+export async function GET(request: Request) {
   const admin = await getCurrentAdmin();
   if (!admin) {
     return NextResponse.json(
@@ -17,10 +27,18 @@ export async function GET() {
     );
   }
 
-  return NextResponse.json({ messages: await getCustomerMessagesData() });
+  const offset = parseOffset(request);
+  if (offset === null) {
+    return NextResponse.json({ error: "Message page offset is invalid." }, { status: 400 });
+  }
+
+  return NextResponse.json(await getCustomerMessagesPageData({ offset }));
 }
 
 export async function PATCH(request: Request) {
+  const originError = rejectCrossOriginMutation(request);
+  if (originError) return originError;
+
   const admin = await getCurrentAdmin();
   if (!admin) {
     return NextResponse.json(
@@ -29,7 +47,13 @@ export async function PATCH(request: Request) {
     );
   }
 
-  const parsed = customerMessageStatusSchema.safeParse(await request.json());
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    body = null;
+  }
+  const parsed = customerMessageStatusSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
       { error: parsed.error.issues[0]?.message || "Invalid message update." },
@@ -38,12 +62,9 @@ export async function PATCH(request: Request) {
   }
 
   try {
-    return NextResponse.json({
-      messages: await updateCustomerMessageStatus(
-        parsed.data.id,
-        parsed.data.status,
-      ),
-    });
+    return NextResponse.json(
+      await updateCustomerMessageStatus(parsed.data.id, parsed.data.status),
+    );
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Message could not be updated.";
@@ -52,6 +73,9 @@ export async function PATCH(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const originError = rejectCrossOriginMutation(request);
+  if (originError) return originError;
+
   const admin = await getCurrentAdmin();
   if (!admin) {
     return NextResponse.json(
@@ -60,7 +84,13 @@ export async function POST(request: Request) {
     );
   }
 
-  const parsed = customerMessageReplySchema.safeParse(await request.json());
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    body = null;
+  }
+  const parsed = customerMessageReplySchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
       { error: parsed.error.issues[0]?.message || "Invalid customer reply." },

@@ -8,7 +8,7 @@ import { createCustomerQuestionMessage } from "@/lib/customer-messages";
 import { getCutoffMessage } from "@/lib/cutoff";
 import { getMenuProductAvailabilityLabel } from "@/lib/menu-availability";
 import { aiModel, getOpenAI } from "@/lib/openai";
-import { checkRateLimit } from "@/lib/rate-limit";
+import { checkRateLimit, getRequestClientIp } from "@/lib/rate-limit";
 import {
   getActiveMenuData,
   getActiveWeeklyMenuData,
@@ -89,9 +89,9 @@ export async function POST(request: Request) {
   let fallback = fallbackAnswer(parsed.data.message);
 
   try {
-    const forwardedFor = request.headers.get("x-forwarded-for") || "";
+    const clientIp = getRequestClientIp(request);
     const clientKey =
-      forwardedFor.split(",")[0]?.trim() ||
+      (clientIp !== "unknown-ip" ? clientIp : null) ||
       request.headers.get("user-agent") ||
       "unknown-client";
     const rateLimit = await checkRateLimit({

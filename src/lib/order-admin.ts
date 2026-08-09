@@ -6,12 +6,12 @@ import type {
   DeliveryAddress,
   OrderStatus,
 } from "./types";
-import {
-  sendOrderCompletionThankYou,
-  sendOrderStatusUpdate,
-} from "./email";
-import { isStandardSundayDeliveryWindow } from "./bake-schedule";
+import { sendOrderStatusUpdate } from "./email";
 import { getCustomerOrderStatusLabel } from "./order-status";
+import { isAdminOrderTransitionAllowed } from "./admin-order-workflow";
+import { isStandardSundayDeliveryWindow } from "./bake-schedule";
+import { processOrderCompletionNotification } from "./order-notifications";
+import { completeStorefrontCheckoutSession } from "./order-payment";
 import { getStripe } from "./stripe";
 import { getSupabaseAdminClient } from "./supabase";
 
@@ -65,11 +65,11 @@ type OrderRow = {
   denied_at: string | null;
   refunded_at: string | null;
   stripe_refund_id: string | null;
+  approval_refund_started_at: string | null;
   admin_decision_note: string | null;
   paid_at: string | null;
   created_at: string;
   updated_at: string;
-  checkout_cancel_token: string | null;
 };
 
 type ProductNameRow = {
@@ -126,13 +126,6 @@ const reservedOrderStatuses = new Set<OrderStatus>([
   "baking",
   "out_for_delivery",
 ]);
-const paidOrderStatuses = new Set<OrderStatus>([
-  "paid",
-  "baking",
-  "out_for_delivery",
-  "delivered",
-]);
-
 export type AdminOrderInventoryAdjustment = "reserve" | "release" | null;
 
 export function getAdminOrderInventoryAdjustment(
@@ -203,32 +196,51 @@ function mapOrder(
     deniedAt: row.denied_at,
     refundedAt: row.refunded_at,
     stripeRefundId: row.stripe_refund_id,
+    approvalRefundStartedAt: row.approval_refund_started_at,
     adminDecisionNote: row.admin_decision_note,
     paidAt: row.paid_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     stripeCheckoutSessionId: row.stripe_checkout_session_id,
-    checkoutCancelToken: row.checkout_cancel_token,
     items,
     moveWindows,
   };
 }
 
-export async function getAdminOrdersData(): Promise<AdminOrder[]> {
+export async function getAdminOrdersData(
+  options: { weeklyMenuId?: string; orderId?: string; limit?: number } = {},
+): Promise<AdminOrder[]> {
   const supabase = getSupabaseAdminClient();
   if (!supabase) return [];
 
-  const { data: orders, error: ordersError } = await supabase
+  let deliveryWindowIds: string[] | null = null;
+  if (options.weeklyMenuId) {
+    const { data: deliveryWindows, error: deliveryWindowsError } = await supabase
+      .from("delivery_windows")
+      .select("id")
+      .eq("weekly_menu_id", options.weeklyMenuId);
+    if (deliveryWindowsError) throw new Error(deliveryWindowsError.message);
+    deliveryWindowIds = (deliveryWindows || []).map((window) => String(window.id));
+    if (!deliveryWindowIds.length) return [];
+  }
+
+  let ordersQuery = supabase
     .from("orders")
     .select(
-      "id, source, bread_club_membership_id, bread_club_fulfillment_id, stripe_invoice_id, customers(name, email, phone), delivery_windows(label, weekly_menu_id, weekly_menus(name, starts_at)), status, stripe_checkout_session_id, subtotal_cents, delivery_fee_cents, tax_cents, total_cents, delivery_address, delivery_miles, delivery_instructions, delivery_check, notes, next_week_ok, approval_mode, approved_at, denied_at, refunded_at, stripe_refund_id, admin_decision_note, paid_at, created_at, updated_at, checkout_cancel_token",
-    )
+      "id, source, bread_club_membership_id, bread_club_fulfillment_id, stripe_invoice_id, customers(name, email, phone), delivery_windows(label, weekly_menu_id, weekly_menus(name, starts_at)), status, stripe_checkout_session_id, subtotal_cents, delivery_fee_cents, tax_cents, total_cents, delivery_address, delivery_miles, delivery_instructions, delivery_check, notes, next_week_ok, approval_mode, approved_at, denied_at, refunded_at, stripe_refund_id, approval_refund_started_at, admin_decision_note, paid_at, created_at, updated_at",
+    );
+  if (deliveryWindowIds) {
+    ordersQuery = ordersQuery.in("delivery_window_id", deliveryWindowIds);
+  }
+  if (options.orderId) {
+    ordersQuery = ordersQuery.eq("id", options.orderId);
+  }
+  const { data: orders, error: ordersError } = await ordersQuery
     .order("created_at", { ascending: false })
-    .limit(100);
+    .limit(options.limit ?? 100);
 
   if (ordersError) {
-    console.error("[supabase] admin orders lookup failed", ordersError.message);
-    return [];
+    throw new Error(ordersError.message);
   }
 
   const orderRows = (orders as OrderRow[]) || [];
@@ -242,8 +254,7 @@ export async function getAdminOrdersData(): Promise<AdminOrder[]> {
     .order("id", { ascending: true });
 
   if (itemsError) {
-    console.error("[supabase] admin order items lookup failed", itemsError.message);
-    return orderRows.map((order) => mapOrder(order, []));
+    throw new Error(itemsError.message);
   }
 
   const itemsByOrderId = new Map<string, AdminOrderItem[]>();
@@ -323,85 +334,18 @@ async function getMoveWindowsByOrderId(orderRows: OrderRow[]) {
   return result;
 }
 
-async function reserveInventoryForOrder(orderId: string, deliveryWindowId: string) {
-  const supabase = getSupabaseAdminClient();
-  if (!supabase) throw new Error("Supabase admin client is not configured.");
-
-  const { data: itemRows, error: itemError } = await supabase
-    .from("order_items")
-    .select("product_id, quantity")
-    .eq("order_id", orderId);
-
-  if (itemError) throw new Error(itemError.message);
-
-  const { error: reserveError } = await supabase.rpc("reserve_order_inventory", {
-    p_delivery_window_id: deliveryWindowId,
-    p_items: ((itemRows as Array<{ product_id: string; quantity: number }>) || []).map(
-      (item) => ({
-        product_id: item.product_id,
-        quantity: item.quantity,
-      }),
-    ),
-  });
-
-  if (reserveError) throw new Error(reserveError.message);
-}
-
-async function releaseInventoryForWindowItems(orderId: string, deliveryWindowId: string) {
-  const supabase = getSupabaseAdminClient();
-  if (!supabase) throw new Error("Supabase admin client is not configured.");
-
-  const { data: window, error: windowError } = await supabase
-    .from("delivery_windows")
-    .select("weekly_menu_id")
-    .eq("id", deliveryWindowId)
-    .maybeSingle();
-  if (windowError || !window?.weekly_menu_id) return;
-
-  const { data: itemRows } = await supabase
-    .from("order_items")
-    .select("product_id, quantity")
-    .eq("order_id", orderId);
-
-  const { data: targetWindow } = await supabase
-    .from("delivery_windows")
-    .select("reserved")
-    .eq("id", deliveryWindowId)
-    .maybeSingle();
-  await supabase
-    .from("delivery_windows")
-    .update({ reserved: Math.max(Number(targetWindow?.reserved || 0) - 1, 0) })
-    .eq("id", deliveryWindowId);
-
-  for (const item of (itemRows as Array<{ product_id: string; quantity: number }>) || []) {
-    const { data: menuItem } = await supabase
-      .from("weekly_menu_items")
-      .select("sold_quantity")
-      .eq("weekly_menu_id", window.weekly_menu_id)
-      .eq("product_id", item.product_id)
-      .maybeSingle();
-    await supabase
-      .from("weekly_menu_items")
-      .update({
-        sold_quantity: Math.max(Number(menuItem?.sold_quantity || 0) - item.quantity, 0),
-      })
-      .eq("weekly_menu_id", window.weekly_menu_id)
-      .eq("product_id", item.product_id);
-  }
-}
-
 async function sendUpdatedOrderStatusEmail(orderId: string, status: OrderStatus) {
-  const orders = await getAdminOrdersData();
-  const updatedOrder = orders.find((order) => order.id === orderId);
-  if (!updatedOrder?.customerEmail) return orders;
+  const [updatedOrder] = await getAdminOrdersData({ orderId, limit: 1 });
 
-  try {
-    await sendCustomerOrderUpdateEmail(updatedOrder, status);
-  } catch (emailError) {
-    console.error("[orders] status email failed", emailError);
+  if (updatedOrder?.customerEmail) {
+    try {
+      await sendCustomerOrderUpdateEmail(updatedOrder, status);
+    } catch (emailError) {
+      console.error("[orders] status email failed", emailError);
+    }
   }
 
-  return orders;
+  return getAdminOrdersData();
 }
 
 async function sendCustomerOrderUpdateEmail(
@@ -418,23 +362,101 @@ async function sendCustomerOrderUpdateEmail(
     orderId: order.id,
   };
 
-  if (status === "delivered") {
-    return sendOrderCompletionThankYou(input);
-  }
-
   return sendOrderStatusUpdate({
     ...input,
     statusLabel: getCustomerOrderStatusLabel(status),
   });
 }
 
-export async function updateAdminOrderStatus(id: string, status: OrderStatus) {
+async function cancelUnpaidStorefrontOrder(input: {
+  id: string;
+  actorEmail?: string;
+  expectedWeeklyMenuId?: string | null;
+  checkoutExpiresAt: string | null;
+  createdAt: string;
+  stripeCheckoutSessionId: string | null;
+}) {
+  const supabase = getSupabaseAdminClient();
+  if (!supabase) throw new Error("Supabase admin client is not configured.");
+
+  let closedSessionId: string | null = null;
+  if (input.stripeCheckoutSessionId) {
+    const stripe = getStripe();
+    if (!stripe) {
+      throw new Error(
+        "Stripe must be configured before an attached checkout can be canceled.",
+      );
+    }
+
+    let session = await stripe.checkout.sessions.retrieve(
+      input.stripeCheckoutSessionId,
+    );
+    if (session.status === "open") {
+      try {
+        session = await stripe.checkout.sessions.expire(session.id);
+      } catch {
+        session = await stripe.checkout.sessions.retrieve(session.id);
+      }
+    }
+    if (session.status === "complete") {
+      await completeStorefrontCheckoutSession(session);
+      throw new Error(
+        "Stripe already completed or is processing this payment. The order was not canceled; refresh its status.",
+      );
+    }
+    if (session.status !== "expired") {
+      throw new Error(
+        "Stripe has not confirmed that checkout is closed. No inventory was released.",
+      );
+    }
+    closedSessionId = session.id;
+  } else {
+    const explicitExpiration = input.checkoutExpiresAt
+      ? new Date(input.checkoutExpiresAt).getTime()
+      : Number.NaN;
+    const createdAt = new Date(input.createdAt).getTime();
+    const safeExpiration = Number.isFinite(explicitExpiration)
+      ? explicitExpiration
+      : createdAt + 26 * 60 * 60 * 1000;
+    if (!Number.isFinite(safeExpiration) || safeExpiration > Date.now()) {
+      throw new Error(
+        "Secure checkout may still be starting. Wait for it to expire before canceling so a live payment link cannot oversell inventory.",
+      );
+    }
+  }
+
+  const { data, error } = await supabase.rpc("admin_cancel_storefront_checkout_scoped", {
+    p_order_id: input.id,
+    p_expected_weekly_menu_id: input.expectedWeeklyMenuId || null,
+    p_session_id: closedSessionId,
+    p_cancel_token: null,
+    p_actor_email: input.actorEmail || null,
+    p_reason: "Canceled by the bakery after Stripe checkout was confirmed closed.",
+  });
+  if (error) throw new Error(error.message);
+  if (!data) {
+    throw new Error(
+      "This checkout changed before it could be canceled. Refresh and try again.",
+    );
+  }
+
+  return sendUpdatedOrderStatusEmail(input.id, "canceled");
+}
+
+export async function updateAdminOrderStatus(
+  id: string,
+  status: OrderStatus,
+  actorEmail?: string,
+  expectedWeeklyMenuId?: string | null,
+) {
   const supabase = getSupabaseAdminClient();
   if (!supabase) throw new Error("Supabase admin client is not configured.");
 
   const { data: existingOrder, error: existingOrderError } = await supabase
     .from("orders")
-    .select("status, paid_at, delivery_window_id")
+    .select(
+      "source, status, stripe_checkout_session_id, checkout_expires_at, created_at",
+    )
     .eq("id", id)
     .maybeSingle();
 
@@ -442,77 +464,79 @@ export async function updateAdminOrderStatus(id: string, status: OrderStatus) {
   if (!existingOrder) throw new Error("Order could not be found.");
 
   const existingStatus = existingOrder.status as OrderStatus;
-  const inventoryAdjustment = getAdminOrderInventoryAdjustment(existingStatus, status);
-  const timestamp = new Date().toISOString();
-  let inventoryWasReserved = false;
-
-  if (inventoryAdjustment === "reserve") {
-    if (!existingOrder.delivery_window_id) {
-      throw new Error("Order does not have a Sunday delivery time to restore inventory.");
-    }
-
-    const { data: itemRows, error: itemError } = await supabase
-      .from("order_items")
-      .select("product_id, quantity")
-      .eq("order_id", id);
-
-    if (itemError) throw new Error(itemError.message);
-
-    const { error: reserveError } = await supabase.rpc("reserve_order_inventory", {
-      p_delivery_window_id: existingOrder.delivery_window_id,
-      p_items: ((itemRows as Array<{ product_id: string; quantity: number }>) || []).map(
-        (item) => ({
-          product_id: item.product_id,
-          quantity: item.quantity,
-        }),
-      ),
-    });
-
-    if (reserveError) throw new Error(reserveError.message);
-    inventoryWasReserved = true;
+  const source = existingOrder.source as AdminOrder["source"];
+  if (existingStatus === status) {
+    return {
+      orders: await getAdminOrdersData(),
+      completionNotification: "not_applicable" as const,
+    };
   }
-
-  const updatePayload: {
-    status: OrderStatus;
-    updated_at: string;
-    paid_at?: string;
-  } = {
-    status,
-    updated_at: timestamp,
-  };
-
-  if (paidOrderStatuses.has(status) && !existingOrder.paid_at) {
-    updatePayload.paid_at = timestamp;
+  if (!isAdminOrderTransitionAllowed(source, existingStatus, status)) {
+    throw new Error(
+      "That order change is not allowed from its current status. Refresh the order and use one of the available actions.",
+    );
   }
-
-  const { error } = await supabase.from("orders").update(updatePayload).eq("id", id);
-
-  if (error) {
-    if (inventoryWasReserved) {
-      await supabase.rpc("release_order_inventory", { p_order_id: id });
-    }
-    throw new Error(error.message);
+  if (
+    source === "storefront" &&
+    status === "canceled" &&
+    (existingStatus === "pending_payment" ||
+      existingStatus === "pending_approval_payment")
+  ) {
+    return {
+      orders: await cancelUnpaidStorefrontOrder({
+        id,
+        actorEmail,
+        expectedWeeklyMenuId,
+        checkoutExpiresAt:
+          (existingOrder.checkout_expires_at as string | null) ?? null,
+        createdAt: String(existingOrder.created_at),
+        stripeCheckoutSessionId:
+          (existingOrder.stripe_checkout_session_id as string | null) ?? null,
+      }),
+      completionNotification: "not_applicable" as const,
+    };
   }
-
-  if (inventoryAdjustment === "release") {
-    const { error: releaseError } = await supabase.rpc("release_order_inventory", {
+  const { data: transitioned, error: transitionError } = await supabase.rpc(
+    "admin_transition_order_status_scoped",
+    {
       p_order_id: id,
-    });
-    if (releaseError) {
-      await supabase
-        .from("orders")
-        .update({
-          status: existingStatus,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", id);
-      throw new Error(releaseError.message);
-    }
+      p_expected_weekly_menu_id: expectedWeeklyMenuId || null,
+      p_expected_status: existingStatus,
+      p_next_status: status,
+      p_actor_email: actorEmail || null,
+    },
+  );
+  if (transitionError) throw new Error(transitionError.message);
+  if (!transitioned) {
+    throw new Error(
+      "This order changed in another tab. Refresh it before trying again.",
+    );
   }
 
+  const updatedOrder =
+    status === "delivered"
+      ? null
+      : (await getAdminOrdersData({ orderId: id, limit: 1 }))[0] ?? null;
   const orders = await getAdminOrdersData();
-  const updatedOrder = orders.find((order) => order.id === id);
-  if (updatedOrder && existingStatus !== status && updatedOrder.customerEmail) {
+  let completionNotification:
+    | "not_applicable"
+    | "sent"
+    | "queued"
+    | "already_sent"
+    | "skipped" = "not_applicable";
+  if (status === "delivered") {
+    try {
+      const result = await processOrderCompletionNotification(id);
+      completionNotification = result.state;
+    } catch (emailError) {
+      completionNotification = "queued";
+      console.error("[orders] completion email queued for retry", emailError);
+    }
+  } else if (
+    updatedOrder &&
+    existingStatus !== status &&
+    updatedOrder.customerEmail
+  ) {
     try {
       await sendCustomerOrderUpdateEmail(updatedOrder, status);
     } catch (emailError) {
@@ -520,42 +544,25 @@ export async function updateAdminOrderStatus(id: string, status: OrderStatus) {
     }
   }
 
-  return orders;
+  return { orders, completionNotification };
 }
 
-export async function acceptApprovalOrder(id: string) {
+export async function acceptApprovalOrder(
+  id: string,
+  actorEmail?: string,
+  expectedWeeklyMenuId?: string | null,
+) {
   const supabase = getSupabaseAdminClient();
   if (!supabase) throw new Error("Supabase admin client is not configured.");
 
-  const { data: order, error: lookupError } = await supabase
-    .from("orders")
-    .select("id, status, delivery_window_id")
-    .eq("id", id)
-    .maybeSingle();
-
-  if (lookupError) throw new Error(lookupError.message);
-  if (!order) throw new Error("Order could not be found.");
-  if (order.status !== "pending_approval") {
-    throw new Error("Only paid approval requests can be accepted.");
-  }
-  if (!order.delivery_window_id) {
-    throw new Error("Order does not have a Sunday delivery time to reserve.");
-  }
-
-  await reserveInventoryForOrder(id, order.delivery_window_id as string);
-  const { error } = await supabase
-    .from("orders")
-    .update({
-      status: "paid",
-      approved_at: new Date().toISOString(),
-      admin_decision_note: "Accepted same-week approval request.",
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", id);
-  if (error) {
-    await releaseInventoryForWindowItems(id, order.delivery_window_id as string);
-    throw new Error(error.message);
-  }
+  const { data, error } = await supabase.rpc("admin_accept_approval_order_scoped", {
+    p_order_id: id,
+    p_expected_weekly_menu_id: expectedWeeklyMenuId || null,
+    p_target_delivery_window_id: null,
+    p_actor_email: actorEmail || null,
+  });
+  if (error) throw new Error(error.message);
+  if (!data) throw new Error("The approval request changed. Refresh and try again.");
 
   return sendUpdatedOrderStatusEmail(id, "paid");
 }
@@ -563,126 +570,116 @@ export async function acceptApprovalOrder(id: string) {
 export async function moveApprovalOrderToNextWeek(
   id: string,
   targetDeliveryWindowId: string,
+  actorEmail?: string,
+  expectedWeeklyMenuId?: string | null,
 ) {
   const supabase = getSupabaseAdminClient();
   if (!supabase) throw new Error("Supabase admin client is not configured.");
 
-  const { data: order, error: lookupError } = await supabase
-    .from("orders")
-    .select("id, status, next_week_ok, delivery_windows(weekly_menus(starts_at))")
-    .eq("id", id)
-    .maybeSingle();
-
-  if (lookupError) throw new Error(lookupError.message);
-  if (!order) throw new Error("Order could not be found.");
-  if (order.status !== "pending_approval") {
-    throw new Error("Only paid approval requests can be moved.");
-  }
-  if (!order.next_week_ok) {
-    throw new Error("Customer did not approve moving this order to next Sunday.");
-  }
-
-  const currentWindow = single(order.delivery_windows as OrderDeliveryWindowRow | OrderDeliveryWindowRow[] | null);
-  const currentMenu = single(currentWindow?.weekly_menus || null);
-  const { data: targetWindow, error: targetWindowError } = await supabase
-    .from("delivery_windows")
-    .select("id, starts_at, ends_at, weekly_menus(starts_at)")
-    .eq("id", targetDeliveryWindowId)
-    .maybeSingle();
-  if (targetWindowError) throw new Error(targetWindowError.message);
-  if (!targetWindow) throw new Error("Target Sunday delivery time could not be found.");
-
-  const targetMenu = single(
-    targetWindow.weekly_menus as { starts_at: string } | Array<{ starts_at: string }> | null,
-  );
-  if (
-    !currentMenu?.starts_at ||
-    !targetMenu?.starts_at ||
-    new Date(targetMenu.starts_at).getTime() <= new Date(currentMenu.starts_at).getTime()
-  ) {
-    throw new Error("Move target must be a later delivery week.");
-  }
-  if (
-    !isStandardSundayDeliveryWindow(
-      String(targetWindow.starts_at || ""),
-      String(targetWindow.ends_at || ""),
-    )
-  ) {
-    throw new Error("Move target must be the Sunday 3:00-6:00 PM delivery slot.");
-  }
-
-  await reserveInventoryForOrder(id, targetDeliveryWindowId);
-  const { error } = await supabase
-    .from("orders")
-    .update({
-      delivery_window_id: targetDeliveryWindowId,
-      status: "paid",
-      approved_at: new Date().toISOString(),
-      admin_decision_note: "Moved approval request to next delivery week.",
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", id);
-  if (error) {
-    await releaseInventoryForWindowItems(id, targetDeliveryWindowId);
-    throw new Error(error.message);
-  }
+  const { data, error } = await supabase.rpc("admin_accept_approval_order_scoped", {
+    p_order_id: id,
+    p_expected_weekly_menu_id: expectedWeeklyMenuId || null,
+    p_target_delivery_window_id: targetDeliveryWindowId,
+    p_actor_email: actorEmail || null,
+  });
+  if (error) throw new Error(error.message);
+  if (!data) throw new Error("The approval request changed. Refresh and try again.");
 
   return sendUpdatedOrderStatusEmail(id, "paid");
 }
 
-export async function denyApprovalOrderWithRefund(id: string) {
+export async function denyApprovalOrderWithRefund(
+  id: string,
+  actorEmail?: string,
+  expectedWeeklyMenuId?: string | null,
+) {
   const supabase = getSupabaseAdminClient();
   if (!supabase) throw new Error("Supabase admin client is not configured.");
-
-  const { data: order, error: lookupError } = await supabase
-    .from("orders")
-    .select("id, status, stripe_checkout_session_id")
-    .eq("id", id)
-    .maybeSingle();
-
-  if (lookupError) throw new Error(lookupError.message);
-  if (!order) throw new Error("Order could not be found.");
-  if (order.status !== "pending_approval") {
-    throw new Error("Only paid approval requests can be denied and refunded.");
-  }
-  if (!order.stripe_checkout_session_id) {
-    throw new Error("Order does not have a Stripe Checkout session to refund.");
-  }
-
   const stripe = getStripe();
   if (!stripe) throw new Error("Stripe is not configured for refunds.");
 
-  const session = await stripe.checkout.sessions.retrieve(
-    String(order.stripe_checkout_session_id),
+  const { data: claimData, error: claimError } = await supabase.rpc(
+    "admin_begin_approval_refund_scoped",
+    {
+      p_order_id: id,
+      p_expected_weekly_menu_id: expectedWeeklyMenuId || null,
+      p_actor_email: actorEmail || null,
+    },
   );
-  const paymentIntent =
-    typeof session.payment_intent === "string"
-      ? session.payment_intent
-      : session.payment_intent?.id;
-  if (!paymentIntent) {
-    throw new Error("Stripe payment intent could not be found for this order.");
+  if (claimError) throw new Error(claimError.message);
+  const claim = Array.isArray(claimData) ? claimData[0] : claimData;
+  if (!claim?.checkout_session_id) {
+    throw new Error("Approval refund command returned an invalid result.");
   }
 
-  const refund = await stripe.refunds.create({
-    payment_intent: paymentIntent,
-    metadata: {
-      order_id: id,
-      reason: "after_cutoff_approval_denied",
-    },
-  });
+  const stripeClient = stripe;
+  const checkoutSessionId = String(claim.checkout_session_id);
 
-  const { error } = await supabase
-    .from("orders")
-    .update({
-      status: "canceled",
-      denied_at: new Date().toISOString(),
-      refunded_at: new Date().toISOString(),
-      stripe_refund_id: refund.id,
-      admin_decision_note: "Denied approval request and refunded payment.",
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", id);
+  async function createRefund(idempotencyKey: string) {
+    const session = await stripeClient.checkout.sessions.retrieve(checkoutSessionId);
+    const paymentIntent =
+      typeof session.payment_intent === "string"
+        ? session.payment_intent
+        : session.payment_intent?.id;
+    if (!paymentIntent) {
+      throw new Error("Stripe payment intent could not be found for this order.");
+    }
+
+    return stripeClient.refunds.create(
+      {
+        payment_intent: paymentIntent,
+        metadata: {
+          order_id: id,
+          reason: "after_cutoff_approval_denied",
+        },
+      },
+      { idempotencyKey },
+    );
+  }
+
+  let refund = claim.refund_id
+    ? await stripe.refunds.retrieve(String(claim.refund_id))
+    : await createRefund(`order-denial-refund-${id}`);
+  if (refund.status === "failed" || refund.status === "canceled") {
+    refund = await createRefund(
+      `order-denial-refund-${id}-retry-${refund.id}`,
+    );
+  }
+
+  if (refund.status !== "succeeded") {
+    const refundStatus = refund.status || "pending";
+    const { data: recorded, error: pendingError } = await supabase.rpc(
+      "admin_record_approval_refund_scoped",
+      {
+        p_order_id: id,
+        p_expected_weekly_menu_id: expectedWeeklyMenuId || null,
+        p_refund_id: refund.id,
+        p_refund_status: refundStatus,
+        p_actor_email: actorEmail || null,
+      },
+    );
+    if (pendingError) throw new Error(pendingError.message);
+    if (!recorded) {
+      throw new Error(
+        "The approval request changed while Stripe processed its refund. Refresh before retrying.",
+      );
+    }
+    throw new Error(
+      `Stripe refund is ${refundStatus}. The order remains in Needs approval until the refund is confirmed.`,
+    );
+  }
+
+  const { data: finalized, error } = await supabase.rpc(
+    "admin_finalize_approval_refund_scoped",
+    {
+      p_order_id: id,
+      p_expected_weekly_menu_id: expectedWeeklyMenuId || null,
+      p_refund_id: refund.id,
+      p_actor_email: actorEmail || null,
+    },
+  );
   if (error) throw new Error(error.message);
+  if (!finalized) return getAdminOrdersData();
 
   return sendUpdatedOrderStatusEmail(id, "canceled");
 }

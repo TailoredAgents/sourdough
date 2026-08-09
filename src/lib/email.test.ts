@@ -87,6 +87,10 @@ describe("email configuration safety", () => {
         ),
         html: expect.stringContaining("Your order is confirmed!"),
       }),
+      {
+        idempotencyKey:
+          "storefront-order-confirmation:12345678-1111-4111-8111-111111111111",
+      },
     );
     expect(sendMock.mock.calls[0]?.[0]?.html).toContain("Order #12345678");
     expect(sendMock.mock.calls[0]?.[0]?.html).toContain(
@@ -169,11 +173,39 @@ describe("email configuration safety", () => {
           'href="https://example.com/review/luna-and-lorelai"',
         ),
       }),
+      {
+        idempotencyKey:
+          "completion-thank-you:11111111-1111-4111-8111-111111111111",
+      },
     );
     expect(sendMock.mock.calls[0]?.[0]?.html).toContain("Leave a review");
     expect(sendMock.mock.calls[0]?.[0]?.html).toContain(emailLogoMarkup);
     expect(sendMock.mock.calls[0]?.[0]?.text).toContain(
       "Your honest feedback helps our small local bakery grow.",
+    );
+  });
+
+  it("uses a deterministic Bread Club event key without recipient PII", async () => {
+    process.env.RESEND_API_KEY = "test-key";
+    sendMock.mockResolvedValue({ data: { id: "email_welcome" }, error: null });
+
+    await sendBreadClubWelcome({
+      to: "member@example.com",
+      customerName: "Bread Club Member",
+      membershipId: "33333333-3333-4333-8333-333333333333",
+      planName: "Sunday Bread Club",
+      recurringTotalCents: 8000,
+      sundayLabels: ["Aug 9", "Aug 16", "Aug 23", "Aug 30"],
+      manageUrl: "https://www.landlsourdough.com/bread-club/manage",
+      eventKey: "paid-cycle:44444444-4444-4444-8444-444444444444:welcome",
+    });
+
+    expect(sendMock.mock.calls[0]?.[1]).toEqual({
+      idempotencyKey:
+        "bread-club:bread_club_welcome:paid-cycle:44444444-4444-4444-8444-444444444444:welcome",
+    });
+    expect(sendMock.mock.calls[0]?.[1]?.idempotencyKey).not.toContain(
+      "member@example.com",
     );
   });
 

@@ -32,6 +32,8 @@ type DeliveryPriceRow = {
 
 export const BREAD_CLUB_WEBHOOK_EVENTS = [
   "checkout.session.completed",
+  "checkout.session.async_payment_succeeded",
+  "checkout.session.async_payment_failed",
   "checkout.session.expired",
   "invoice.paid",
   "invoice.payment_failed",

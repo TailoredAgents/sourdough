@@ -3,12 +3,10 @@ import {
   bakeNotifySignupSchema,
   createBakeNotifySignup,
 } from "@/lib/customer-messages";
-import { checkRateLimit } from "@/lib/rate-limit";
+import { checkRateLimitChain, getRequestClientIp } from "@/lib/rate-limit";
 
 function getRateLimitKey(request: Request, email: string) {
-  const forwardedFor = request.headers.get("x-forwarded-for") || "";
-  const ip = forwardedFor.split(",")[0]?.trim() || "unknown-ip";
-  return `${ip}:${email.toLowerCase()}`;
+  return `${getRequestClientIp(request)}:${email.toLowerCase()}`;
 }
 
 export async function POST(request: Request) {
@@ -34,12 +32,20 @@ export async function POST(request: Request) {
     );
   }
 
-  const rateLimit = await checkRateLimit({
-    scope: "bake_notify_signup",
-    key: getRateLimitKey(request, parsed.data.email),
-    limit: 3,
-    windowMs: 60 * 60 * 1000,
-  });
+  const rateLimit = await checkRateLimitChain(
+    {
+      scope: "bake_notify_signup_ip",
+      key: getRequestClientIp(request),
+      limit: 20,
+      windowMs: 60 * 60 * 1000,
+    },
+    {
+      scope: "bake_notify_signup",
+      key: getRateLimitKey(request, parsed.data.email),
+      limit: 3,
+      windowMs: 60 * 60 * 1000,
+    },
+  );
 
   if (!rateLimit.allowed) {
     return NextResponse.json(

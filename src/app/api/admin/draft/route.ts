@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { adminDraftTypes } from "@/lib/admin-draft";
 import { getCurrentAdmin } from "@/lib/admin-auth";
+import { rejectCrossOriginMutation } from "@/lib/request-security";
 import { aiModel, getOpenAI } from "@/lib/openai";
 import {
   getActiveMenuData,
@@ -22,6 +23,9 @@ export function fallbackDraft(type: string, context: string) {
 }
 
 export async function POST(request: Request) {
+  const originError = rejectCrossOriginMutation(request);
+  if (originError) return originError;
+
   const admin = await getCurrentAdmin();
   if (!admin) {
     return NextResponse.json(
@@ -30,7 +34,13 @@ export async function POST(request: Request) {
     );
   }
 
-  const parsed = draftSchema.safeParse(await request.json());
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    body = null;
+  }
+  const parsed = draftSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json({ draft: "Please provide a draft type and context." });
   }

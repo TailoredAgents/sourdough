@@ -57,4 +57,14 @@ describe("product admin validation", () => {
       }).success,
     ).toBe(false);
   });
+
+  it("requires inventory when adding a product to upcoming menus", () => {
+    expect(
+      productAdminSchema.safeParse({
+        ...validProduct,
+        includeInCurrentMenu: true,
+        weeklyQuantity: 0,
+      }).success,
+    ).toBe(false);
+  });
 });

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getBreadClubSessionMembershipId } from "@/lib/bread-club/auth";
 import {
+  BreadClubAddonCheckoutError,
   cancelBreadClubMembership,
   changeBreadClubSelection,
   createBreadClubAddonCheckout,
@@ -11,6 +12,8 @@ import {
   updateBreadClubAddress,
 } from "@/lib/bread-club/member-actions";
 import { getBreadClubMemberData } from "@/lib/bread-club/member-data";
+import { checkRateLimit } from "@/lib/rate-limit";
+import { isSameOriginMutation } from "@/lib/request-security";
 
 const selectionSchema = z.array(
   z.object({
@@ -57,6 +60,7 @@ const memberActionSchema = z.discriminatedUnion("action", [
   }),
   z.object({
     action: z.literal("addon_checkout"),
+    checkoutAttemptId: z.string().uuid(),
     fulfillmentId: z.string().uuid(),
     items: z
       .array(
@@ -87,11 +91,27 @@ export async function GET() {
 }
 
 export async function PATCH(request: Request) {
+  if (!isSameOriginMutation(request)) {
+    return NextResponse.json({ error: "Invalid request origin." }, { status: 403 });
+  }
   const membershipId = await authenticatedMembershipId();
   if (!membershipId) {
     return NextResponse.json(
       { error: "Use a secure email link to access Bread Club." },
       { status: 401 },
+    );
+  }
+
+  const rateLimit = await checkRateLimit({
+    scope: "bread_club_member_action",
+    key: membershipId,
+    limit: 60,
+    windowMs: 60 * 60 * 1000,
+  });
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { error: "Too many member updates. Please wait and try again." },
+      { status: 429 },
     );
   }
 
@@ -168,6 +188,7 @@ export async function PATCH(request: Request) {
             membershipId,
             parsed.data.fulfillmentId,
             parsed.data.items,
+            parsed.data.checkoutAttemptId,
           ),
         );
     }
@@ -178,6 +199,10 @@ export async function PATCH(request: Request) {
           error instanceof Error
             ? error.message
             : "Bread Club could not be updated.",
+        resetCheckoutAttempt:
+          error instanceof BreadClubAddonCheckoutError
+            ? error.resetCheckoutAttempt
+            : false,
       },
       { status: 400 },
     );

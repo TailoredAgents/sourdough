@@ -61,14 +61,22 @@ function defaultReplySubject(message?: CustomerMessage) {
 }
 
 export function CustomerMessageInbox({
+  initialHasMore,
   initialMessages,
+  initialTotal,
+  onMessagesChange,
 }: {
+  initialHasMore: boolean;
   initialMessages: CustomerMessage[];
+  initialTotal: number;
+  onMessagesChange?: (messages: CustomerMessage[]) => void;
 }) {
   const firstSelectedMessage =
     initialMessages.find((entry) => openStatuses.includes(entry.status)) ??
     initialMessages[0];
   const [messages, setMessages] = useState<CustomerMessage[]>(initialMessages);
+  const [hasMore, setHasMore] = useState(initialHasMore);
+  const [total, setTotal] = useState(initialTotal);
   const [selectedId, setSelectedId] = useState<string | null>(
     firstSelectedMessage?.id ?? null,
   );
@@ -86,6 +94,7 @@ export function CustomerMessageInbox({
     "handled",
   );
   const [isPending, startTransition] = useTransition();
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
 
   const filteredMessages = useMemo(
     () => messages.filter((entry) => matchesMessageFilter(entry, filter)),
@@ -132,14 +141,18 @@ export function CustomerMessageInbox({
 
         if (
           !response.ok ||
-          !hasAdminKeys(payload, ["messages"]) ||
+          !hasAdminKeys(payload, ["messages", "hasMore", "total"]) ||
           !Array.isArray(payload.messages)
         ) {
           setMessage(getAdminPayloadError(payload) || "Message could not be updated.");
           return;
         }
 
-        setMessages(payload.messages as CustomerMessage[]);
+        const nextMessages = payload.messages as CustomerMessage[];
+        setMessages(nextMessages);
+        setHasMore(payload.hasMore === true);
+        setTotal(typeof payload.total === "number" ? payload.total : nextMessages.length);
+        onMessagesChange?.(nextMessages);
         setSelectedId(id);
         setFilter(openStatuses.includes(status) ? "open" : status);
         setMessage("Message updated.");
@@ -178,14 +191,18 @@ export function CustomerMessageInbox({
 
         if (
           !response.ok ||
-          !hasAdminKeys(payload, ["messages"]) ||
+          !hasAdminKeys(payload, ["messages", "hasMore", "total"]) ||
           !Array.isArray(payload.messages)
         ) {
           setMessage(getAdminPayloadError(payload) || "Reply could not be sent.");
           return;
         }
 
-        setMessages(payload.messages as CustomerMessage[]);
+        const nextMessages = payload.messages as CustomerMessage[];
+        setMessages(nextMessages);
+        setHasMore(payload.hasMore === true);
+        setTotal(typeof payload.total === "number" ? payload.total : nextMessages.length);
+        onMessagesChange?.(nextMessages);
         setSelectedId(selectedMessage.id);
         setFilter(statusAfterSend);
         setReplyBody("");
@@ -194,6 +211,40 @@ export function CustomerMessageInbox({
         setMessage("Reply could not be sent. Check your connection and try again.");
       }
     });
+  }
+
+  async function loadMoreMessages() {
+    if (isLoadingMore || !hasMore) return;
+    setMessage(null);
+    setIsLoadingMore(true);
+    try {
+      const response = await fetch(
+        `/api/admin/messages?offset=${encodeURIComponent(messages.length)}`,
+      );
+      const payload = await readAdminJsonResponse(response);
+      if (
+        !response.ok ||
+        !hasAdminKeys(payload, ["messages", "hasMore", "total"]) ||
+        !Array.isArray(payload.messages)
+      ) {
+        setMessage(getAdminPayloadError(payload) || "More customer messages could not be loaded.");
+        return;
+      }
+
+      const nextPage = payload.messages as CustomerMessage[];
+      setMessages((current) => {
+        const knownIds = new Set(current.map((entry) => entry.id));
+        const merged = [...current, ...nextPage.filter((entry) => !knownIds.has(entry.id))];
+        onMessagesChange?.(merged);
+        return merged;
+      });
+      setHasMore(payload.hasMore === true);
+      setTotal(typeof payload.total === "number" ? payload.total : messages.length + nextPage.length);
+    } catch {
+      setMessage("More customer messages could not be loaded. Check your connection and try again.");
+    } finally {
+      setIsLoadingMore(false);
+    }
   }
 
   return (
@@ -317,6 +368,21 @@ export function CustomerMessageInbox({
             <div className="rounded-md border border-dashed border-stone-300 bg-[#fffaf2] p-5 text-sm text-stone-700">
               No customer messages match this filter.
             </div>
+          ) : null}
+          {hasMore ? (
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={loadMoreMessages}
+              disabled={isPending || isLoadingMore}
+            >
+              {isLoadingMore ? <Loader2 className="animate-spin" size={16} /> : null}
+              Load more messages ({messages.length} of {total})
+            </Button>
+          ) : total > messages.length ? (
+            <p className="text-sm text-stone-600">
+              {messages.length} of {total} messages loaded.
+            </p>
           ) : null}
         </div>
 

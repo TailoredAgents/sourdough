@@ -1,17 +1,18 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { getSiteUrl } from "@/lib/utils";
+import { getSafeLocalRedirectUrl } from "@/lib/safe-redirect";
 
 export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get("code");
   const tokenHash = requestUrl.searchParams.get("token_hash");
   const type = requestUrl.searchParams.get("type");
-  const next = requestUrl.searchParams.get("next") || "/admin";
+  const next = requestUrl.searchParams.get("next");
   const authError = requestUrl.searchParams.get("error");
   const authErrorCode = requestUrl.searchParams.get("error_code");
   const authErrorDescription = requestUrl.searchParams.get("error_description");
-  const redirectUrl = new URL(next, getSiteUrl());
+  const redirectUrl = getSafeLocalRedirectUrl(next, getSiteUrl(), "/admin");
 
   if (authError || authErrorCode || authErrorDescription) {
     redirectUrl.pathname = "/admin/login";

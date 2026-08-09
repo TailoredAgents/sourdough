@@ -8,9 +8,13 @@ const mocks = vi.hoisted(() => ({
   checkDeliveryAddressWithRoutes: vi.fn(),
   checkRateLimit: vi.fn(),
   createPendingBreadClubCheckout: vi.fn(),
+  getExistingBreadClubCheckoutAttempt: vi.fn(),
   attachStripeSubscriptionCheckout: vi.fn(),
+  expireBreadClubCheckoutSession: vi.fn(),
   markBreadClubCheckoutIncomplete: vi.fn(),
   stripeCreateSession: vi.fn(),
+  stripeRetrieveSession: vi.fn(),
+  stripeExpireSession: vi.fn(),
   stripeCreateCustomer: vi.fn(),
   isBreadClubAutomaticTaxEnabled: vi.fn(),
   getCurrentAdmin: vi.fn(),
@@ -36,8 +40,12 @@ vi.mock("@/lib/bread-club/records", async (importOriginal) => {
     ...actual,
     createPendingBreadClubCheckout:
       mocks.createPendingBreadClubCheckout,
+    getExistingBreadClubCheckoutAttempt:
+      mocks.getExistingBreadClubCheckoutAttempt,
     attachStripeSubscriptionCheckout:
       mocks.attachStripeSubscriptionCheckout,
+    expireBreadClubCheckoutSession:
+      mocks.expireBreadClubCheckoutSession,
     markBreadClubCheckoutIncomplete:
       mocks.markBreadClubCheckoutIncomplete,
   };
@@ -47,7 +55,8 @@ vi.mock("@/lib/delivery", () => ({
     mocks.checkDeliveryAddressWithRoutes,
 }));
 vi.mock("@/lib/rate-limit", () => ({
-  checkRateLimit: mocks.checkRateLimit,
+  checkRateLimitChain: mocks.checkRateLimit,
+  getRequestClientIp: () => "203.0.113.10",
 }));
 vi.mock("@/lib/storefront-data", () => ({
   getDeliverySettingsData: mocks.getDeliverySettingsData,
@@ -60,6 +69,8 @@ vi.mock("@/lib/stripe", () => ({
     checkout: {
       sessions: {
         create: mocks.stripeCreateSession,
+        retrieve: mocks.stripeRetrieveSession,
+        expire: mocks.stripeExpireSession,
       },
     },
   }),
@@ -151,6 +162,7 @@ const weeks = Array.from({ length: 4 }, (_, index) => {
   };
 });
 const payload = {
+  checkoutAttemptId: "90000000-0000-4000-8000-000000000001",
   planId,
   selection: [{ productId, quantity: 1 }],
   customer: {
@@ -173,6 +185,7 @@ const payload = {
 beforeEach(() => {
   for (const mock of Object.values(mocks)) mock.mockReset();
   mocks.checkRateLimit.mockResolvedValue({ allowed: true });
+  mocks.getExistingBreadClubCheckoutAttempt.mockResolvedValue(null);
   mocks.isBreadClubAutomaticTaxEnabled.mockReturnValue(false);
   mocks.getCurrentAdmin.mockResolvedValue({
     id: "admin-user",
@@ -213,14 +226,27 @@ beforeEach(() => {
     checkoutCancelToken: "cancel-token",
     firstDeliveryAt: weeks[0].deliveryWindow.startsAt,
     cycleTotalCents: 8000,
+    checkoutExpiresAt: "2099-08-08T20:00:00.000Z",
+    planStripePriceId: "price_variety_4week",
+    deliveryStripePriceId: "price_delivery_4week",
+    routeBandKey: "11-20",
+    automaticTaxEnabled: false,
   });
   mocks.stripeCreateSession.mockResolvedValue({
     id: "cs_bread_club",
+    status: "open",
     url: "https://checkout.stripe.com/c/bread-club",
   });
   mocks.stripeCreateCustomer.mockResolvedValue({
     id: "cus_bread_club_tax",
   });
+  mocks.stripeExpireSession.mockResolvedValue({
+    id: "cs_bread_club",
+    status: "expired",
+  });
+  mocks.expireBreadClubCheckoutSession.mockResolvedValue(
+    "50000000-0000-4000-8000-000000000001",
+  );
 });
 
 describe("Bread Club subscription checkout", () => {
@@ -271,6 +297,10 @@ describe("Bread Club subscription checkout", () => {
           }),
         },
       }),
+      {
+        idempotencyKey:
+          "bread-club-subscription-90000000-0000-4000-8000-000000000001",
+      },
     );
     expect(mocks.attachStripeSubscriptionCheckout).toHaveBeenCalledWith(
       "50000000-0000-4000-8000-000000000001",
@@ -304,6 +334,12 @@ describe("Bread Club subscription checkout", () => {
 
   it("uses the verified delivery address for recurring Stripe Tax", async () => {
     mocks.isBreadClubAutomaticTaxEnabled.mockReturnValue(true);
+    const pending = await mocks.createPendingBreadClubCheckout();
+    mocks.createPendingBreadClubCheckout.mockResolvedValue({
+      ...pending,
+      automaticTaxEnabled: true,
+    });
+    mocks.createPendingBreadClubCheckout.mockClear();
     const response = await POST(
       new Request("https://www.landlsourdough.com/api/bread-club/checkout", {
         method: "POST",
@@ -328,11 +364,19 @@ describe("Bread Club subscription checkout", () => {
         }),
         tax: { validate_location: "immediately" },
       }),
+      {
+        idempotencyKey:
+          "bread-club-customer-90000000-0000-4000-8000-000000000001",
+      },
     );
     expect(mocks.stripeCreateSession).toHaveBeenCalledWith(
       expect.objectContaining({
         customer: "cus_bread_club_tax",
         automatic_tax: { enabled: true },
+      }),
+      expect.objectContaining({
+        idempotencyKey:
+          "bread-club-subscription-90000000-0000-4000-8000-000000000001",
       }),
     );
   });
@@ -353,5 +397,85 @@ describe("Bread Club subscription checkout", () => {
     expect(response.status).toBe(409);
     expect(mocks.createPendingBreadClubCheckout).not.toHaveBeenCalled();
     expect(mocks.stripeCreateSession).not.toHaveBeenCalled();
+  });
+
+  it("resumes the same open Stripe Session without reserving inventory again", async () => {
+    mocks.getExistingBreadClubCheckoutAttempt.mockResolvedValue({
+      pending: await mocks.createPendingBreadClubCheckout(),
+      planId,
+      routeBandKey: "11-20",
+      consentVersion: "2026-07-26",
+      status: "pending_checkout",
+      stripeCheckoutSessionId: "cs_existing_bread_club",
+    });
+    mocks.stripeRetrieveSession.mockResolvedValue({
+      id: "cs_existing_bread_club",
+      status: "open",
+      url: "https://checkout.stripe.com/c/existing-bread-club",
+    });
+    mocks.createPendingBreadClubCheckout.mockClear();
+
+    const response = await POST(
+      new Request("https://www.landlsourdough.com/api/bread-club/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      url: "https://checkout.stripe.com/c/existing-bread-club",
+    });
+    expect(mocks.createPendingBreadClubCheckout).not.toHaveBeenCalled();
+    expect(mocks.checkDeliveryAddressWithRoutes).not.toHaveBeenCalled();
+    expect(mocks.stripeCreateSession).not.toHaveBeenCalled();
+  });
+
+  it("expires Stripe before releasing a session whose DB attachment failed", async () => {
+    mocks.attachStripeSubscriptionCheckout
+      .mockRejectedValueOnce(new Error("temporary attach failure"))
+      .mockResolvedValueOnce(undefined);
+
+    const response = await POST(
+      new Request("https://www.landlsourdough.com/api/bread-club/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      }),
+    );
+    const responsePayload = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(responsePayload.resetCheckoutAttempt).toBe(true);
+    expect(mocks.stripeExpireSession).toHaveBeenCalledWith("cs_bread_club");
+    expect(mocks.expireBreadClubCheckoutSession).toHaveBeenCalledWith(
+      "cs_bread_club",
+      "50000000-0000-4000-8000-000000000001",
+    );
+    expect(mocks.stripeExpireSession.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.expireBreadClubCheckoutSession.mock.invocationCallOrder[0],
+    );
+  });
+
+  it("keeps the reservation when Stripe creation has an uncertain outcome", async () => {
+    mocks.stripeCreateSession.mockRejectedValueOnce(
+      new Error("connection reset after request"),
+    );
+
+    const response = await POST(
+      new Request("https://www.landlsourdough.com/api/bread-club/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      }),
+    );
+    const responsePayload = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(responsePayload.resetCheckoutAttempt).toBe(false);
+    expect(mocks.stripeExpireSession).not.toHaveBeenCalled();
+    expect(mocks.expireBreadClubCheckoutSession).not.toHaveBeenCalled();
+    expect(mocks.markBreadClubCheckoutIncomplete).not.toHaveBeenCalled();
   });
 });

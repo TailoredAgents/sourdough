@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  buildOwnerAlertIdempotencyKey,
   buildOwnerAlertMessage,
   buildOwnerAlertSubject,
   buildOwnerSmsAlertParts,
@@ -41,6 +42,30 @@ describe("owner alerts", () => {
       "orders@landlsourdough.com",
       "4703880184@vtext.com",
     ]);
+  });
+
+  it("builds stable provider keys without exposing an alert recipient", () => {
+    const input = {
+      type: "order" as const,
+      orderId: "11111111-1111-4111-8111-111111111111",
+    };
+    const first = buildOwnerAlertIdempotencyKey(
+      input,
+      "owner@example.com",
+      "part:1/2",
+    );
+
+    expect(first).toBe(
+      buildOwnerAlertIdempotencyKey(
+        input,
+        "OWNER@example.com",
+        "part:1/2",
+      ),
+    );
+    expect(first).not.toContain("owner@example.com");
+    expect(first).toContain(input.orderId);
+    expect(buildOwnerAlertIdempotencyKey({ type: "order" }, "owner@example.com"))
+      .toBeUndefined();
   });
 
   it("keeps the complete customer note within the SMS gateway budget", () => {

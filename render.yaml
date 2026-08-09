@@ -66,6 +66,10 @@ services:
         value: pending
       - key: CRON_SECRET
         sync: false
+      - key: BREAD_CLUB_SETUP_SECRET
+        sync: false
+      - key: CLOUDFLARE_ORIGIN_SECRET
+        sync: false
       - key: DELIVERY_CENTER_LAT
         value: "34.2368"
       - key: DELIVERY_CENTER_LNG

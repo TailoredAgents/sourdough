@@ -1,3 +1,4 @@
+import { createHash } from "crypto";
 import {
   getSentEmailEventState,
   hasSentEmailEvent,
@@ -34,6 +35,27 @@ export function getOwnerAlertRecipients() {
       ...splitEmailList(process.env.OWNER_ALERT_SMS_EMAIL),
     ]),
   );
+}
+
+export function buildOwnerAlertIdempotencyKey(
+  input: Pick<OwnerAlertInput, "type" | "orderId" | "customerMessageId">,
+  recipient: string,
+  partKey?: string,
+) {
+  const entity = input.orderId
+    ? `order:${input.orderId}`
+    : input.customerMessageId
+      ? `message:${input.customerMessageId}`
+      : null;
+  if (!entity) return undefined;
+
+  const recipientToken = createHash("sha256")
+    .update(recipient.trim().toLowerCase())
+    .digest("hex")
+    .slice(0, 16);
+  return ["owner-alert", entity, input.type, recipientToken, partKey]
+    .filter(Boolean)
+    .join(":");
 }
 
 function compact(value: string) {
@@ -178,6 +200,7 @@ export async function sendOwnerAlert(input: OwnerAlertInput) {
           body: buildOwnerAlertMessage(input),
           orderId: input.orderId,
           customerMessageId: input.customerMessageId,
+          idempotencyKey: buildOwnerAlertIdempotencyKey(input, to),
         });
         return;
       }
@@ -201,6 +224,11 @@ export async function sendOwnerAlert(input: OwnerAlertInput) {
           orderId: input.orderId,
           customerMessageId: input.customerMessageId,
           eventKey: part.eventKey,
+          idempotencyKey: buildOwnerAlertIdempotencyKey(
+            input,
+            to,
+            part.eventKey,
+          ),
         });
       }
     }),

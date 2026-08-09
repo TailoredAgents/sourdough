@@ -39,29 +39,40 @@ const productImageUrlSchema = z
   .nullable()
   .optional();
 
-export const productAdminSchema = z.object({
-  id: z.string().uuid().optional(),
-  name: z.string().min(2, "Name is required.").max(120),
-  category: z.enum(["bread", "add-on"]),
-  description: z.string().min(10, "Description is required.").max(800),
-  ingredients: z.array(z.string().min(1)).min(1, "Add at least one ingredient."),
-  allergens: z.array(z.string().min(1)).default([]),
-  priceCents: z.number().int().min(0).max(50000),
-  estimatedIngredientCostCents: z
-    .number()
-    .int()
-    .min(0)
-    .max(50000)
-    .nullable()
-    .optional()
-    .default(null),
-  imageUrl: productImageUrlSchema,
-  imageStyle: z.string().min(3).max(160),
-  active: z.boolean(),
-  includeInCurrentMenu: z.boolean().optional().default(false),
-  weeklyQuantity: z.number().int().min(0).max(1000).optional().default(0),
-  featured: z.boolean().optional().default(false),
-});
+export const productAdminSchema = z
+  .object({
+    id: z.string().uuid().optional(),
+    name: z.string().min(2, "Name is required.").max(120),
+    category: z.enum(["bread", "add-on"]),
+    description: z.string().min(10, "Description is required.").max(800),
+    ingredients: z
+      .array(z.string().min(1))
+      .min(1, "Add at least one ingredient."),
+    allergens: z.array(z.string().min(1)).default([]),
+    priceCents: z.number().int().min(0).max(50000),
+    estimatedIngredientCostCents: z
+      .number()
+      .int()
+      .min(0)
+      .max(50000)
+      .nullable()
+      .optional()
+      .default(null),
+    imageUrl: productImageUrlSchema,
+    imageStyle: z.string().min(3).max(160),
+    active: z.boolean(),
+    includeInCurrentMenu: z.boolean().optional().default(false),
+    weeklyQuantity: z.number().int().min(0).max(1000).optional().default(0),
+    featured: z.boolean().optional().default(false),
+  })
+  .refine(
+    (product) =>
+      !product.includeInCurrentMenu || product.weeklyQuantity > 0,
+    {
+      message: "Add weekly inventory before including this product in menus.",
+      path: ["weeklyQuantity"],
+    },
+  );
 
 export type ProductAdminInput = z.infer<typeof productAdminSchema>;
 

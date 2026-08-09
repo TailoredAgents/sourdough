@@ -8,7 +8,7 @@ Agentic retail bakery platform for `landlsourdough.com`, built for local sourdou
 - Weekly menu, limited quantities, bread plus add-ons, allergen display, and editable menu cutoff behavior.
 - ZIP-allowlist local delivery check from Canton, GA with configurable fee, service-area copy, and allowed ZIPs.
 - Stripe Checkout endpoint with local/test demo fallback and production safety guard when Stripe keys are absent.
-- Stripe webhook route for paid and expired checkout events.
+- Stripe webhook route for immediate and delayed payment success/failure plus expired checkout events.
 - Resend-backed email helper with local/test demo fallback and production safety guard when the API key is absent.
 - Customer AI chat constrained to approved bakery facts, current menu data, inventory, and product/allergen data.
 - Customer-facing rate limits use local/test bypass only; production fails closed if rate-limit storage is unavailable.
@@ -79,6 +79,9 @@ Detailed deployment steps and the production env var checklist are in
 The final proof checklist and post-launch growth roadmap are in
 `docs/ultimate-launch-roadmap.md`.
 
+The owner-facing 1-2-3 workflow, deployment order, monitoring queries, and
+remaining hardening roadmap are in `docs/admin-operations-and-hardening.md`.
+
 ## Validation
 
 Run the full local launch gate before shipping changes:
@@ -112,7 +115,11 @@ npm run check:prod-env
 
 ## Supabase
 
-Run `supabase/schema.sql` in a Supabase project SQL editor or with `psql`, then run `supabase/seed.sql` to load the starter products, weekly menu, delivery windows, delivery settings, and approved AI knowledge.
+For a new Supabase project, run `supabase/schema.sql` in the SQL editor or with
+`psql`, then run `supabase/seed.sql`. For an existing project, apply the files in
+`supabase/migrations` in timestamp order; do not rerun the full schema over a
+live database. Follow the deployment gate in
+`docs/admin-operations-and-hardening.md`.
 
 The public storefront reads from Supabase when the Supabase environment
 variables are configured. Local fallback data remains in `src/lib/bakery-data.ts`
@@ -163,7 +170,14 @@ Webhook path:
 Listen for:
 
 - `checkout.session.completed`
+- `checkout.session.async_payment_succeeded`
+- `checkout.session.async_payment_failed`
 - `checkout.session.expired`
+- `invoice.paid`
+- `invoice.payment_failed`
+- `invoice.upcoming`
+- `customer.subscription.updated`
+- `customer.subscription.deleted`
 
 ## OpenAI
 

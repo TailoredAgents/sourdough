@@ -9,6 +9,7 @@ type CheckoutOrderItem = MenuProduct & {
 
 type CreatePendingOrderInput = {
   checkout: CheckoutRequest;
+  checkoutRequestHash: string;
   deliveryCheck: DeliveryCheckResult;
   deliveryWindowId: string;
   items: CheckoutOrderItem[];
@@ -25,7 +26,58 @@ export type PendingOrder = {
   totalCents: number;
   orderSummary: string;
   checkoutCancelToken: string;
+  checkoutExpiresAt: string;
   approvalMode: "standard" | "after_cutoff";
+};
+
+type CheckoutAttemptOrderRow = {
+  id: string;
+  customer_id: string;
+  delivery_window_id: string;
+  status: OrderStatus;
+  subtotal_cents: number;
+  delivery_fee_cents: number;
+  total_cents: number;
+  delivery_check: DeliveryCheckResult;
+  checkout_cancel_token: string;
+  checkout_request_hash: string;
+  checkout_expires_at: string;
+  stripe_checkout_session_id: string | null;
+  approval_mode: "standard" | "after_cutoff";
+};
+
+type CheckoutAttemptProductRow = {
+  id: string;
+  name: string;
+  category: MenuProduct["category"];
+  description: string;
+  ingredients: string[];
+  allergens: string[];
+  estimated_ingredient_cost_cents: number | null;
+  stripe_product_id: string | null;
+  stripe_price_id: string | null;
+  stripe_price_cents: number | null;
+  stripe_synced_at: string | null;
+  image_url: string | null;
+  image_style: string;
+  active: boolean;
+};
+
+type CheckoutAttemptItemRow = {
+  product_id: string;
+  quantity: number;
+  unit_price_cents: number;
+  products: CheckoutAttemptProductRow | CheckoutAttemptProductRow[] | null;
+};
+
+export type ExistingCheckoutAttempt = {
+  pendingOrder: PendingOrder;
+  items: CheckoutOrderItem[];
+  deliveryCheck: DeliveryCheckResult;
+  deliveryWindowLabel: string;
+  weeklyMenuId: string;
+  status: OrderStatus;
+  stripeCheckoutSessionId: string | null;
 };
 
 export type PaidOrderSummary = {
@@ -89,6 +141,7 @@ function formatAddress(address: DeliveryAddress) {
 export async function createPendingCheckoutOrder({
   approvalMode = "standard",
   checkout,
+  checkoutRequestHash,
   deliveryCheck,
   deliveryWindowId,
   items,
@@ -100,124 +153,162 @@ export async function createPendingCheckoutOrder({
   }
 
   const customerEmail = normalizeEmail(checkout.customer.email);
-  const { data: existingCustomer, error: existingCustomerError } = await supabase
-    .from("customers")
-    .select("id")
-    .eq("email", customerEmail)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (existingCustomerError) {
-    throw new Error(existingCustomerError.message);
-  }
-
-  let customerId = existingCustomer?.id as string | undefined;
-  if (customerId) {
-    const { error } = await supabase
-      .from("customers")
-      .update({
-        name: checkout.customer.name,
-        phone: checkout.customer.phone,
-      })
-      .eq("id", customerId);
-
-    if (error) throw new Error(error.message);
-  } else {
-    const { data, error } = await supabase
-      .from("customers")
-      .insert({
-        name: checkout.customer.name,
-        email: customerEmail,
-        phone: checkout.customer.phone,
-      })
-      .select("id")
-      .single();
-
-    if (error) throw new Error(error.message);
-    customerId = data.id as string;
-  }
-
-  const subtotalCents = items.reduce(
-    (sum, item) => sum + item.priceCents * item.quantity,
-    0,
-  );
-  const deliveryFeeCents = deliveryCheck.feeCents;
-  const totalCents = subtotalCents + deliveryFeeCents;
   const checkoutCancelToken = buildCancelToken();
-
-  const { data: order, error: orderError } = await supabase
-    .from("orders")
-    .insert({
-      customer_id: customerId,
-      delivery_window_id: deliveryWindowId,
-      status:
-        approvalMode === "after_cutoff"
-          ? "pending_approval_payment"
-          : "pending_payment",
-      subtotal_cents: subtotalCents,
-      delivery_fee_cents: deliveryFeeCents,
-      tax_cents: 0,
-      total_cents: totalCents,
-      delivery_address: {
+  const { data, error } = await supabase.rpc(
+    "create_storefront_checkout_order",
+    {
+      p_checkout_attempt_id: checkout.checkoutAttemptId,
+      p_checkout_request_hash: checkoutRequestHash,
+      p_customer_name: checkout.customer.name,
+      p_customer_email: customerEmail,
+      p_customer_phone: checkout.customer.phone || null,
+      p_delivery_window_id: deliveryWindowId,
+      p_approval_mode: approvalMode,
+      p_delivery_address: {
         ...checkout.address,
+        name: checkout.customer.name.trim(),
         email: customerEmail,
         phone: checkout.customer.phone,
       },
-      delivery_miles: deliveryCheck.miles,
-      delivery_instructions: checkout.deliveryInstructions || null,
-      delivery_check: deliveryCheck,
-      notes: checkout.notes || null,
-      next_week_ok:
+      p_delivery_miles: deliveryCheck.miles,
+      p_delivery_instructions: checkout.deliveryInstructions || null,
+      p_delivery_check: deliveryCheck,
+      p_delivery_fee_cents: deliveryCheck.feeCents,
+      p_notes: checkout.notes || null,
+      p_next_week_ok:
         approvalMode === "after_cutoff" ? Boolean(checkout.nextWeekOk) : null,
-      approval_mode: approvalMode,
-      checkout_cancel_token: checkoutCancelToken,
-    })
-    .select("id")
-    .single();
-
-  if (orderError) throw new Error(orderError.message);
-
-  const orderId = order.id as string;
-  const { error: itemsError } = await supabase.from("order_items").insert(
-    items.map((item) => ({
-      order_id: orderId,
-      product_id: item.id,
-      quantity: item.quantity,
-      unit_price_cents: item.priceCents,
-    })),
-  );
-
-  if (itemsError) {
-    await supabase.from("orders").delete().eq("id", orderId);
-    throw new Error(itemsError.message);
-  }
-
-  if (reserveInventory) {
-    const { error: reservationError } = await supabase.rpc("reserve_order_inventory", {
-      p_delivery_window_id: deliveryWindowId,
+      p_checkout_cancel_token: checkoutCancelToken,
       p_items: items.map((item) => ({
         product_id: item.id,
         quantity: item.quantity,
+        unit_price_cents: item.priceCents,
       })),
-    });
+      p_reserve_inventory: reserveInventory,
+    },
+  );
+  if (error) throw new Error(error.message);
 
-    if (reservationError) {
-      await supabase.from("orders").delete().eq("id", orderId);
-      throw new Error(reservationError.message);
-    }
+  const result = Array.isArray(data) ? data[0] : data;
+  if (
+    !result?.order_id ||
+    !result.customer_id ||
+    typeof result.subtotal_cents !== "number" ||
+    typeof result.delivery_fee_cents !== "number" ||
+    typeof result.total_cents !== "number" ||
+    typeof result.checkout_cancel_token !== "string" ||
+    typeof result.checkout_expires_at !== "string"
+  ) {
+    throw new Error("Checkout order command returned an invalid result.");
   }
 
   return {
-    id: orderId,
-    customerId,
-    subtotalCents,
-    deliveryFeeCents,
+    id: String(result.order_id),
+    customerId: String(result.customer_id),
+    subtotalCents: result.subtotal_cents,
+    deliveryFeeCents: result.delivery_fee_cents,
     taxCents: 0,
-    totalCents,
+    totalCents: result.total_cents,
     orderSummary: buildOrderSummary(items),
-    checkoutCancelToken,
+    checkoutCancelToken: result.checkout_cancel_token,
+    checkoutExpiresAt: result.checkout_expires_at,
     approvalMode,
+  };
+}
+
+export async function getExistingCheckoutAttempt(
+  checkoutAttemptId: string,
+  checkoutRequestHash: string,
+): Promise<ExistingCheckoutAttempt | null> {
+  const supabase = getSupabaseAdminClient();
+  if (!supabase) throw new Error("Supabase admin client is not configured.");
+
+  const { data: orderData, error: orderError } = await supabase
+    .from("orders")
+    .select(
+      "id, customer_id, delivery_window_id, status, subtotal_cents, delivery_fee_cents, total_cents, delivery_check, checkout_cancel_token, checkout_request_hash, checkout_expires_at, stripe_checkout_session_id, approval_mode",
+    )
+    .eq("checkout_attempt_id", checkoutAttemptId)
+    .maybeSingle();
+  if (orderError) throw new Error(orderError.message);
+  if (!orderData) return null;
+
+  const order = orderData as CheckoutAttemptOrderRow;
+  if (order.checkout_request_hash !== checkoutRequestHash) {
+    throw new Error("Checkout attempt was already used with different order details.");
+  }
+
+  const [itemResult, windowResult] = await Promise.all([
+    supabase
+      .from("order_items")
+      .select(
+        "product_id, quantity, unit_price_cents, products(id, name, category, description, ingredients, allergens, estimated_ingredient_cost_cents, stripe_product_id, stripe_price_id, stripe_price_cents, stripe_synced_at, image_url, image_style, active)",
+      )
+      .eq("order_id", order.id),
+    supabase
+      .from("delivery_windows")
+      .select("label, weekly_menu_id")
+      .eq("id", order.delivery_window_id)
+      .maybeSingle(),
+  ]);
+  if (itemResult.error) throw new Error(itemResult.error.message);
+  if (windowResult.error) throw new Error(windowResult.error.message);
+  if (!windowResult.data) throw new Error("Checkout delivery window could not be found.");
+
+  const items = ((itemResult.data || []) as CheckoutAttemptItemRow[]).map(
+    (item) => {
+      const product = Array.isArray(item.products)
+        ? item.products[0]
+        : item.products;
+      if (!product) throw new Error("Checkout product could not be found.");
+      return {
+        id: product.id,
+        productId: product.id,
+        name: product.name,
+        category: product.category,
+        description: product.description,
+        ingredients: product.ingredients,
+        allergens: product.allergens,
+        priceCents: item.unit_price_cents,
+        estimatedIngredientCostCents:
+          product.estimated_ingredient_cost_cents,
+        stripeProductId: product.stripe_product_id,
+        stripePriceId: product.stripe_price_id,
+        stripePriceCents: product.stripe_price_cents,
+        stripeSyncedAt: product.stripe_synced_at,
+        imageUrl: product.image_url,
+        imageStyle: product.image_style,
+        active: product.active,
+        availableQuantity: item.quantity,
+        soldQuantity: item.quantity,
+        remainingQuantity: 0,
+        featured: false,
+        unavailable: false,
+        quantity: item.quantity,
+      } satisfies CheckoutOrderItem;
+    },
+  );
+  if (!items.length) throw new Error("Checkout order has no items.");
+
+  const orderSummary = buildOrderSummary(items);
+  return {
+    pendingOrder: {
+      id: order.id,
+      customerId: order.customer_id,
+      subtotalCents: order.subtotal_cents,
+      deliveryFeeCents: order.delivery_fee_cents,
+      taxCents: 0,
+      totalCents: order.total_cents,
+      orderSummary,
+      checkoutCancelToken: order.checkout_cancel_token,
+      checkoutExpiresAt: order.checkout_expires_at,
+      approvalMode: order.approval_mode,
+    },
+    items,
+    deliveryCheck: order.delivery_check,
+    deliveryWindowLabel: String(windowResult.data.label),
+    weeklyMenuId: String(windowResult.data.weekly_menu_id),
+    status: order.status,
+    stripeCheckoutSessionId: order.stripe_checkout_session_id,
   };
 }
 
@@ -225,69 +316,68 @@ export async function attachStripeSessionToOrder(orderId: string, sessionId: str
   const supabase = getSupabaseAdminClient();
   if (!supabase) throw new Error("Supabase admin client is not configured.");
 
-  const { error } = await supabase
-    .from("orders")
-    .update({ stripe_checkout_session_id: sessionId })
-    .eq("id", orderId);
-
-  if (error) throw new Error(error.message);
-}
-
-export async function releasePendingOrder(orderId: string) {
-  const supabase = getSupabaseAdminClient();
-  if (!supabase) throw new Error("Supabase admin client is not configured.");
-
-  const { data: existingOrder, error: lookupError } = await supabase
-    .from("orders")
-    .select("id, status")
-    .eq("id", orderId)
-    .in("status", ["pending_payment", "pending_approval_payment"])
-    .maybeSingle();
-
-  if (lookupError) throw new Error(lookupError.message);
-  if (!existingOrder) return null;
-
-  const previousStatus = existingOrder.status as OrderStatus;
-  const { data: updatedOrders, error } = await supabase
-    .from("orders")
-    .update({
-      status: "canceled",
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", orderId)
-    .in("status", ["pending_payment", "pending_approval_payment"])
-    .select("id");
-
-  if (error) throw new Error(error.message);
-  const updatedOrder = updatedOrders?.[0];
-  if (!updatedOrder) return null;
-
-  if (previousStatus === "pending_payment") {
-    const { error: releaseError } = await supabase.rpc("release_order_inventory", {
+  const { data, error } = await supabase.rpc(
+    "attach_storefront_checkout_session",
+    {
       p_order_id: orderId,
-    });
-    if (releaseError) throw new Error(releaseError.message);
-  }
+      p_session_id: sessionId,
+    },
+  );
 
-  return orderId;
+  if (error) throw new Error(error.message);
+  if (data !== true) throw new Error("Storefront order could not be attached to Stripe Checkout.");
 }
 
-export async function cancelPendingOrderByToken(orderId: string, token: string) {
+export async function releasePendingOrder(orderId: string, sessionId?: string) {
   const supabase = getSupabaseAdminClient();
   if (!supabase) throw new Error("Supabase admin client is not configured.");
+  const { data, error } = await supabase.rpc("cancel_storefront_checkout", {
+    p_order_id: orderId,
+    p_session_id: sessionId || null,
+    p_cancel_token: null,
+    p_actor_email: null,
+    p_reason: "Checkout setup failed or was abandoned.",
+  });
+  if (error) throw new Error(error.message);
+  return data ? String(data) : null;
+}
 
-  const { data: order, error: lookupError } = await supabase
+export async function getPendingCheckoutCancellationSession(
+  orderId: string,
+  token: string,
+) {
+  const supabase = getSupabaseAdminClient();
+  if (!supabase) throw new Error("Supabase admin client is not configured.");
+  const { data, error } = await supabase
     .from("orders")
-    .select("id")
+    .select("stripe_checkout_session_id")
     .eq("id", orderId)
     .eq("checkout_cancel_token", token)
+    .eq("source", "storefront")
     .in("status", ["pending_payment", "pending_approval_payment"])
     .maybeSingle();
+  if (error) throw new Error(error.message);
+  return data?.stripe_checkout_session_id
+    ? String(data.stripe_checkout_session_id)
+    : null;
+}
 
-  if (lookupError) throw new Error(lookupError.message);
-  if (!order) return null;
-
-  return releasePendingOrder(orderId);
+export async function cancelPendingOrderByToken(
+  orderId: string,
+  token: string,
+  sessionId: string,
+) {
+  const supabase = getSupabaseAdminClient();
+  if (!supabase) throw new Error("Supabase admin client is not configured.");
+  const { data, error } = await supabase.rpc("cancel_storefront_checkout", {
+    p_order_id: orderId,
+    p_session_id: sessionId,
+    p_cancel_token: token,
+    p_actor_email: null,
+    p_reason: "Customer left Stripe Checkout before payment.",
+  });
+  if (error) throw new Error(error.message);
+  return data ? String(data) : null;
 }
 
 async function hydratePaidOrderSummary(
@@ -371,6 +461,8 @@ export async function getPaidCheckoutOrderSummaryBySessionId(
 export async function markCheckoutSessionPaid(
   sessionId: string,
   payment?: {
+    currency?: string | null;
+    subtotalCents?: number | null;
     taxCents?: number | null;
     totalCents?: number | null;
   },
@@ -378,87 +470,74 @@ export async function markCheckoutSessionPaid(
   const supabase = getSupabaseAdminClient();
   if (!supabase) throw new Error("Supabase admin client is not configured.");
 
-  const paidUpdates: Record<string, unknown> = {
-    status: "paid",
-    paid_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  };
-  if (typeof payment?.taxCents === "number") {
-    paidUpdates.tax_cents = Math.max(0, payment.taxCents);
-  }
-  if (typeof payment?.totalCents === "number") {
-    paidUpdates.total_cents = Math.max(0, payment.totalCents);
+  if (
+    !payment?.currency ||
+    typeof payment.subtotalCents !== "number" ||
+    typeof payment.taxCents !== "number" ||
+    typeof payment.totalCents !== "number"
+  ) {
+    throw new Error("Stripe Checkout payment totals are incomplete.");
   }
 
-  const { data: updatedOrders, error } = await supabase
-    .from("orders")
-    .update(paidUpdates)
-    .eq("stripe_checkout_session_id", sessionId)
-    .eq("status", "pending_payment")
-    .select("id, customer_id, delivery_window_id, delivery_address, notes");
-
+  const { data, error } = await supabase.rpc(
+    "complete_storefront_checkout_payment",
+    {
+      p_session_id: sessionId,
+      p_currency: payment.currency,
+      p_subtotal_cents: payment.subtotalCents,
+      p_tax_cents: payment.taxCents,
+      p_total_cents: payment.totalCents,
+    },
+  );
   if (error) throw new Error(error.message);
-  let order = updatedOrders?.[0];
-  let paidStatus: OrderStatus = "paid";
-  if (!order) {
-    const approvalUpdates = {
-      ...paidUpdates,
-      status: "pending_approval",
-    };
-    const { data: approvalOrders, error: approvalError } = await supabase
-      .from("orders")
-      .update(approvalUpdates)
-      .eq("stripe_checkout_session_id", sessionId)
-      .eq("status", "pending_approval_payment")
-      .select("id, customer_id, delivery_window_id, delivery_address, notes");
-
-    if (approvalError) throw new Error(approvalError.message);
-    order = approvalOrders?.[0];
-    paidStatus = "pending_approval";
+  const result = Array.isArray(data) ? data[0] : data;
+  if (!result || !["paid", "pending_approval"].includes(result.next_status)) {
+    return null;
   }
+
+  const { data: order, error: orderError } = await supabase
+    .from("orders")
+    .select("id, customer_id, delivery_window_id, delivery_address, notes")
+    .eq("id", result.order_id)
+    .maybeSingle();
+  if (orderError) throw new Error(orderError.message);
   if (!order) return null;
 
-  return hydratePaidOrderSummary(order as PaidOrderRow, paidStatus);
+  return hydratePaidOrderSummary(
+    order as PaidOrderRow,
+    result.next_status as OrderStatus,
+  );
 }
 
-export async function cancelExpiredCheckoutSession(sessionId: string) {
+export async function cancelExpiredCheckoutSession(
+  sessionId: string,
+  recoveryOrderId?: string,
+) {
   const supabase = getSupabaseAdminClient();
   if (!supabase) throw new Error("Supabase admin client is not configured.");
-
-  const { data: existingOrder, error: lookupError } = await supabase
-    .from("orders")
-    .select("id, status")
-    .eq("stripe_checkout_session_id", sessionId)
-    .in("status", ["pending_payment", "pending_approval_payment"])
-    .maybeSingle();
-
-  if (lookupError) throw new Error(lookupError.message);
-  if (!existingOrder) return null;
-
-  const previousStatus = existingOrder.status as OrderStatus;
-  const { data: updatedOrders, error } = await supabase
-    .from("orders")
-    .update({
-      status: "canceled",
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", existingOrder.id)
-    .in("status", ["pending_payment", "pending_approval_payment"])
-    .select("id");
-
-  if (error) throw new Error(error.message);
-
-  const orderId = updatedOrders?.[0]?.id as string | undefined;
-  if (!orderId) return null;
-
-  if (previousStatus === "pending_payment") {
-    const { error: releaseError } = await supabase.rpc("release_order_inventory", {
-      p_order_id: orderId,
-    });
-    if (releaseError) throw new Error(releaseError.message);
+  if (recoveryOrderId) {
+    await attachStripeSessionToOrder(recoveryOrderId, sessionId);
   }
+  const { data, error } = await supabase.rpc("cancel_storefront_checkout", {
+    p_order_id: recoveryOrderId || null,
+    p_session_id: sessionId,
+    p_cancel_token: null,
+    p_actor_email: null,
+    p_reason: "Stripe Checkout expired or payment failed.",
+  });
+  if (error) throw new Error(error.message);
+  return data ? String(data) : null;
+}
 
-  return orderId;
+export async function cleanupAbandonedStorefrontCheckouts() {
+  const supabase = getSupabaseAdminClient();
+  if (!supabase) throw new Error("Supabase admin client is not configured.");
+  const { data, error } = await supabase.rpc(
+    "cleanup_abandoned_storefront_checkouts",
+  );
+  if (error) throw new Error(error.message);
+  const canceled = Number(data);
+  return Number.isSafeInteger(canceled) && canceled >= 0 ? canceled : 0;
 }
 
 export async function getOrderConfirmationBySessionId(

@@ -73,6 +73,20 @@ function MemberDetail({
             </p>
           </div>
         </div>
+        {member.providerSyncRequired ? (
+          <div className="mt-4 border border-amber-300 bg-amber-50 p-3 text-sm leading-6 text-amber-950">
+            <p className="font-bold">Saved change is waiting on Stripe</p>
+            <p>
+              {member.providerSyncError ||
+                "Automatic reconciliation is in progress. Renewals are safely paused until Stripe confirms the saved plan or delivery change."}
+            </p>
+            {member.providerSyncAttemptedAt ? (
+              <p className="mt-1 text-xs text-amber-800">
+                Last attempted {formatDate(member.providerSyncAttemptedAt, true)}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
       <div className="grid gap-0 divide-y divide-stone-200 lg:grid-cols-2 lg:divide-x lg:divide-y-0">
@@ -195,6 +209,17 @@ function MemberDetail({
 
         <div className="mt-5 grid gap-4 border-t border-stone-200 pt-5 lg:grid-cols-2">
           <div>
+            {member.currentCycle?.status === "refund_pending" ? (
+              <div className="mb-3 border border-amber-300 bg-amber-50 p-3 text-sm leading-6 text-amber-950">
+                <p className="font-bold">
+                  Stripe refund: {member.currentCycleRefundStatus || "claim saved"}
+                </p>
+                <p>
+                  {member.currentCycleRefundError ||
+                    "The refund is safely claimed. Use the button below to retrieve or resume it."}
+                </p>
+              </div>
+            ) : null}
             <label className="flex items-start gap-3 text-sm leading-6 text-stone-700">
               <input
                 type="checkbox"
@@ -264,7 +289,7 @@ function MemberDetail({
                         cycleId: member.currentCycle.id,
                         note: "Full cycle refunded by Grace",
                       },
-                      "Current cycle refunded and reservations released.",
+                      "Refund request saved. Its Stripe status is shown below.",
                     )
                   : undefined
               }
@@ -604,6 +629,7 @@ export function BreadClubAdminDashboard({
 
           {selectedMember ? (
             <MemberDetail
+              key={selectedMember.id}
               member={selectedMember}
               pending={isPending}
               onAction={action}

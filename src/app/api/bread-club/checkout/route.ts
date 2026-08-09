@@ -1,5 +1,6 @@
 import { createHash } from "crypto";
 import { NextResponse } from "next/server";
+import type Stripe from "stripe";
 import { z } from "zod";
 import {
   getBreadClubCheckoutGate,
@@ -17,11 +18,14 @@ import {
 import {
   attachStripeSubscriptionCheckout,
   createPendingBreadClubCheckout,
+  expireBreadClubCheckoutSession,
+  getExistingBreadClubCheckoutAttempt,
   markBreadClubCheckoutIncomplete,
+  type PendingBreadClubCheckout,
   validateSelectionAcrossCycle,
 } from "@/lib/bread-club/records";
 import { checkDeliveryAddressWithRoutes } from "@/lib/delivery";
-import { checkRateLimit } from "@/lib/rate-limit";
+import { checkRateLimitChain, getRequestClientIp } from "@/lib/rate-limit";
 import { getDeliverySettingsData } from "@/lib/storefront-data";
 import { getStripe } from "@/lib/stripe";
 import { createStripeDeliveryCustomer } from "@/lib/stripe-tax";
@@ -33,6 +37,7 @@ function hasMinimumPhoneDigits(value: string) {
 }
 
 export const breadClubCheckoutSchema = z.object({
+  checkoutAttemptId: z.string().uuid(),
   planId: z.string().uuid(),
   selection: z
     .array(
@@ -46,9 +51,13 @@ export const breadClubCheckoutSchema = z.object({
   customer: z.object({
     name: z.string().trim().min(2).max(120),
     email: z.string().trim().email().max(254),
-    phone: z.string().trim().refine(hasMinimumPhoneDigits, {
-      message: "Enter a phone number with at least 7 digits.",
-    }),
+    phone: z
+      .string()
+      .trim()
+      .max(40)
+      .refine(hasMinimumPhoneDigits, {
+        message: "Enter a phone number with at least 7 digits.",
+      }),
   }),
   address: z.object({
     line1: z.string().trim().min(3).max(180),
@@ -62,9 +71,220 @@ export const breadClubCheckoutSchema = z.object({
   consentText: z.string().trim().min(40).max(1000),
 });
 
+type ParsedBreadClubCheckout = z.infer<typeof breadClubCheckoutSchema>;
+
+export function buildBreadClubCheckoutRequestHash(
+  checkout: ParsedBreadClubCheckout,
+) {
+  const canonicalRequest = {
+    checkoutAttemptId: checkout.checkoutAttemptId,
+    planId: checkout.planId,
+    selection: normalizeBreadClubSelection(checkout.selection).map((item) => ({
+      productId: item.productId,
+      quantity: item.quantity,
+    })),
+    customer: {
+      name: checkout.customer.name.trim(),
+      email: checkout.customer.email.trim().toLowerCase(),
+      phone: checkout.customer.phone.trim(),
+    },
+    address: {
+      line1: checkout.address.line1.trim(),
+      line2: checkout.address.line2?.trim() || "",
+      city: checkout.address.city.trim(),
+      state: checkout.address.state.trim().toUpperCase(),
+      postalCode: checkout.address.postalCode.trim(),
+    },
+    deliveryInstructions: checkout.deliveryInstructions.trim(),
+    acknowledgedAutoRenewal: checkout.acknowledgedAutoRenewal,
+    consentText: checkout.consentText,
+  };
+  return createHash("sha256")
+    .update(JSON.stringify(canonicalRequest))
+    .digest("hex");
+}
+
+class BreadClubCheckoutStartFailure extends Error {
+  constructor(
+    message: string,
+    readonly resetCheckoutAttempt: boolean,
+  ) {
+    super(message);
+  }
+}
+
+function checkoutResponse(
+  url: string,
+  pending: PendingBreadClubCheckout,
+) {
+  return NextResponse.json({
+    url,
+    membershipId: pending.membershipId,
+    firstDeliveryAt: pending.firstDeliveryAt,
+    recurringTotalCents: pending.cycleTotalCents,
+    taxTreatment: pending.automaticTaxEnabled
+      ? "calculated_by_stripe"
+      : "not_added",
+  });
+}
+
+async function confirmStripeSessionExpired(
+  stripe: Stripe,
+  sessionId: string,
+) {
+  try {
+    const expired = await stripe.checkout.sessions.expire(sessionId);
+    return expired.status === "expired";
+  } catch {
+    const current = await stripe.checkout.sessions.retrieve(sessionId);
+    return current.status === "expired";
+  }
+}
+
+async function startBreadClubHostedCheckout(input: {
+  checkout: ParsedBreadClubCheckout;
+  consentVersion: string;
+  pending: PendingBreadClubCheckout;
+  stripe: Stripe;
+}) {
+  const { checkout, consentVersion, pending, stripe } = input;
+  const checkoutExpiresAt = Math.floor(
+    new Date(pending.checkoutExpiresAt).getTime() / 1000,
+  );
+  if (!Number.isSafeInteger(checkoutExpiresAt)) {
+    throw new BreadClubCheckoutStartFailure(
+      "Bread Club checkout expiration is invalid.",
+      false,
+    );
+  }
+  const currentTime = Math.floor(Date.now() / 1000);
+  if (checkoutExpiresAt <= currentTime) {
+    const released = await markBreadClubCheckoutIncomplete(
+      pending.membershipId,
+      pending.cycleId,
+    );
+    throw new BreadClubCheckoutStartFailure(
+      "That checkout attempt expired. Please start checkout again.",
+      released,
+    );
+  }
+  if (checkoutExpiresAt < currentTime + 30 * 60) {
+    throw new BreadClubCheckoutStartFailure(
+      "That checkout is still being reconciled. Please try again after its payment link expires.",
+      false,
+    );
+  }
+
+  let session: Stripe.Checkout.Session | undefined;
+  try {
+    const automaticTaxEnabled = pending.automaticTaxEnabled;
+    const stripeCustomer = automaticTaxEnabled
+      ? await createStripeDeliveryCustomer(
+          stripe,
+          {
+            name: checkout.customer.name,
+            email: checkout.customer.email,
+            phone: checkout.customer.phone,
+            address: checkout.address,
+            metadata: {
+              bread_club_membership_id: pending.membershipId,
+              customer_source: "bread_club_checkout",
+            },
+          },
+          {
+            idempotencyKey: `bread-club-customer-${checkout.checkoutAttemptId}`,
+          },
+        )
+      : null;
+    session = await stripe.checkout.sessions.create(
+      {
+        mode: "subscription",
+        expires_at: checkoutExpiresAt,
+        ...(stripeCustomer
+          ? { customer: stripeCustomer.id }
+          : { customer_email: checkout.customer.email }),
+        phone_number_collection: { enabled: true },
+        line_items: [
+          { price: pending.planStripePriceId, quantity: 1 },
+          { price: pending.deliveryStripePriceId, quantity: 1 },
+        ],
+        automatic_tax: { enabled: automaticTaxEnabled },
+        success_url: `${getSiteUrl()}/bread-club/success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${getSiteUrl()}/api/bread-club/cancel-checkout?membership_id=${pending.membershipId}&token=${pending.checkoutCancelToken}`,
+        metadata: {
+          checkout_kind: "bread_club_subscription",
+          bread_club_membership_id: pending.membershipId,
+          bread_club_cycle_id: pending.cycleId,
+          bread_club_plan_id: checkout.planId,
+          bread_club_checkout_attempt_id: checkout.checkoutAttemptId,
+          delivery_band: pending.routeBandKey,
+          consent_version: consentVersion,
+        },
+        subscription_data: {
+          metadata: {
+            checkout_kind: "bread_club_subscription",
+            bread_club_membership_id: pending.membershipId,
+            bread_club_plan_id: checkout.planId,
+            delivery_band: pending.routeBandKey,
+          },
+        },
+      },
+      {
+        idempotencyKey: `bread-club-subscription-${checkout.checkoutAttemptId}`,
+      },
+    );
+    await attachStripeSubscriptionCheckout(pending.membershipId, session.id);
+    if (session.status === "complete") {
+      return `${getSiteUrl()}/bread-club/success?session_id=${encodeURIComponent(session.id)}`;
+    }
+    if (session.status === "expired" || !session.url) {
+      throw new Error("Stripe Checkout did not return an open payment link.");
+    }
+    return session.url;
+  } catch (error) {
+    let resetCheckoutAttempt = false;
+    if (session?.id) {
+      try {
+        if (await confirmStripeSessionExpired(stripe, session.id)) {
+          await attachStripeSubscriptionCheckout(
+            pending.membershipId,
+            session.id,
+          );
+          resetCheckoutAttempt = Boolean(
+            await expireBreadClubCheckoutSession(
+              session.id,
+              pending.membershipId,
+            ),
+          );
+        }
+      } catch (cleanupError) {
+        console.error("[bread-club] Stripe checkout cleanup deferred", {
+          membershipId: pending.membershipId,
+          sessionId: session.id,
+          cleanupError,
+        });
+      }
+    } else {
+      console.error(
+        "[bread-club] Stripe checkout creation outcome is uncertain",
+        {
+          membershipId: pending.membershipId,
+          checkoutAttemptId: checkout.checkoutAttemptId,
+          error,
+        },
+      );
+    }
+    throw new BreadClubCheckoutStartFailure(
+      error instanceof Error
+        ? error.message
+        : "Stripe enrollment checkout could not be started.",
+      resetCheckoutAttempt,
+    );
+  }
+}
+
 function requestIdentity(request: Request, email: string) {
-  const forwardedFor = request.headers.get("x-forwarded-for") || "";
-  const ip = forwardedFor.split(",")[0]?.trim() || "unknown-ip";
+  const ip = getRequestClientIp(request);
   return {
     rateLimitKey: `${ip}:${email.trim().toLowerCase()}`,
     ipHash:
@@ -95,12 +315,20 @@ export async function POST(request: Request) {
   }
   const checkout = parsed.data;
   const identity = requestIdentity(request, checkout.customer.email);
-  const rateLimit = await checkRateLimit({
-    scope: "bread_club_checkout",
-    key: identity.rateLimitKey,
-    limit: 4,
-    windowMs: 60 * 60 * 1000,
-  });
+  const rateLimit = await checkRateLimitChain(
+    {
+      scope: "bread_club_checkout_ip",
+      key: getRequestClientIp(request),
+      limit: 12,
+      windowMs: 60 * 60 * 1000,
+    },
+    {
+      scope: "bread_club_checkout",
+      key: identity.rateLimitKey,
+      limit: 4,
+      windowMs: 60 * 60 * 1000,
+    },
+  );
   if (!rateLimit.allowed) {
     return NextResponse.json(
       { error: "Too many enrollment attempts. Please try again later." },
@@ -122,6 +350,144 @@ export async function POST(request: Request) {
   );
   if (!gate.allowed) {
     return NextResponse.json({ error: gate.reason }, { status: 403 });
+  }
+
+  const checkoutRequestHash = buildBreadClubCheckoutRequestHash(checkout);
+  const stripe = getStripe();
+  if (!stripe) {
+    return NextResponse.json(
+      {
+        error:
+          "Bread Club billing is not ready yet. No enrollment charge was created.",
+      },
+      { status: 503 },
+    );
+  }
+
+  let existingAttempt;
+  try {
+    existingAttempt = await getExistingBreadClubCheckoutAttempt(
+      checkout.checkoutAttemptId,
+      checkoutRequestHash,
+    );
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Bread Club checkout attempt could not be verified.",
+      },
+      { status: 409 },
+    );
+  }
+
+  if (existingAttempt) {
+    if (existingAttempt.status !== "pending_checkout") {
+      if (
+        existingAttempt.status === "active" &&
+        existingAttempt.stripeCheckoutSessionId
+      ) {
+        return checkoutResponse(
+          `${getSiteUrl()}/bread-club/success?session_id=${encodeURIComponent(existingAttempt.stripeCheckoutSessionId)}`,
+          existingAttempt.pending,
+        );
+      }
+      return NextResponse.json(
+        {
+          error: "That checkout attempt is closed. Please start checkout again.",
+          resetCheckoutAttempt: true,
+        },
+        { status: 409 },
+      );
+    }
+
+    if (existingAttempt.stripeCheckoutSessionId) {
+      try {
+        const existingSession = await stripe.checkout.sessions.retrieve(
+          existingAttempt.stripeCheckoutSessionId,
+        );
+        if (existingSession.status === "open" && existingSession.url) {
+          return checkoutResponse(
+            existingSession.url,
+            existingAttempt.pending,
+          );
+        }
+        if (existingSession.status === "complete") {
+          return checkoutResponse(
+            `${getSiteUrl()}/bread-club/success?session_id=${encodeURIComponent(existingSession.id)}`,
+            existingAttempt.pending,
+          );
+        }
+        if (existingSession.status === "expired") {
+          await expireBreadClubCheckoutSession(
+            existingSession.id,
+            existingAttempt.pending.membershipId,
+          );
+          return NextResponse.json(
+            {
+              error:
+                "That checkout attempt expired. Please start checkout again.",
+              resetCheckoutAttempt: true,
+            },
+            { status: 409 },
+          );
+        }
+        throw new Error("Stripe Checkout is not in a reusable state.");
+      } catch (error) {
+        return NextResponse.json(
+          {
+            error:
+              error instanceof Error
+                ? error.message
+                : "Existing Bread Club checkout could not be resumed.",
+          },
+          { status: 502 },
+        );
+      }
+    }
+
+    const canonicalConsentText = buildBreadClubConsentText(
+      existingAttempt.pending.cycleTotalCents,
+      existingAttempt.pending.automaticTaxEnabled,
+    );
+    if (checkout.consentText !== canonicalConsentText) {
+      return NextResponse.json(
+        {
+          error:
+            "The Bread Club total or renewal terms changed. Review the authorization and check it again.",
+          resetCheckoutAttempt: false,
+        },
+        { status: 409 },
+      );
+    }
+
+    try {
+      const checkoutUrl = await startBreadClubHostedCheckout({
+        checkout,
+        consentVersion: existingAttempt.consentVersion,
+        pending: existingAttempt.pending,
+        stripe,
+      });
+      return checkoutResponse(
+        checkoutUrl,
+        existingAttempt.pending,
+      );
+    } catch (error) {
+      return NextResponse.json(
+        {
+          error:
+            error instanceof Error
+              ? error.message
+              : "Stripe enrollment checkout could not be started.",
+          resetCheckoutAttempt:
+            error instanceof BreadClubCheckoutStartFailure
+              ? error.resetCheckoutAttempt
+              : false,
+        },
+        { status: 500 },
+      );
+    }
   }
 
   const [enrollment, deliverySettings] = await Promise.all([
@@ -204,13 +570,12 @@ export async function POST(request: Request) {
     );
   }
 
-  const stripe = getStripe();
   const currentPlanPrice =
     plan.stripePriceId && plan.stripePriceCents === plan.priceCents;
   const currentDeliveryPrice =
     deliveryPrice.stripePriceId &&
     deliveryPrice.stripePriceCents === deliveryPrice.priceCents;
-  if (!stripe || !currentPlanPrice || !currentDeliveryPrice) {
+  if (!currentPlanPrice || !currentDeliveryPrice) {
     return NextResponse.json(
       {
         error:
@@ -224,9 +589,10 @@ export async function POST(request: Request) {
     plan.priceCents,
     deliveryPrice.priceCents,
   );
+  const automaticTaxEnabled = isBreadClubAutomaticTaxEnabled();
   const canonicalConsentText = buildBreadClubConsentText(
     cycleTotalCents,
-    isBreadClubAutomaticTaxEnabled(),
+    automaticTaxEnabled,
   );
   if (checkout.consentText !== canonicalConsentText) {
     return NextResponse.json(
@@ -238,7 +604,7 @@ export async function POST(request: Request) {
     );
   }
 
-  let pending;
+  let pending: PendingBreadClubCheckout;
   try {
     pending = await createPendingBreadClubCheckout({
       checkout: {
@@ -247,6 +613,8 @@ export async function POST(request: Request) {
       },
       consentIpHash: identity.ipHash,
       consentVersion: enrollment.settings.consentVersion,
+      checkoutRequestHash,
+      automaticTaxEnabled,
       deliveryCheck,
       deliveryPrice,
       plan,
@@ -266,77 +634,27 @@ export async function POST(request: Request) {
   }
 
   try {
-    const automaticTaxEnabled = isBreadClubAutomaticTaxEnabled();
-    const stripeCustomer = automaticTaxEnabled
-      ? await createStripeDeliveryCustomer(stripe, {
-          name: checkout.customer.name,
-          email: checkout.customer.email,
-          phone: checkout.customer.phone,
-          address: checkout.address,
-          metadata: {
-            bread_club_membership_id: pending.membershipId,
-            customer_source: "bread_club_checkout",
-          },
-        })
-      : null;
-    const session = await stripe.checkout.sessions.create({
-      mode: "subscription",
-      ...(stripeCustomer
-        ? { customer: stripeCustomer.id }
-        : { customer_email: checkout.customer.email }),
-      phone_number_collection: { enabled: true },
-      line_items: [
-        { price: plan.stripePriceId!, quantity: 1 },
-        { price: deliveryPrice.stripePriceId!, quantity: 1 },
-      ],
-      automatic_tax: {
-        enabled: automaticTaxEnabled,
-      },
-      success_url: `${getSiteUrl()}/bread-club/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${getSiteUrl()}/api/bread-club/cancel-checkout?membership_id=${pending.membershipId}&token=${pending.checkoutCancelToken}`,
-      expires_at: Math.floor(Date.now() / 1000) + 30 * 60,
-      metadata: {
-        checkout_kind: "bread_club_subscription",
-        bread_club_membership_id: pending.membershipId,
-        bread_club_cycle_id: pending.cycleId,
-        bread_club_plan_id: plan.id,
-        delivery_band: deliveryPrice.bandKey,
-        consent_version: enrollment.settings.consentVersion,
-      },
-      subscription_data: {
-        metadata: {
-          checkout_kind: "bread_club_subscription",
-          bread_club_membership_id: pending.membershipId,
-          bread_club_plan_id: plan.id,
-          delivery_band: deliveryPrice.bandKey,
-        },
-      },
+    const checkoutUrl = await startBreadClubHostedCheckout({
+      checkout,
+      consentVersion: enrollment.settings.consentVersion,
+      pending,
+      stripe,
     });
-    await attachStripeSubscriptionCheckout(pending.membershipId, session.id);
-
-    return NextResponse.json({
-      url: session.url,
-      membershipId: pending.membershipId,
-      firstDeliveryAt: pending.firstDeliveryAt,
-      recurringTotalCents: getBreadClubCycleTotalCents(
-        plan.priceCents,
-        deliveryPrice.priceCents,
-      ),
-      taxTreatment: isBreadClubAutomaticTaxEnabled()
-        ? "calculated_by_stripe"
-        : "not_added",
-    });
-  } catch (error) {
-    await markBreadClubCheckoutIncomplete(
-      pending.membershipId,
-      pending.cycleId,
+    return checkoutResponse(
+      checkoutUrl,
+      pending,
     );
+  } catch (error) {
     return NextResponse.json(
       {
         error:
           error instanceof Error
             ? error.message
             : "Stripe enrollment checkout could not be started.",
+        resetCheckoutAttempt:
+          error instanceof BreadClubCheckoutStartFailure
+            ? error.resetCheckoutAttempt
+            : false,
       },
       { status: 500 },
     );

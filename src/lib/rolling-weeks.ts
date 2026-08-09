@@ -17,14 +17,8 @@ type WeeklyMenuExistingRow = WeeklyMenuTemplateRow & {
   order_cutoff_at: string;
   starts_at: string;
   ends_at: string;
-};
-
-type WeeklyMenuItemTemplateRow = {
-  product_id: string;
-  available_quantity: number;
-  sold_quantity: number;
-  featured: boolean;
-  unavailable: boolean | null;
+  generation_key?: string | null;
+  source_weekly_menu_id?: string | null;
 };
 
 type DeliveryWindowExistingRow = {
@@ -57,33 +51,37 @@ function sameTimestamp(left: string, right: Date) {
   return new Date(left).getTime() === right.getTime();
 }
 
-async function syncMenuSchedule(
-  menu: WeeklyMenuExistingRow,
+async function ensureAtomicRollingWeek(
+  templateId: string,
+  existingMenuId: string | null,
+  baseName: string,
   schedule: ReturnType<typeof getRollingDeliveryWeekSchedules>[number],
 ) {
-  if (
-    sameTimestamp(menu.order_cutoff_at, schedule.orderCutoffAt) &&
-    sameTimestamp(menu.starts_at, schedule.startsAt) &&
-    sameTimestamp(menu.ends_at, schedule.endsAt)
-  ) {
-    return;
-  }
-
   const supabase = getSupabaseAdminClient();
-  if (!supabase) return;
+  if (!supabase) return null;
 
-  const { error } = await supabase
-    .from("weekly_menus")
-    .update({
-      order_cutoff_at: schedule.orderCutoffAt.toISOString(),
-      starts_at: schedule.startsAt.toISOString(),
-      ends_at: schedule.endsAt.toISOString(),
-    })
-    .eq("id", menu.id);
-
+  const { data, error } = await supabase.rpc("ensure_atomic_rolling_week", {
+    p_template_weekly_menu_id: templateId,
+    p_existing_weekly_menu_id: existingMenuId,
+    p_name: formatWeekName(baseName, schedule.deliveryStartsAt),
+    p_generation_key: getGenerationKey(templateId, schedule.startsAt),
+    p_order_cutoff_at: schedule.orderCutoffAt.toISOString(),
+    p_starts_at: schedule.startsAt.toISOString(),
+    p_ends_at: schedule.endsAt.toISOString(),
+    p_delivery_label: formatSundayDeliveryWindowLabel(
+      schedule.deliveryStartsAt,
+      schedule.deliveryEndsAt,
+    ),
+    p_delivery_starts_at: schedule.deliveryStartsAt.toISOString(),
+    p_delivery_ends_at: schedule.deliveryEndsAt.toISOString(),
+    p_delivery_capacity: DEFAULT_SUNDAY_DELIVERY_CAPACITY,
+  });
   if (error) {
-    console.error("[supabase] rolling menu schedule update failed", error.message);
+    console.error("[supabase] atomic rolling week save failed", error.message);
+    return null;
   }
+
+  return typeof data === "string" ? data : null;
 }
 
 async function ensureSundayDeliveryWindow(
@@ -104,6 +102,14 @@ async function ensureSundayDeliveryWindow(
       sameTimestamp(existingWindow.starts_at, schedule.deliveryStartsAt) &&
       sameTimestamp(existingWindow.ends_at, schedule.deliveryEndsAt)
     ) {
+      return;
+    }
+
+    if (existingWindow.reserved > 0) {
+      console.error(
+        "[supabase] Sunday delivery slot was not rescheduled because it has reservations",
+        existingWindow.id,
+      );
       return;
     }
 
@@ -156,7 +162,9 @@ export async function ensureRollingWeeklyMenus(now = new Date()) {
   const lookupEnd = addWeeks(schedules[schedules.length - 1].endsAt, 1).toISOString();
   const { data: existingRows, error: existingError } = await supabase
     .from("weekly_menus")
-    .select("id, name, order_cutoff_at, starts_at, ends_at, published, auto_generated")
+    .select(
+      "id, name, order_cutoff_at, starts_at, ends_at, published, auto_generated, generation_key, source_weekly_menu_id",
+    )
     .eq("published", true)
     .gte("ends_at", lookupStart)
     .lte("starts_at", lookupEnd)
@@ -170,11 +178,11 @@ export async function ensureRollingWeeklyMenus(now = new Date()) {
   const existing = ((existingRows || []) as WeeklyMenuExistingRow[]).filter(
     (menu) => new Date(menu.ends_at).getTime() >= now.getTime(),
   );
-  const results: Array<{
+  const manualResults: Array<{
     weeklyMenuId: string;
     schedule: ReturnType<typeof getRollingDeliveryWeekSchedules>[number];
   }> = [];
-  let itemRows: WeeklyMenuItemTemplateRow[] | null = null;
+  const resultIds: string[] = [];
 
   for (const schedule of schedules) {
     const matchingExisting = existing.find(
@@ -185,78 +193,46 @@ export async function ensureRollingWeeklyMenus(now = new Date()) {
 
     if (matchingExisting) {
       if (matchingExisting.auto_generated) {
-        await syncMenuSchedule(matchingExisting, schedule);
-      }
-      results.push({
-        weeklyMenuId: matchingExisting.id,
-        schedule,
-      });
-      continue;
-    }
-
-    if (!itemRows) {
-      const { data, error } = await supabase
-        .from("weekly_menu_items")
-        .select(
-          "product_id, available_quantity, sold_quantity, featured, unavailable",
-        )
-        .eq("weekly_menu_id", template.id);
-      if (error) {
-        console.error(
-          "[supabase] rolling menu item template lookup failed",
-          error.message,
+        const sourceTemplateId =
+          matchingExisting.source_weekly_menu_id ?? template.id;
+        const savedMenuId = await ensureAtomicRollingWeek(
+          sourceTemplateId,
+          matchingExisting.id,
+          template.name,
+          schedule,
         );
-        return results.map((result) => result.weeklyMenuId);
+        resultIds.push(savedMenuId ?? matchingExisting.id);
+      } else {
+        resultIds.push(matchingExisting.id);
+        manualResults.push({
+          weeklyMenuId: matchingExisting.id,
+          schedule,
+        });
       }
-      itemRows = (data || []) as WeeklyMenuItemTemplateRow[];
-    }
-
-    const { data: createdMenu, error: createError } = await supabase
-      .from("weekly_menus")
-      .insert({
-        name: formatWeekName(template.name, schedule.deliveryStartsAt),
-        order_cutoff_at: schedule.orderCutoffAt.toISOString(),
-        starts_at: schedule.startsAt.toISOString(),
-        ends_at: schedule.endsAt.toISOString(),
-        published: true,
-        auto_generated: true,
-        generation_key: getGenerationKey(template.id, schedule.startsAt),
-        source_weekly_menu_id: template.id,
-      })
-      .select("id")
-      .single();
-
-    if (createError) {
-      console.error("[supabase] rolling menu creation failed", createError.message);
       continue;
     }
 
-    const weeklyMenuId = createdMenu.id as string;
-    results.push({ weeklyMenuId, schedule });
-
-    const items = itemRows.map((item) => ({
-      weekly_menu_id: weeklyMenuId,
-      product_id: item.product_id,
-      available_quantity: item.available_quantity,
-      sold_quantity: 0,
-      featured: item.featured,
-      unavailable: Boolean(item.unavailable),
-    }));
-    if (items.length) {
-      const { error } = await supabase.from("weekly_menu_items").insert(items);
-      if (error) console.error("[supabase] rolling menu items creation failed", error.message);
-    }
+    const weeklyMenuId = await ensureAtomicRollingWeek(
+      template.id,
+      null,
+      template.name,
+      schedule,
+    );
+    if (weeklyMenuId) resultIds.push(weeklyMenuId);
   }
 
-  const resultIds = results.map((result) => result.weeklyMenuId);
   if (!resultIds.length) return [];
+  if (!manualResults.length) return resultIds;
 
   const { data: windowRows, error: windowError } = await supabase
     .from("delivery_windows")
     .select(
       "id, weekly_menu_id, label, starts_at, ends_at, capacity, reserved",
     )
-    .in("weekly_menu_id", resultIds)
+    .in(
+      "weekly_menu_id",
+      manualResults.map((result) => result.weeklyMenuId),
+    )
     .order("starts_at", { ascending: true });
   if (windowError) {
     console.error(
@@ -274,7 +250,7 @@ export async function ensureRollingWeeklyMenus(now = new Date()) {
   }
 
   await Promise.all(
-    results.map(({ weeklyMenuId, schedule }) =>
+    manualResults.map(({ weeklyMenuId, schedule }) =>
       ensureSundayDeliveryWindow(
         weeklyMenuId,
         schedule,

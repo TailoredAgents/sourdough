@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   retrieveSession: vi.fn(),
   completeStorefrontCheckoutSession: vi.fn(),
   cancelExpiredCheckoutSession: vi.fn(),
+  cleanupAbandonedStorefrontCheckouts: vi.fn(),
   pendingOrders: [] as Array<{
     id: string;
     stripe_checkout_session_id: string;
@@ -26,7 +27,6 @@ vi.mock("./supabase", () => ({
       select: vi.fn(() => query),
       in: vi.fn(() => query),
       not: vi.fn(() => query),
-      gte: vi.fn(() => query),
       order: vi.fn(() => query),
       limit: vi.fn(async () => ({
         data: mocks.pendingOrders,
@@ -44,6 +44,8 @@ vi.mock("./order-payment", () => ({
 
 vi.mock("./order-records", () => ({
   cancelExpiredCheckoutSession: mocks.cancelExpiredCheckoutSession,
+  cleanupAbandonedStorefrontCheckouts:
+    mocks.cleanupAbandonedStorefrontCheckouts,
 }));
 
 beforeEach(() => {
@@ -54,6 +56,8 @@ beforeEach(() => {
   mocks.retrieveSession.mockReset();
   mocks.completeStorefrontCheckoutSession.mockReset();
   mocks.cancelExpiredCheckoutSession.mockReset();
+  mocks.cleanupAbandonedStorefrontCheckouts.mockReset();
+  mocks.cleanupAbandonedStorefrontCheckouts.mockResolvedValue(2);
   mocks.retrieveSession
     .mockResolvedValueOnce({
       id: "cs_paid",
@@ -77,14 +81,13 @@ describe("storefront Checkout reconciliation", () => {
       "./order-reconciliation"
     );
 
-    const report = await reconcileStorefrontCheckoutSessions(
-      new Date("2026-07-26T12:00:00Z"),
-    );
+    const report = await reconcileStorefrontCheckoutSessions();
 
     expect(report).toEqual({
       checked: 2,
       paidOrdersRecovered: 1,
       expiredOrdersReleased: 1,
+      abandonedOrdersCanceled: 2,
       errors: [],
     });
     expect(mocks.completeStorefrontCheckoutSession).toHaveBeenCalledWith(

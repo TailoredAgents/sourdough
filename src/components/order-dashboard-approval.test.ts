@@ -1,7 +1,11 @@
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { OrderDashboard } from "./order-dashboard";
+import {
+  getOrderCompletionMessage,
+  getOrderStatusUpdateConfirmation,
+  OrderDashboard,
+} from "./order-dashboard";
 import type { AdminOrder } from "@/lib/types";
 
 const approvalOrder: AdminOrder = {
@@ -38,7 +42,6 @@ const approvalOrder: AdminOrder = {
   createdAt: "2026-07-22T14:00:00.000Z",
   updatedAt: "2026-07-22T14:00:00.000Z",
   stripeCheckoutSessionId: "cs_approval",
-  checkoutCancelToken: "cancel-token",
   nextWeekOk: true,
   approvalMode: "after_cutoff",
   approvedAt: null,
@@ -104,10 +107,39 @@ describe("order dashboard approval request display", () => {
 
     expect(html).toContain("Finish this order");
     expect(html).toContain("Complete order");
-    expect(html).toContain("sends a thank-you email with a review link");
-    expect(html).toContain("More status options");
+    expect(html).toContain("safely queues the thank-you email with its review link");
+    expect(html).toContain("Start baking");
+    expect(html).not.toContain("More status options");
+    expect(html).not.toContain("Manual status");
     expect(html.indexOf("Complete order")).toBeLessThan(
       html.indexOf("Classic Country Loaf"),
     );
+  });
+
+  it("reports each completion-email outcome truthfully", () => {
+    expect(getOrderCompletionMessage("sent")).toBe(
+      "Order completed and thank-you email sent.",
+    );
+    expect(getOrderCompletionMessage("queued")).toContain(
+      "queued for automatic retry",
+    );
+    expect(getOrderCompletionMessage("skipped")).toContain(
+      "skipped because no customer email is available",
+    );
+    expect(getOrderCompletionMessage(null)).toContain(
+      "status could not be confirmed",
+    );
+  });
+
+  it("warns that reopening a completed order can send customer email again", () => {
+    const deliveredOrder: AdminOrder = {
+      ...approvalOrder,
+      status: "delivered",
+    };
+
+    expect(
+      getOrderStatusUpdateConfirmation(deliveredOrder, "out_for_delivery"),
+    ).toContain("will not send a second thank-you email");
+    expect(getOrderStatusUpdateConfirmation(deliveredOrder, "delivered")).toBeNull();
   });
 });

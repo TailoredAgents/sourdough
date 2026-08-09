@@ -8,10 +8,6 @@ import type { CheckoutRequest, MenuProduct } from "./types";
 const mocks = vi.hoisted(() => ({
   from: vi.fn(),
   rpc: vi.fn(),
-  insertedCustomers: [] as unknown[],
-  insertedOrders: [] as unknown[],
-  insertedItems: [] as unknown[],
-  updatedOrders: [] as unknown[],
 }));
 
 vi.mock("./supabase", () => ({
@@ -43,6 +39,7 @@ const product: MenuProduct = {
 };
 
 const checkout: CheckoutRequest = {
+  checkoutAttemptId: "33333333-3333-4333-8333-333333333333",
   weeklyMenuId: "11111111-1111-4111-8111-111111111111",
   cart: [{ productId: product.id, quantity: 2 }],
   customer: {
@@ -64,95 +61,35 @@ const checkout: CheckoutRequest = {
   acknowledgedTerms: true,
 };
 
-function setupCreateOrderSupabaseMock() {
+function setupPaidApprovalSupabaseMock() {
+  mocks.rpc.mockResolvedValue({
+    data: [
+      {
+        order_id: "order-id",
+        next_status: "pending_approval",
+        recovery_note: null,
+      },
+    ],
+    error: null,
+  });
   mocks.from.mockImplementation((table: string) => {
-    if (table === "customers") {
+    if (table === "orders") {
       return {
         select: () => ({
           eq: () => ({
-            order: () => ({
-              limit: () => ({
-                maybeSingle: async () => ({ data: null, error: null }),
-              }),
+            maybeSingle: async () => ({
+              data: {
+                id: "order-id",
+                customer_id: "customer-id",
+                delivery_window_id:
+                  "22222222-2222-4222-8222-222222222222",
+                delivery_address: checkout.address,
+                notes: checkout.notes,
+              },
+              error: null,
             }),
           }),
         }),
-        insert: (row: unknown) => {
-          mocks.insertedCustomers.push(row);
-          return {
-            select: () => ({
-              single: async () => ({ data: { id: "customer-id" }, error: null }),
-            }),
-          };
-        },
-      };
-    }
-
-    if (table === "orders") {
-      return {
-        insert: (row: unknown) => {
-          mocks.insertedOrders.push(row);
-          return {
-            select: () => ({
-              single: async () => ({ data: { id: "order-id" }, error: null }),
-            }),
-          };
-        },
-        update: (row: unknown) => {
-          mocks.updatedOrders.push(row);
-          return {
-            eq: () => ({ error: null }),
-          };
-        },
-        delete: () => ({
-          eq: () => ({ error: null }),
-        }),
-      };
-    }
-
-    if (table === "order_items") {
-      return {
-        insert: (rows: unknown[]) => {
-          mocks.insertedItems.push(...rows);
-          return { error: null };
-        },
-      };
-    }
-
-    throw new Error(`Unexpected table ${table}`);
-  });
-}
-
-function setupPaidApprovalSupabaseMock() {
-  mocks.from.mockImplementation((table: string) => {
-    if (table === "orders") {
-      return {
-        update: (row: unknown) => {
-          mocks.updatedOrders.push(row);
-          return {
-            eq: (_column: string, value: string) => ({
-              eq: (_statusColumn: string, status: string) => ({
-                select: async () =>
-                  status === "pending_payment"
-                    ? { data: [], error: null }
-                    : {
-                        data: [
-                          {
-                            id: "order-id",
-                            customer_id: "customer-id",
-                            delivery_window_id:
-                              "22222222-2222-4222-8222-222222222222",
-                            delivery_address: checkout.address,
-                            notes: checkout.notes,
-                            stripe_checkout_session_id: value,
-                          },
-                        ],
-                        error: null,
-                      },
-              }),
-            }),
-          };
-        },
       };
     }
 
@@ -199,19 +136,31 @@ function setupPaidApprovalSupabaseMock() {
 beforeEach(() => {
   mocks.from.mockReset();
   mocks.rpc.mockReset();
-  mocks.insertedCustomers.length = 0;
-  mocks.insertedOrders.length = 0;
-  mocks.insertedItems.length = 0;
-  mocks.updatedOrders.length = 0;
 });
 
 describe("same-week approval order records", () => {
   it("persists approval checkout orders without reserving inventory first", async () => {
-    setupCreateOrderSupabaseMock();
+    mocks.rpc.mockResolvedValue({
+      data: [
+        {
+          order_id: "order-id",
+          customer_id: "customer-id",
+          subtotal_cents: 2400,
+          delivery_fee_cents: 600,
+          total_cents: 3000,
+          checkout_cancel_token:
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          checkout_expires_at: "2099-08-13T20:00:00.000Z",
+        },
+      ],
+      error: null,
+    });
 
     const order = await createPendingCheckoutOrder({
       approvalMode: "after_cutoff",
       checkout,
+      checkoutRequestHash:
+        "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
       deliveryCheck: {
         eligible: true,
         preliminary: false,
@@ -241,29 +190,33 @@ describe("same-week approval order records", () => {
       totalCents: 3000,
       orderSummary: "2 x Classic Country Loaf",
     });
-    expect(mocks.insertedOrders[0]).toMatchObject({
-      status: "pending_approval_payment",
-      next_week_ok: true,
-      approval_mode: "after_cutoff",
-      delivery_window_id: checkout.deliveryWindowId,
-      notes: checkout.notes,
-      delivery_instructions: checkout.deliveryInstructions,
-      delivery_address: expect.objectContaining({
-        email: "customer@example.com",
-        phone: "4045550100",
+    expect(mocks.rpc).toHaveBeenCalledWith(
+      "create_storefront_checkout_order",
+      expect.objectContaining({
+        p_customer_name: checkout.customer.name,
+        p_checkout_attempt_id: checkout.checkoutAttemptId,
+        p_checkout_request_hash:
+          "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        p_customer_email: "customer@example.com",
+        p_customer_phone: checkout.customer.phone,
+        p_delivery_window_id: checkout.deliveryWindowId,
+        p_approval_mode: "after_cutoff",
+        p_delivery_fee_cents: 600,
+        p_delivery_instructions: checkout.deliveryInstructions,
+        p_notes: checkout.notes,
+        p_next_week_ok: true,
+        p_items: [
+          {
+            product_id: product.id,
+            quantity: 2,
+            unit_price_cents: 1200,
+          },
+        ],
+        p_reserve_inventory: false,
       }),
-    });
-    expect(mocks.insertedItems).toEqual([
-      {
-        order_id: "order-id",
-        product_id: product.id,
-        quantity: 2,
-        unit_price_cents: 1200,
-      },
-    ]);
-    expect(mocks.rpc).not.toHaveBeenCalledWith(
-      "reserve_order_inventory",
-      expect.anything(),
+    );
+    expect(mocks.rpc.mock.calls[0]?.[1].p_checkout_cancel_token).toMatch(
+      /^[0-9a-f]{48}$/,
     );
   });
 
@@ -271,22 +224,22 @@ describe("same-week approval order records", () => {
     setupPaidApprovalSupabaseMock();
 
     const paidOrder = await markCheckoutSessionPaid("cs_test_approval", {
+      currency: "usd",
+      subtotalCents: 3000,
       taxCents: 210,
       totalCents: 3210,
     });
 
-    expect(mocks.updatedOrders).toEqual([
-      expect.objectContaining({
-        status: "paid",
-        tax_cents: 210,
-        total_cents: 3210,
-      }),
-      expect.objectContaining({
-        status: "pending_approval",
-        tax_cents: 210,
-        total_cents: 3210,
-      }),
-    ]);
+    expect(mocks.rpc).toHaveBeenCalledWith(
+      "complete_storefront_checkout_payment",
+      {
+        p_session_id: "cs_test_approval",
+        p_currency: "usd",
+        p_subtotal_cents: 3000,
+        p_tax_cents: 210,
+        p_total_cents: 3210,
+      },
+    );
     expect(paidOrder).toMatchObject({
       orderId: "order-id",
       status: "pending_approval",

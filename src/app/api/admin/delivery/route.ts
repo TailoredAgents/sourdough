@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { getCurrentAdmin } from "@/lib/admin-auth";
+import { rejectCrossOriginMutation } from "@/lib/request-security";
 import { deliveryAdminSchema } from "@/lib/delivery-admin";
 import { getSupabaseAdminClient } from "@/lib/supabase";
 import {
@@ -18,6 +20,13 @@ async function getDeliveryAdminData(weeklyMenuId?: string | null) {
   return { deliverySettings, deliveryWindows, weeklyMenuId: selectedWeeklyMenuId };
 }
 
+function revalidateDeliveryRoutes() {
+  revalidatePath("/");
+  revalidatePath("/sourdough-delivery-canton-ga");
+  revalidatePath("/sourdough-delivery-woodstock-ga");
+  revalidatePath("/sourdough-delivery/[zip]", "page");
+}
+
 export async function GET(request: Request) {
   const admin = await getCurrentAdmin();
   if (!admin) {
@@ -32,6 +41,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const originError = rejectCrossOriginMutation(request);
+  if (originError) return originError;
+
   const admin = await getCurrentAdmin();
   if (!admin) {
     return NextResponse.json(
@@ -40,7 +52,13 @@ export async function POST(request: Request) {
     );
   }
 
-  const parsed = deliveryAdminSchema.safeParse(await request.json());
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    body = null;
+  }
+  const parsed = deliveryAdminSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
       { error: parsed.error.issues[0]?.message || "Invalid delivery settings." },
@@ -57,81 +75,46 @@ export async function POST(request: Request) {
   }
 
   const { settings, windows } = parsed.data;
-  const weeklyMenuId = parsed.data.weeklyMenuId || (await getPublishedMenuId());
+  const weeklyMenuId = parsed.data.weeklyMenuId;
   if (!weeklyMenuId) {
     return NextResponse.json(
-      { error: "Create and publish a weekly menu before editing Sunday delivery." },
+      { error: "Choose a weekly menu before editing Sunday delivery." },
       { status: 400 },
     );
   }
 
-  const { error: settingsError } = await supabase.from("delivery_settings").upsert({
-    id: true,
-    center_lat: settings.centerLat,
-    center_lng: settings.centerLng,
-    radius_miles: settings.radiusMiles,
-    delivery_fee_cents: settings.deliveryFeeCents,
-    allowed_postal_codes: settings.allowedPostalCodes,
-    service_area_copy: settings.serviceAreaCopy,
+  const { error } = await supabase.rpc("admin_save_delivery_configuration", {
+    p_weekly_menu_id: weeklyMenuId,
+    p_settings: {
+      center_lat: settings.centerLat,
+      center_lng: settings.centerLng,
+      radius_miles: settings.radiusMiles,
+      delivery_fee_cents: settings.deliveryFeeCents,
+      allowed_postal_codes: settings.allowedPostalCodes,
+      service_area_copy: settings.serviceAreaCopy,
+    },
+    p_windows: windows.map((window) => ({
+      id: window.id || null,
+      label: window.label,
+      starts_at: window.startsAt,
+      ends_at: window.endsAt,
+      capacity: window.capacity,
+      remove: window.remove,
+    })),
+    p_actor_email: admin.email,
   });
 
-  if (settingsError) {
-    return NextResponse.json({ error: settingsError.message }, { status: 400 });
-  }
-
-  const windowsToRemove = windows
-    .filter((window) => window.remove && window.id)
-    .map((window) => window.id as string);
-  if (windowsToRemove.length) {
-    const { error } = await supabase
-      .from("delivery_windows")
-      .delete()
-      .eq("weekly_menu_id", weeklyMenuId)
-      .in("id", windowsToRemove);
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
-    }
-  }
-
-  const windowsToSave = windows.filter((window) => !window.remove);
-  const existingWindows = windowsToSave.filter((window) => window.id);
-  const newWindows = windowsToSave.filter((window) => !window.id);
-
-  for (const window of existingWindows) {
-    const { error } = await supabase
-      .from("delivery_windows")
-      .update({
-        label: window.label,
-        starts_at: window.startsAt,
-        ends_at: window.endsAt,
-        capacity: window.capacity,
-        reserved: window.reserved,
-      })
-      .eq("id", window.id)
-      .eq("weekly_menu_id", weeklyMenuId);
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
-    }
-  }
-
-  if (newWindows.length) {
-    const { error } = await supabase.from("delivery_windows").insert(
-      newWindows.map((window) => ({
-        weekly_menu_id: weeklyMenuId,
-        label: window.label,
-        starts_at: window.startsAt,
-        ends_at: window.endsAt,
-        capacity: window.capacity,
-        reserved: window.reserved,
-      })),
+  if (error) {
+    const conflict = /reserved orders|cannot be removed|cannot be lower/i.test(
+      error.message,
     );
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
-    }
+    return NextResponse.json(
+      { error: error.message },
+      { status: conflict ? 409 : 400 },
+    );
   }
+
+  revalidateDeliveryRoutes();
 
   return NextResponse.json(await getDeliveryAdminData(weeklyMenuId));
 }

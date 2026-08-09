@@ -1,4 +1,4 @@
-import type { OrderStatus } from "./types";
+import type { AdminOrder, OrderStatus } from "./types";
 
 export type AdminOrderStatusAction = {
   label: string;
@@ -8,29 +8,29 @@ export type AdminOrderStatusAction = {
 
 export function getAdminOrderStatusActions(
   status: OrderStatus,
+  source: AdminOrder["source"] = "storefront",
 ): AdminOrderStatusAction[] {
   switch (status) {
     case "pending_payment":
-      return [
-        {
-          label: "Mark paid manually",
-          status: "paid",
-          variant: "secondary",
-        },
-        {
-          label: "Cancel & release inventory",
-          status: "canceled",
-          variant: "ghost",
-        },
-      ];
+      return source === "storefront"
+        ? [
+            {
+              label: "Cancel unpaid checkout",
+              status: "canceled",
+              variant: "ghost",
+            },
+          ]
+        : [];
     case "pending_approval_payment":
-      return [
-        {
-          label: "Cancel unpaid request",
-          status: "canceled",
-          variant: "ghost",
-        },
-      ];
+      return source === "storefront"
+        ? [
+            {
+              label: "Cancel unpaid request",
+              status: "canceled",
+              variant: "ghost",
+            },
+          ]
+        : [];
     case "pending_approval":
       return [];
     case "paid":
@@ -45,11 +45,6 @@ export function getAdminOrderStatusActions(
           status: "baking",
           variant: "secondary",
         },
-        {
-          label: "Cancel & release inventory",
-          status: "canceled",
-          variant: "ghost",
-        },
       ];
     case "baking":
       return [
@@ -63,11 +58,6 @@ export function getAdminOrderStatusActions(
           status: "out_for_delivery",
           variant: "secondary",
         },
-        {
-          label: "Cancel & release inventory",
-          status: "canceled",
-          variant: "ghost",
-        },
       ];
     case "out_for_delivery":
       return [
@@ -75,6 +65,11 @@ export function getAdminOrderStatusActions(
           label: "Complete order",
           status: "delivered",
           variant: "primary",
+        },
+        {
+          label: "Back to baking",
+          status: "baking",
+          variant: "secondary",
         },
       ];
     case "delivered":
@@ -86,15 +81,19 @@ export function getAdminOrderStatusActions(
         },
       ];
     case "canceled":
-      return [
-        {
-          label: "Restore & reserve inventory",
-          status: "paid",
-          variant: "secondary",
-        },
-      ];
+      return [];
     case "draft":
     default:
       return [];
   }
+}
+
+export function isAdminOrderTransitionAllowed(
+  source: AdminOrder["source"],
+  previousStatus: OrderStatus,
+  nextStatus: OrderStatus,
+) {
+  return getAdminOrderStatusActions(previousStatus, source).some(
+    (action) => action.status === nextStatus,
+  );
 }
