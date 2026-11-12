@@ -26,8 +26,14 @@ function secretsMatch(actual: string | null, expected: string | undefined) {
 export function getRequestClientIp(
   request: Request,
   cloudflareOriginSecret = process.env.CLOUDFLARE_ORIGIN_SECRET,
+  deploymentPlatform = process.env.DEPLOYMENT_PLATFORM,
 ) {
   const cloudflareIp = normalizeIp(request.headers.get("cf-connecting-ip"));
+  // Workers supplies this header at ingress. Do not fall back to a visitor's
+  // X-Forwarded-For header when this application is the Cloudflare origin.
+  if (deploymentPlatform === "cloudflare") {
+    return cloudflareIp || "unknown-ip";
+  }
   if (
     cloudflareIp &&
     secretsMatch(

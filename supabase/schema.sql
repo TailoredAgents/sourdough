@@ -368,7 +368,7 @@ begin
   values (p_scope, p_key_hash);
 
   return query
-  select true, pg_catalog.greatest(p_limit - event_count - 1, 0);
+  select true, greatest(p_limit - event_count - 1, 0);
 end;
 $$;
 

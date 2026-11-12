@@ -1,0 +1,16 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "landl-bakery-operations",
+  "account_id": "78ed83c6e3947c93763acef3a48a5561",
+  "main": "workers/bakery-operations.ts",
+  "compatibility_date": "2026-11-12",
+  "workers_dev": false,
+  "preview_urls": false,
+  "services": [
+    { "binding": "STOREFRONT", "service": "landl-sourdough" }
+  ],
+  "triggers": { "crons": ["7 * * * *"] },
+  "secrets": { "required": ["CRON_SECRET"] },
+  "limits": { "cpu_ms": 30000 },
+  "observability": { "enabled": true, "head_sampling_rate": 1 }
+}

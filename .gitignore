@@ -45,3 +45,10 @@ next-env.d.ts
 
 # local npm cache used by this workspace
 /.npm-cache
+
+# Cloudflare build output and local secrets
+/.open-next/
+/.wrangler/
+/.dev.vars*
+/cloudflare-env.d.ts
+/cloudflare-cron-env.d.ts

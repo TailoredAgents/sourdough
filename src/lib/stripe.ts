@@ -6,5 +6,6 @@ export function getStripe() {
 
   return new Stripe(secretKey, {
     apiVersion: "2026-06-24.dahlia",
+    httpClient: Stripe.createFetchHttpClient(),
   });
 }

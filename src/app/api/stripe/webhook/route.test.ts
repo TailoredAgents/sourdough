@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  constructEvent: vi.fn(),
+  constructEventAsync: vi.fn(),
   completeStorefrontCheckoutSession: vi.fn(),
   cancelExpiredCheckoutSession: vi.fn(),
 }));
@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/stripe", () => ({
   getStripe: () => ({
     webhooks: {
-      constructEvent: mocks.constructEvent,
+      constructEventAsync: mocks.constructEventAsync,
     },
   }),
 }));
@@ -53,7 +53,7 @@ describe("Stripe order webhook", () => {
       customer_email: "customer@example.com",
       metadata: { order_id: "order-id" },
     };
-    mocks.constructEvent.mockReturnValue({
+    mocks.constructEventAsync.mockReturnValue({
       id: "evt_approval",
       type: "checkout.session.completed",
       data: {
@@ -81,7 +81,7 @@ describe("Stripe order webhook", () => {
       amount_total: 3210,
       total_details: { amount_tax: 210 },
     };
-    mocks.constructEvent.mockReturnValue({
+    mocks.constructEventAsync.mockReturnValue({
       id: "evt_delayed_paid",
       type: "checkout.session.async_payment_succeeded",
       data: { object: session },
@@ -100,7 +100,7 @@ describe("Stripe order webhook", () => {
       payment_status: "unpaid",
       metadata: { order_id: orderId },
     };
-    mocks.constructEvent.mockReturnValue({
+    mocks.constructEventAsync.mockReturnValue({
       id: "evt_delayed_failed",
       type: "checkout.session.async_payment_failed",
       data: { object: session },

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import Stripe from "stripe";
 import { cancelExpiredCheckoutSession } from "@/lib/order-records";
 import { handleBreadClubStripeEvent } from "@/lib/bread-club/webhook";
 import { completeStorefrontCheckoutSession } from "@/lib/order-payment";
@@ -33,7 +34,13 @@ export async function POST(request: Request) {
   let event;
 
   try {
-    event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
+    event = await stripe.webhooks.constructEventAsync(
+      body,
+      signature,
+      webhookSecret,
+      undefined,
+      Stripe.createSubtleCryptoProvider(),
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : "Invalid webhook.";
     return NextResponse.json({ error: message }, { status: 400 });

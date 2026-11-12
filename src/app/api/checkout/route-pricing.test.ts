@@ -194,6 +194,39 @@ beforeEach(() => {
 });
 
 describe("checkout route delivery pricing", () => {
+  it("starts checkout with full-length notes while keeping Stripe metadata bounded", async () => {
+    const notes = "n".repeat(1000);
+    const deliveryInstructions = "d".repeat(1000);
+    mocks.stripeCreateSession.mockImplementation(async (input) => {
+      for (const value of Object.values(input.metadata)) {
+        if (String(value).length > 500) {
+          throw new Error("Stripe metadata exceeds 500 characters.");
+        }
+      }
+      return { id: "cs_long_notes", url: "https://checkout.stripe.com/c/test" };
+    });
+
+    const response = await POST(new Request(
+      "https://www.landlsourdough.com/api/checkout",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...checkoutPayload, notes, deliveryInstructions }),
+      },
+    ));
+
+    expect(response.status).toBe(200);
+    expect(mocks.createPendingCheckoutOrder).toHaveBeenCalledWith(
+      expect.objectContaining({
+        checkout: expect.objectContaining({ notes, deliveryInstructions }),
+      }),
+    );
+    expect(mocks.attachStripeSessionToOrder).toHaveBeenCalledWith(
+      "order-id", "cs_long_notes",
+    );
+    expect(mocks.releasePendingOrder).not.toHaveBeenCalled();
+  });
+
   it("recalculates delivery server-side and sends that exact fee to Stripe", async () => {
     const response = await POST(
       new Request("https://www.landlsourdough.com/api/checkout", {
