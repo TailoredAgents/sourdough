@@ -57,24 +57,19 @@ Optional before live launch:
 - `NEXT_PUBLIC_PLAUSIBLE_DOMAIN`
 
 Use `.env.example` as the complete template. Real values belong in
-`.env.local` locally and in Render's Environment tab for production. Do not
+`.env.local` locally and in Cloudflare Worker secrets for production. Do not
 commit `.env.local`.
 
-## Render Deployment
+## Cloudflare Deployment
 
-This repo is prepared for Render deployment with `render.yaml`.
+The storefront and APIs run on the `landl-sourdough` Worker through OpenNext.
+The `landl-bakery-operations` Worker runs hourly maintenance through a private
+service binding. R2, D1, and a Durable Object provide Next.js caching; Supabase
+continues to store business data and authentication.
 
-Render service settings:
-
-- Type: Node web service
-- Instance type: `standard`
-- Build command: `npm ci --include=dev && npm run build`
-- Start command: `npm run start`
-- Health check path: `/api/health`
-- Node version: `.node-version`
-
-Detailed deployment steps and the production env var checklist are in
-`docs/render-deployment.md`.
+Deployments, secrets, GitHub Actions, verification, and rollback are documented
+in [docs/cloudflare-deployment.md](docs/cloudflare-deployment.md).
+The previous Render configuration is retained only as a recovery reference.
 
 The final proof checklist and post-launch growth roadmap are in
 `docs/ultimate-launch-roadmap.md`.
@@ -88,6 +83,8 @@ Run the full local launch gate before shipping changes:
 
 ```bash
 npm run validate
+npm run cf:typegen
+npm run build:cloudflare
 ```
 
 This runs lint, the Supabase seed freshness check, the public asset readiness
@@ -101,10 +98,10 @@ site:
 npm run smoke:live
 ```
 
-For a staging Render URL, override the target:
+For a temporary Cloudflare URL, override the target:
 
 ```bash
-PLAYWRIGHT_BASE_URL=https://your-render-service.onrender.com npm run test:e2e
+PLAYWRIGHT_BASE_URL=https://landl-sourdough.jeffrey-78e.workers.dev npm run test:e2e
 ```
 
 Before enabling real customer orders, check the production environment values:

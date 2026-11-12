@@ -138,6 +138,10 @@ test("Bread Club preview calculates the exact recurring total and consent", asyn
   const ownerLoginHeading = page.getByRole("heading", {
     name: "Sign in to run the owner checkout test",
   });
+  // Enrollment is streamed through Suspense; wait for either resolved state.
+  await expect(
+    ownerLoginHeading.or(page.getByRole("button", { name: /Classic Club/i })),
+  ).toBeVisible();
   if (await ownerLoginHeading.isVisible()) {
     await expect(
       page.getByRole("link", { name: "Sign in as owner" }),
@@ -233,11 +237,13 @@ test("Bread Club enrollment fits a narrow mobile viewport", async ({ page }) => 
       name: "Fresh bread already planned for Sunday",
     }),
   ).toBeVisible();
-  if (
-    await page
-      .getByRole("heading", { name: "Sign in to run the owner checkout test" })
-      .isVisible()
-  ) {
+  const ownerLoginHeading = page.getByRole("heading", {
+    name: "Sign in to run the owner checkout test",
+  });
+  await expect(
+    ownerLoginHeading.or(page.getByRole("button", { name: /Variety Club/i })),
+  ).toBeVisible();
+  if (await ownerLoginHeading.isVisible()) {
     await expect(
       page.getByRole("link", { name: "Sign in as owner" }),
     ).toBeVisible();

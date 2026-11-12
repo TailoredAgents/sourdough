@@ -204,9 +204,8 @@ async function startHostedCheckout({
           delivery_window_id: checkout.deliveryWindowId,
           delivery_window: deliveryWindowLabel,
           address: `${checkout.address.line1}, ${checkout.address.city}, ${checkout.address.state} ${checkout.address.postalCode}`,
-          delivery_instructions: checkout.deliveryInstructions || "",
-          notes: checkout.notes || "",
-          order_summary: pendingOrder.orderSummary,
+          // Full instructions, notes, and summaries belong to the persisted
+          // order. Stripe metadata values have a 500-character limit.
         },
       },
       {

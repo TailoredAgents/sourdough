@@ -444,10 +444,10 @@ describe("Bread Club subscription checkout", () => {
         body: JSON.stringify(payload),
       }),
     );
-    const responsePayload = await response.json();
-
     expect(response.status).toBe(500);
-    expect(responsePayload.resetCheckoutAttempt).toBe(true);
+    await expect(response.json()).resolves.toMatchObject({
+      resetCheckoutAttempt: true,
+    });
     expect(mocks.stripeExpireSession).toHaveBeenCalledWith("cs_bread_club");
     expect(mocks.expireBreadClubCheckoutSession).toHaveBeenCalledWith(
       "cs_bread_club",
@@ -470,10 +470,10 @@ describe("Bread Club subscription checkout", () => {
         body: JSON.stringify(payload),
       }),
     );
-    const responsePayload = await response.json();
-
     expect(response.status).toBe(500);
-    expect(responsePayload.resetCheckoutAttempt).toBe(false);
+    await expect(response.json()).resolves.toMatchObject({
+      resetCheckoutAttempt: false,
+    });
     expect(mocks.stripeExpireSession).not.toHaveBeenCalled();
     expect(mocks.expireBreadClubCheckoutSession).not.toHaveBeenCalled();
     expect(mocks.markBreadClubCheckoutIncomplete).not.toHaveBeenCalled();

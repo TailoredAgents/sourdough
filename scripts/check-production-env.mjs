@@ -272,7 +272,9 @@ requireOneOf("BREAD_CLUB_TAX_STATUS", [
 ]);
 requireValue("CRON_SECRET");
 requireValue("BREAD_CLUB_SETUP_SECRET");
-requireValue("CLOUDFLARE_ORIGIN_SECRET");
+if (valueFor("DEPLOYMENT_PLATFORM") !== "cloudflare") {
+  requireValue("CLOUDFLARE_ORIGIN_SECRET");
+}
 const operationalSecretKeys = [
   "CRON_SECRET",
   "BREAD_CLUB_SETUP_SECRET",

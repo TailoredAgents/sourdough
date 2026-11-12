@@ -1,5 +1,9 @@
 # Render Deployment
 
+Historical recovery reference. Production hosting is configured in
+[cloudflare-deployment.md](cloudflare-deployment.md). Do not provision the
+Render Blueprint for normal deployments.
+
 Luna & Lorelai's Sourdough deploys to Render as a Node web service because the app uses
 Next.js server rendering, API routes, Supabase Auth cookies, Stripe webhooks,
 and admin mutations.

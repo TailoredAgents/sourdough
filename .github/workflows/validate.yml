@@ -28,6 +28,7 @@ jobs:
       - name: Check production environment contract
         env:
           NODE_ENV: production
+          DEPLOYMENT_PLATFORM: cloudflare
           NEXT_PUBLIC_SITE_URL: https://www.landlsourdough.com
           NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-anon-key
@@ -59,3 +60,6 @@ jobs:
 
       - name: Run validation
         run: npm run validate
+
+      - name: Build for Cloudflare Workers
+        run: npm run build:cloudflare

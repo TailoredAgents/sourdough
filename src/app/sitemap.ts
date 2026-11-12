@@ -9,6 +9,8 @@ import {
   getDeliverySettingsData,
 } from "@/lib/storefront-data";
 
+export const dynamic = "force-dynamic";
+
 const baseUrl = "https://www.landlsourdough.com";
 
 function toSitemapDate(value?: string | null) {

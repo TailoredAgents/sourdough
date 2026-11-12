@@ -5,14 +5,13 @@ import { getSupabaseAdminClient } from "@/lib/supabase";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
-  const supabase = getSupabaseAdminClient();
   const configured = Boolean(
     process.env.NEXT_PUBLIC_SUPABASE_URL &&
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY &&
       process.env.SUPABASE_SERVICE_ROLE_KEY,
   );
 
-  if (!configured || !supabase) {
+  if (!configured) {
     return NextResponse.json(
       {
         ok: false,
@@ -28,6 +27,13 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   if (deep) {
+    const supabase = getSupabaseAdminClient();
+    if (!supabase) {
+      return NextResponse.json(
+        { ok: false, service: "landl-sourdough", database: "not_configured" },
+        { status: 503 },
+      );
+    }
     const { data, error } = await supabase.rpc(
       "operational_schema_healthcheck",
     );
@@ -50,6 +56,7 @@ export async function GET(request: Request) {
   return NextResponse.json({
     ok: true,
     service: "landl-sourdough",
+    platform: process.env.DEPLOYMENT_PLATFORM || "node",
     database: deep ? "reachable" : "configured",
     ...(deep ? { schemaVersion: "20260808140000" } : {}),
   });

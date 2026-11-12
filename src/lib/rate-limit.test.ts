@@ -19,6 +19,30 @@ beforeEach(() => {
 });
 
 describe("rate limit safety", () => {
+  it("uses the Workers ingress IP without trusting visitor forwarding headers", () => {
+    const request = new Request("https://www.landlsourdough.com", {
+      headers: {
+        "cf-connecting-ip": "203.0.113.12",
+        "x-forwarded-for": "192.0.2.99",
+      },
+    });
+    expect(getRequestClientIp(request, undefined, "cloudflare")).toBe(
+      "203.0.113.12",
+    );
+    const missingIngress = new Request("https://www.landlsourdough.com", {
+      headers: { "x-forwarded-for": "192.0.2.99" },
+    });
+    expect(getRequestClientIp(missingIngress, undefined, "cloudflare")).toBe(
+      "unknown-ip",
+    );
+    const malformedIngress = new Request("https://www.landlsourdough.com", {
+      headers: { "cf-connecting-ip": "not-an-ip", "x-forwarded-for": "192.0.2.99" },
+    });
+    expect(getRequestClientIp(malformedIngress, undefined, "cloudflare")).toBe(
+      "unknown-ip",
+    );
+  });
+
   it("allows rate-limit bypass only outside production", () => {
     expect(canBypassRateLimit("development")).toBe(true);
     expect(canBypassRateLimit("test")).toBe(true);
